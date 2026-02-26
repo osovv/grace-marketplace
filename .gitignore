@@ -9,9 +9,11 @@ backend/.venv/
 *.egg-info/
 
 # Data
-data/uploads/
-data/exports/
-data/epc.db
+data/
+**/data/uploads/
+**/data/exports/
+**/data/*.db
+*.db
 
 # Node
 node_modules/
