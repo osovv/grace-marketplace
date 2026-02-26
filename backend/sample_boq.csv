@@ -1,0 +1,11 @@
+code,description,qty,uom,area
+BOQ-001,8" Carbon Steel Pipe Spool - Process Area,500,LM,ISBL
+BOQ-002,6" Stainless Steel Pipe Spool - Utility,200,LM,UTL
+BOQ-003,Concrete Foundation for Pump P-101,45,M3,ISBL
+BOQ-004,Structural Steel Platform - Reactor Area,12,TON,ISBL
+BOQ-005,Power Cable 3x240mm - Substation to MCC,800,LM,SUB
+BOQ-006,Centrifugal Pump P-101 Installation,2,EA,ISBL
+BOQ-007,Instrument Cable 12-pair - Control Room,1200,LM,BLDG
+BOQ-008,Concrete Pipe Rack Foundation,80,M3,OSBL
+BOQ-009,Structural Steel Pipe Rack,25,TON,OSBL
+BOQ-010,4" CS Pipe - Tank Farm Transfer Lines,350,LM,OFFSITE

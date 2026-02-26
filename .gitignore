@@ -1,1 +1,23 @@
 !docs
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+backend/.venv/
+*.egg-info/
+
+# Data
+data/uploads/
+data/exports/
+data/epc.db
+
+# Node
+node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
