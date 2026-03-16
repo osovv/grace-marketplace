@@ -9,8 +9,8 @@ Execute the development plan step by step, generating code for each pending modu
 - `docs/development-plan.xml` must exist with an ImplementationOrder section
 - `docs/knowledge-graph.xml` must exist
 - `docs/verification-plan.xml` should exist and define module-level checks for the modules you plan to execute
-- If the plan or graph is missing, tell the user to run `$grace-plan` first
-- If the verification plan is missing or still skeletal, tell the user to run `$grace-verification` before large execution runs
+- If the plan or graph is missing, stop immediately and tell the user to run `$grace-plan` themselves before large execution runs
+- If the verification plan is missing or still skeletal, stop immediately and tell the user to run `$grace-verification` themselves before large execution runs
 - Prefer this skill when dependency risk is higher than the gain from parallel waves, or when only a few modules remain
 
 ## Core Principle
@@ -138,7 +138,7 @@ Verification: phase checks passed / follow-up required
 - If step-level verification fails, attempt to fix it; if unfixable, stop and report
 - If targeted refresh or scoped review reveals broader drift, escalate before continuing
 - Never skip a failing step; the dependency chain matters
-- If the verification plan proves too weak for the module, pause and strengthen it before pretending the module is safe
+- If the verification plan proves too weak for the module, stop and tell the user to run `$grace-verification` themselves before continuing
 
 ## Important
 - Steps within a phase are executed sequentially

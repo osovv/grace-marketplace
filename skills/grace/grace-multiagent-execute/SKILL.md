@@ -9,8 +9,8 @@ Execute a GRACE development plan with multiple agents while keeping planning art
 - `docs/development-plan.xml` must exist with module contracts and implementation order
 - `docs/knowledge-graph.xml` must exist
 - `docs/verification-plan.xml` should exist with module-local verification commands and gate expectations
-- If the plan or graph is missing, tell the user to run `$grace-plan` first
-- If the verification plan is missing or still skeletal, use `$grace-verification` before dispatching a large wave
+- If the plan or graph is missing, stop immediately and tell the user to run `$grace-plan` themselves before dispatching a large wave
+- If the verification plan is missing or still skeletal, stop immediately and tell the user to run `$grace-verification` themselves before dispatching a large wave
 - Prefer this skill only when module-local verification commands already exist or can be defined clearly
 
 ## Core Principle
@@ -136,7 +136,7 @@ After all modules in the wave are approved:
 4. Update `docs/development-plan.xml` step status once per wave
 5. Run targeted `$grace-refresh` against the changed modules and touched dependency surfaces
 6. If targeted refresh reports wider drift, escalate to a full refresh before the next wave
-7. If the wave reveals weak or missing automated checks, use `$grace-verification` before continuing
+7. If the wave reveals weak or missing automated checks, stop the run and tell the user to run `$grace-verification` themselves before continuing
 
 ### Step 6: Verify by Level
 Run verification at the smallest level that still protects correctness.
