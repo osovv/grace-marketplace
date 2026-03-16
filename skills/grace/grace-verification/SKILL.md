@@ -1,14 +1,15 @@
 ---
 name: grace-verification
-description: "Design and enforce AI-friendly verification for a GRACE project. Use when modules need stronger automated tests, traceable logs, execution-trace checks, or verification that is robust enough for autonomous and multi-agent workflows."
+description: "Design and enforce testing, traces, and log-driven verification for a GRACE project. Use when modules need stronger automated tests, execution-trace checks, or a maintained verification-plan.xml that autonomous and multi-agent workflows can trust."
 ---
 
 Design verification that autonomous agents can trust: deterministic where possible, observable and traceable where equality checks alone are not enough.
 
 ## Prerequisites
-- The target module or workflow must already have a contract
-- Read the relevant `MODULE_CONTRACT`, function contracts, and semantic blocks first
-- If no contract exists yet, route through `$grace-plan` or `$grace-generate` before building verification
+- `docs/development-plan.xml` must exist with planned modules or module contracts
+- `docs/verification-plan.xml` should exist; if it does not, create it from the GRACE init template before proceeding
+- Read the relevant `MODULE_CONTRACT`, function contracts, semantic blocks, and existing tests first
+- If no contract exists yet, route through `$grace-plan` before building verification
 
 ## Goal
 
@@ -21,10 +22,23 @@ It must answer:
 
 Use contracts for **expected behavior**, semantic blocks for **traceability**, and tests/logs for **evidence**.
 
+`docs/verification-plan.xml` is the canonical place where this evidence model lives.
+
 ## Process
 
-### Step 1: Derive Verification Targets from Contracts
-Read the module and function contracts. Extract:
+### Step 1: Load Verification Context
+Read the smallest complete set of artifacts needed for the scope:
+
+- `docs/requirements.xml`
+- `docs/technology.xml`
+- `docs/development-plan.xml`
+- `docs/verification-plan.xml`
+- relevant source files and nearby tests
+
+When operating on one module, prefer that module's plan entry, verification entry, and local tests over rereading the whole repository.
+
+### Step 2: Derive Verification Targets from Contracts and Flows
+Read the module contracts, function contracts, and linked flows. Extract:
 
 - success scenarios
 - failure scenarios
@@ -32,9 +46,9 @@ Read the module and function contracts. Extract:
 - side effects
 - forbidden behaviors
 
-Turn these into a verification matrix before writing or revising tests.
+Turn these into a verification matrix before writing or revising tests. Keep the matrix synced into `docs/verification-plan.xml`.
 
-### Step 2: Design Observability
+### Step 3: Design Observability
 For each critical path, define the minimum telemetry needed to debug and verify it.
 
 At a minimum:
@@ -45,7 +59,24 @@ At a minimum:
 
 Prefer stable structured logs or stable key fields over prose-heavy log lines.
 
-### Step 3: Build the Verification Matrix
+### Step 4: Build or Refresh `docs/verification-plan.xml`
+Update the verification artifact so it becomes execution-ready.
+
+For each relevant module, define or refresh:
+- `V-M-xxx` verification entry
+- target test files
+- module-local verification commands
+- success and failure scenarios
+- required log markers and trace assertions
+- wave-level and phase-level follow-up checks
+
+Also refresh project-wide policy when needed:
+- log format
+- redaction rules
+- deterministic-first policy
+- module/wave/phase split
+
+### Step 5: Choose Evidence Types Per Scenario
 For each scenario, decide which evidence type to use:
 
 - **Deterministic assertions** for stable outputs, return values, state transitions, and exact invariants
@@ -55,7 +86,7 @@ For each scenario, decide which evidence type to use:
 
 If an exact assert works, use it. Do not replace strong deterministic checks with fuzzy evaluation.
 
-### Step 4: Implement AI-Friendly Tests
+### Step 6: Implement AI-Friendly Tests and Evidence Hooks
 Write tests and harnesses that:
 
 1. execute the scenario
@@ -71,7 +102,9 @@ Typical trace checks:
 - retries stayed within allowed bounds
 - failure mode matched the contract
 
-### Step 5: Use Semantic Verification Carefully
+Substantial test files may also use MODULE_CONTRACT, MODULE_MAP, semantic blocks, and CHANGE_SUMMARY if that makes them easier for future agents to navigate.
+
+### Step 7: Use Semantic Verification Carefully
 When strict equality is too weak or too brittle, use bounded semantic checks.
 
 Allowed pattern:
@@ -87,7 +120,7 @@ Disallowed pattern:
 - using raw hidden reasoning as evidence
 - relying on unconstrained free-form log dumps without a rubric
 
-### Step 6: Apply Verification Levels
+### Step 8: Apply Verification Levels
 Match the verification depth to the execution stage.
 
 - **Module level**: worker-local typecheck, lint, unit tests, deterministic assertions, and local trace checks
@@ -96,7 +129,9 @@ Match the verification depth to the execution stage.
 
 Do not require full-repository verification after every clean module if the wave and phase gates already cover that risk.
 
-### Step 7: Failure Triage
+Make these levels explicit in `docs/verification-plan.xml` so execution packets can reuse them.
+
+### Step 9: Failure Triage
 When verification fails, produce a concise failure packet:
 
 - contract or scenario that failed
@@ -114,19 +149,23 @@ Use this packet to drive `$grace-fix` or to hand off the issue to another agent 
 - Do not log chain-of-thought or hidden reasoning
 - Do not assert on unstable wording if stable fields are available
 - Prefer high-signal traces over verbose noise
+- Keep `docs/verification-plan.xml` synchronized with real test files and commands
+- Prefer source-adjacent tests and narrow fakes over giant opaque harnesses
 - If verification is weak, improve observability before adding more agents
 - Prefer module-level checks during worker execution and reserve broader suites for wave or phase gates
 
 ## Deliverables
 When using this skill, produce:
 
-1. a verification matrix
-2. the telemetry/logging requirements
-3. the tests or harness changes needed
-4. the recommended verification level split across module, wave, and phase
-5. a brief assessment of whether the module is safe for autonomous or multi-agent execution
+1. an updated `docs/verification-plan.xml`
+2. a verification matrix for the scoped modules or flows
+3. the telemetry/logging requirements
+4. the tests or harness changes needed
+5. the recommended verification level split across module, wave, and phase
+6. a brief assessment of whether the module is safe for autonomous or multi-agent execution
 
 ## When to Use It
+- Before a first serious `$grace-execute` or `$grace-multiagent-execute` run
 - Before enabling autonomous execution for a module
 - When multi-agent workflows need trustworthy checks
 - When tests are too brittle or too shallow

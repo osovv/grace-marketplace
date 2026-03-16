@@ -81,6 +81,7 @@ These shared prompts assume the newer multi-agent workflow:
 - workers receive execution packets instead of rereading full XML artifacts whenever possible
 - reviewers default to scoped gate review and escalate only when evidence suggests wider drift
 - verification is split across module, wave, and phase levels
+- the controller owns `docs/verification-plan.xml` in addition to plan and graph artifacts
 
 ### Step 5: Render Shell-Specific Agent Files
 For each role:

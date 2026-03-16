@@ -1,7 +1,7 @@
 {
   "name": "grace",
-  "description": "Complete GRACE methodology: semantic markup, knowledge graphs, module contracts, and governed autonomy for AI-driven code generation",
-  "version": "1.3.0",
+  "description": "Complete GRACE methodology: semantic markup, knowledge graphs, module contracts, testing, and log-driven verification for AI-driven engineering",
+  "version": "3.0.0",
   "author": {
     "name": "Vladimir Ivanov",
     "url": "https://t.me/turboplanner"

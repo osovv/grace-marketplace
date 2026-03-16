@@ -1,39 +1,39 @@
 # Semantic Markup Convention
 
-Semantic markup in GRACE serves dual purpose: **navigation anchors** for RAG agents and **attention anchors** for LLM context management. Markers are NOT comments — they are load-bearing structure.
+Semantic markup in GRACE serves dual purpose: navigation anchors for RAG agents and attention anchors for LLM context management. Markers are not comments - they are load-bearing structure.
 
 ## Module Level (top of each file)
 
-Every source file must begin with:
+Every important source file must begin with:
 
 ```
 // FILE: path/to/file.ext
 // VERSION: 1.0.0
 // START_MODULE_CONTRACT
-//   PURPOSE: [What this module does — one sentence]
+//   PURPOSE: [What this module does - one sentence]
 //   SCOPE: [What operations are included]
 //   DEPENDS: [List of module dependencies]
 //   LINKS: [References to knowledge graph nodes]
 // END_MODULE_CONTRACT
 //
 // START_MODULE_MAP
-//   ComponentName — [one-line description]
-//   useHookName — [one-line description]
-//   utilityFunction — [one-line description]
+//   exportedSymbol - one-line description
 // END_MODULE_MAP
 ```
 
 Adapt comment syntax to the project language (`#` for Python, `//` for Go/TS/Java, `--` for SQL).
 
-## Function/Component Level
+Substantial test files should use the same structure when tests are the fastest way for future agents to understand behavior, fixtures, and expected evidence.
+
+## Function or Component Level
 
 Every exported function or component must have a contract:
 
 ```
 // START_CONTRACT: functionName
 //   PURPOSE: [What it does]
-//   INPUTS: { paramName: Type — description }
-//   OUTPUTS: { ReturnType — description }
+//   INPUTS: { paramName: Type - description }
+//   OUTPUTS: { ReturnType - description }
 //   SIDE_EFFECTS: [What external state it modifies]
 //   LINKS: [Related modules/functions via knowledge graph]
 // END_CONTRACT: functionName
@@ -45,40 +45,55 @@ Every exported function or component must have a contract:
 // START_BLOCK_VALIDATE_INPUT
 // ... code ...
 // END_BLOCK_VALIDATE_INPUT
-
-// START_BLOCK_TRANSFORM_DATA
-// ... code ...
-// END_BLOCK_TRANSFORM_DATA
 ```
 
 ## Change Tracking
 
 ```
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: [v1.2.0 — What changed and why]
+//   LAST_CHANGE: [v1.2.0 - What changed and why]
 // END_CHANGE_SUMMARY
 ```
 
 ## Granularity Rules
 
-1. **~500 tokens per block** — this matches the LLM sliding window for optimal attention. Too large = LLM loses track. Too small = noise.
-2. **Unique block names** — never use generic names like `LOGIC_1`, `HELPER`, `MAIN_BLOCK`. Use descriptive names: `VALIDATE_USER_PERMISSIONS`, `FETCH_AND_CACHE_DATA`.
-3. **Paired markers** — every `START_BLOCK_X` MUST have a matching `END_BLOCK_X`. Unpaired markers are integrity violations.
-4. **Block names describe WHAT, not HOW** — the name should tell you the block's purpose without reading the code.
+1. Around 500 tokens per block. Too large and the model loses locality. Too small and the markup becomes noise.
+2. Block names must be unique inside the file.
+3. Every `START_BLOCK_X` must have a matching `END_BLOCK_X`.
+4. Block names describe WHAT, not HOW.
 
 ## Logging Convention
 
-All logs must reference semantic blocks for traceability:
+All important logs should reference semantic blocks for traceability:
+
 ```
-logger.info(`[ModuleName][functionName][BLOCK_NAME] message`);
+logger.info(`[ModuleName][functionName][BLOCK_NAME] message`, {
+  correlationId,
+  stableField: value,
+});
 ```
 
 This creates a direct link from runtime logs to source code blocks.
 
+## Test and Trace Guidance
+
+When a path is critical enough to verify, make the test and the logs meet in the middle:
+
+- production code emits stable `[Module][function][BLOCK_NAME]` markers
+- tests assert deterministic outcomes first
+- tests assert markers or trace order when trajectory matters
+- verification docs record which markers are required
+
+Example:
+
+```ts
+expect(hasLogMarker("info", "[ChatDomain][createChat][BLOCK_INSERT_CHAT]")).toBe(true);
+```
+
 ## Rules
 
-1. Never remove semantic markup anchors — they are load-bearing structure
-2. When editing code, preserve block boundaries unless the edit requires restructuring
-3. If a block grows beyond ~500 tokens, split it into sub-blocks
-4. If you rename a block, update all log references
-5. MODULE_MAP must always reflect the current exports of the file
+1. Never remove semantic markup anchors casually.
+2. When editing code, preserve block boundaries unless the edit truly requires restructuring.
+3. If a block grows beyond the working window, split it into sub-blocks.
+4. If you rename a block, update all log references and related verification entries.
+5. `MODULE_MAP` must reflect the current exports of the file.

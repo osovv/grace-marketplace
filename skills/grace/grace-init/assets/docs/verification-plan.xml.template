@@ -1,0 +1,78 @@
+<VerificationPlan VERSION="0.2.0">
+  <GlobalPolicy>
+    <!-- Project-wide verification expectations.
+
+         <log-format>[Module][function][BLOCK_NAME] message</log-format>
+         <deterministic-first>true</deterministic-first>
+         <module-level-focus>Fast deterministic checks close to the module.</module-level-focus>
+         <wave-level-focus>Checks only merged surfaces touched by the current wave.</wave-level-focus>
+         <phase-level-focus>Broader integration and regression confidence.</phase-level-focus>
+         <redaction>Never log secrets, credentials, raw tokens, or high-risk payloads.</redaction>
+    -->
+  </GlobalPolicy>
+
+  <CriticalFlows>
+    <!-- Verification flows link product intent to observable evidence.
+
+         <VF-001 NAME="CoreHappyPath" USE_CASES="UC-001" DATA_FLOW="DF-001" PRIORITY="high">
+           <scenario>User completes the primary success path.</scenario>
+           <expected-outcome>The final state is correct.</expected-outcome>
+           <required-signals>
+             <log-marker>[ExampleDomain][run][BLOCK_EXECUTE_CORE_FLOW]</log-marker>
+             <trace-sequence>BLOCK_VALIDATE_INPUT -> BLOCK_EXECUTE_CORE_FLOW -> RETURNED</trace-sequence>
+           </required-signals>
+         </VF-001>
+    -->
+  </CriticalFlows>
+
+  <ModuleVerification>
+    <!-- Per-module verification contracts.
+
+         <V-M-EXAMPLE MODULE="M-EXAMPLE" PRIORITY="high">
+           <test-files>
+             <file>src/example/index.test.ts</file>
+           </test-files>
+           <module-checks>
+             <check-1>bun test src/example/index.test.ts</check-1>
+             <check-2>bun x tsc --noEmit</check-2>
+           </module-checks>
+           <scenarios>
+             <scenario-1 kind="success">Primary success path returns the expected result.</scenario-1>
+             <scenario-2 kind="failure">Invalid input is rejected with a stable error.</scenario-2>
+           </scenarios>
+           <required-log-markers>
+             <marker-1>[ExampleDomain][run][BLOCK_VALIDATE_INPUT]</marker-1>
+           </required-log-markers>
+           <required-trace-assertions>
+             <assertion-1>Failure path must not emit BLOCK_PERSIST_RESULT.</assertion-1>
+           </required-trace-assertions>
+           <wave-follow-up>Integration check against dependent modules.</wave-follow-up>
+           <phase-follow-up>Full regression suite plus sampled log review.</phase-follow-up>
+         </V-M-EXAMPLE>
+    -->
+  </ModuleVerification>
+
+  <PhaseGates>
+    <!-- Larger execution gates.
+
+         <Gate-Phase-1 PHASE="Phase-1">
+           <goal>Foundation modules have deterministic local checks and basic observability.</goal>
+           <commands>
+             <command-1>bun test</command-1>
+           </commands>
+           <required-evidence>
+             <evidence-1>All critical modules have module-local checks defined.</evidence-1>
+           </required-evidence>
+         </Gate-Phase-1>
+    -->
+  </PhaseGates>
+
+  <FailurePackets>
+    <!-- Optional guidance for future fix loops.
+
+         <packet-template>
+           <expected-fields>scenario, expected-evidence, observed-evidence, first-divergent-block, next-action</expected-fields>
+         </packet-template>
+    -->
+  </FailurePackets>
+</VerificationPlan>

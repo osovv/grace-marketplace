@@ -1,20 +1,62 @@
-<RequirementsAnalysis VERSION="0.1.0">
+<RequirementsAnalysis VERSION="0.2.0">
+  <Project>
+    <name>$PROJECT_NAME</name>
+    <annotation>$ANNOTATION</annotation>
+    <keywords>$KEYWORDS</keywords>
+  </Project>
+
+  <Actors>
+    <!-- Optional actor glossary.
+
+         <actor-User>User-facing actor interacting with the product directly.</actor-User>
+         <actor-System>Automated internal actor for background or scheduled work.</actor-System>
+         <actor-Operator>Administrative or support actor.</actor-Operator>
+    -->
+  </Actors>
+
   <UseCases>
-    <!-- Use cases use unique ID-based tags with AAG (Actor-Action-Goal) notation:
+    <!-- Use cases use unique ID-based tags and AAG notation.
 
          <UC-001>
            <Actor>User</Actor>
            <Action>Performs an action</Action>
            <Goal>To achieve a specific outcome</Goal>
+           <Preconditions>What must already be true</Preconditions>
            <AcceptanceCriteria>How we verify it works</AcceptanceCriteria>
+           <Priority>high</Priority>
+           <RelatedFlows>DF-001</RelatedFlows>
          </UC-001>
-
-         <UC-002>
-           <Actor>System</Actor>
-           <Action>Processes data automatically</Action>
-           <Goal>To maintain consistency</Goal>
-           <AcceptanceCriteria>Data is consistent after processing</AcceptanceCriteria>
-         </UC-002>
     -->
   </UseCases>
+
+  <NonGoals>
+    <!-- Capture explicit exclusions so agents do not overbuild.
+
+         <item-1>No public marketplace in v1.</item-1>
+         <item-2>No background sync outside the bounded worker scope.</item-2>
+    -->
+  </NonGoals>
+
+  <Constraints>
+    <!-- Product, regulatory, runtime, or deployment constraints.
+
+         <constraint-1>Must run in one regional deployment with one primary database.</constraint-1>
+         <constraint-2>Secrets must never appear in logs.</constraint-2>
+    -->
+  </Constraints>
+
+  <Risks>
+    <!-- Known ambiguity or failure-prone areas.
+
+         <risk-1>Long-running jobs may retry after partial success.</risk-1>
+         <risk-2>User-visible streaming should remain responsive during tool execution.</risk-2>
+    -->
+  </Risks>
+
+  <OpenQuestions>
+    <!-- Questions that block detailed planning should stay visible.
+
+         <question-1>Should external users ever access the admin surface?</question-1>
+    -->
+  </OpenQuestions>
 </RequirementsAnalysis>

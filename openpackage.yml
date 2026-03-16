@@ -1,6 +1,6 @@
 name: grace
-description: "GRACE (Graph-RAG Anchored Code Engineering) — AI-driven code generation with semantic markup, knowledge graphs, and contracts"
-version: 2.0.0
+description: "GRACE (Graph-RAG Anchored Code Engineering) - contract-first AI engineering with semantic markup, knowledge graphs, and log-driven verification"
+version: 3.0.0
 author: Vladimir Ivanov
 license: MIT
 keywords:
@@ -9,5 +9,7 @@ keywords:
   - knowledge-graph
   - contracts
   - ai-code-generation
+  - log-driven-development
+  - verification
   - llm-friendly
   - methodology

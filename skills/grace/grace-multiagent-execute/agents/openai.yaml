@@ -1,4 +1,4 @@
 interface:
   display_name: "GRACE Multi-Agent Execute"
-  short_description: "Execute plan in parallel waves"
+  short_description: "Parallel execution with verification"
   brand_color: "#4A90D9"

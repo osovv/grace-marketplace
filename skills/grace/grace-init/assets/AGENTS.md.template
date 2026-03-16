@@ -1,4 +1,4 @@
-# GRACE Framework — Project Engineering Protocol
+# GRACE Framework - Project Engineering Protocol
 
 ## Keywords
 $KEYWORDS
@@ -9,116 +9,142 @@ $ANNOTATION
 ## Core Principles
 
 ### 1. Never Write Code Without a Contract
-Before generating any module, create or update its MODULE_CONTRACT with PURPOSE, SCOPE, INPUTS, OUTPUTS. The contract is the source of truth — code implements the contract, not the other way around.
+Before generating or editing any module, create or update its MODULE_CONTRACT with PURPOSE, SCOPE, INPUTS, and OUTPUTS. The contract is the source of truth. Code implements the contract, not the other way around.
 
-### 2. Semantic Markup Is Not Comments
+### 2. Semantic Markup Is Load-Bearing Structure
 Markers like `// START_BLOCK_<NAME>` and `// END_BLOCK_<NAME>` are navigation anchors, not documentation. They must be:
-- **Uniquely named** (never generic like `// START_BLOCK_LOGIC`)
-- **Paired** (every START has a matching END)
-- **~500 tokens apart** (proportional granularity — matching LLM sliding window)
+- uniquely named
+- paired
+- proportionally sized so one block fits inside an LLM working window
 
 ### 3. Knowledge Graph Is Always Current
-The file `docs/knowledge-graph.xml` is the single map of the entire project. When you add a module, add it to the graph. When you add a dependency, add a CrossLink. Never let the graph drift from reality.
+`docs/knowledge-graph.xml` is the project map. When you add a module, move a module, rename exports, or add dependencies, update the graph so future agents can navigate deterministically.
 
-### 4. Top-Down Synthesis
-Code generation follows: RequirementsAnalysis → Technology → DevelopmentPlan → Code. Never jump to code. If requirements are unclear — stop and clarify with the user.
+### 4. Verification Is a First-Class Artifact
+Testing, traces, and log anchors are designed before large execution waves. `docs/verification-plan.xml` is part of the architecture, not an afterthought. Logs are evidence. Tests are executable contracts.
 
-### 5. Governed Autonomy (PCAM)
-You have freedom in HOW to implement, but not in WHAT. The contract and the knowledge graph define WHAT. If a contract seems wrong — propose a change, don't silently deviate.
+### 5. Top-Down Synthesis
+Code generation follows:
+`RequirementsAnalysis -> TechnologyStack -> DevelopmentPlan -> VerificationPlan -> Code + Tests`
+
+Never jump straight to code when requirements, architecture, or verification intent are still unclear.
+
+### 6. Governed Autonomy
+Agents have freedom in HOW to implement, but not in WHAT to build. Contracts, plans, graph references, and verification requirements define the allowed space.
 
 ## Semantic Markup Reference
 
-### Module Level (top of each file)
+### Module Level
 ```
 // FILE: path/to/file.ext
 // VERSION: 1.0.0
 // START_MODULE_CONTRACT
-//   PURPOSE: [What this module does — one sentence]
+//   PURPOSE: [What this module does - one sentence]
 //   SCOPE: [What operations are included]
 //   DEPENDS: [List of module dependencies]
-//   LINKS: [References to knowledge graph nodes]
+//   LINKS: [Knowledge graph references]
 // END_MODULE_CONTRACT
 //
 // START_MODULE_MAP
-//   ComponentName — [one-line description]
-//   useHookName — [one-line description]
-//   utilityFunction — [one-line description]
+//   exportedSymbol - one-line description
 // END_MODULE_MAP
 ```
 
-### Function/Component Level
+### Function or Component Level
 ```
 // START_CONTRACT: functionName
 //   PURPOSE: [What it does]
-//   INPUTS: { paramName: Type — description }
-//   OUTPUTS: { ReturnType — description }
-//   SIDE_EFFECTS: [What external state it modifies]
-//   LINKS: [Related modules/functions via knowledge graph]
+//   INPUTS: { paramName: Type - description }
+//   OUTPUTS: { ReturnType - description }
+//   SIDE_EFFECTS: [External state changes or "none"]
+//   LINKS: [Related modules/functions]
 // END_CONTRACT: functionName
 ```
 
-### Code Block Level (inside functions)
+### Code Block Level
 ```
 // START_BLOCK_VALIDATE_INPUT
 // ... code ...
 // END_BLOCK_VALIDATE_INPUT
-
-// START_BLOCK_TRANSFORM_DATA
-// ... code ...
-// END_BLOCK_TRANSFORM_DATA
 ```
 
 ### Change Tracking
 ```
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: [v1.2.0 — What changed and why]
+//   LAST_CHANGE: [v1.2.0 - What changed and why]
 // END_CHANGE_SUMMARY
 ```
 
-## Logging Convention
-All logs must reference semantic blocks:
+## Logging and Trace Convention
+
+All important logs must point back to semantic blocks:
 ```
-logger.info(`[ModuleName][functionName][BLOCK_NAME] message`);
+logger.info(`[ModuleName][functionName][BLOCK_NAME] message`, {
+  correlationId,
+  stableField: value,
+});
 ```
+
+Rules:
+- prefer structured fields over prose-heavy log lines
+- redact secrets and high-risk payloads
+- treat missing log anchors on critical branches as a verification defect
+- update tests when log markers change intentionally
+
+## Verification Conventions
+
+`docs/verification-plan.xml` is the project-wide verification contract. Keep it current when module scope, test files, commands, critical log markers, or gate expectations change.
+
+Testing rules:
+- deterministic assertions first
+- trace or log assertions when trajectory matters
+- test files may also carry MODULE_CONTRACT, MODULE_MAP, semantic blocks, and CHANGE_SUMMARY when they are substantial
+- module-local tests should stay close to the module they verify
+- wave-level and phase-level checks should be explicit in the verification plan
 
 ## File Structure
 ```
 docs/
-  knowledge-graph.xml    — Project-wide navigation graph
-  requirements.xml       — Formalized requirements (AAG notation)
-  technology.xml         — Stack decisions and version constraints
-  development-plan.xml   — Architectural blueprint
+  requirements.xml       - Product requirements and use cases
+  technology.xml         - Stack decisions, tooling, observability, testing
+  development-plan.xml   - Modules, phases, data flows, ownership, write scopes
+  verification-plan.xml  - Test strategy, trace expectations, module and phase gates
+  knowledge-graph.xml    - Project-wide navigation graph
 src/
   ... code with GRACE markup ...
+tests/
+  ... tests with GRACE-aware evidence where appropriate ...
 ```
 
-## Documentation Artifacts — Unique Tag Convention
+## Documentation Artifacts - Unique Tag Convention
 
-In `docs/*.xml` files, every **repeated entity** must use its **unique ID as the XML tag name** instead of a generic type tag with an `ID` attribute. This eliminates closing-tag polysemy and creates "semantic accumulators" — unique tokens that help LLMs correlate opening and closing boundaries without ambiguity.
+In `docs/*.xml`, repeated entities must use their unique ID as the XML tag name instead of a generic tag with an `ID` attribute. This reduces closing-tag ambiguity and gives LLMs stronger anchors.
 
 ### Tag naming conventions
 
 | Entity type | Anti-pattern | Correct (unique tags) |
 |---|---|---|
 | Module | `<Module ID="M-CONFIG">...</Module>` | `<M-CONFIG NAME="Config" TYPE="UTILITY">...</M-CONFIG>` |
+| Verification module | `<Verification ID="V-M-AUTH">...</Verification>` | `<V-M-AUTH MODULE="M-AUTH">...</V-M-AUTH>` |
 | Phase | `<Phase number="1">...</Phase>` | `<Phase-1 name="Foundation">...</Phase-1>` |
 | Flow | `<Flow ID="DF-SEARCH">...</Flow>` | `<DF-SEARCH NAME="...">...</DF-SEARCH>` |
-| UseCase | `<UseCase ID="UC-001">...</UseCase>` | `<UC-001>...</UC-001>` |
+| Use case | `<UseCase ID="UC-001">...</UseCase>` | `<UC-001>...</UC-001>` |
 | Step | `<step order="1">...</step>` | `<step-1>...</step-1>` |
-| Group | `<group name="Database">...</group>` | `<group-Database>...</group-Database>` |
 | Export | `<export name="config" .../>` | `<export-config .../>` |
 | Function | `<function name="search" .../>` | `<fn-search .../>` |
 | Type | `<type name="SearchResult" .../>` | `<type-SearchResult .../>` |
 | Class | `<class name="Error" .../>` | `<class-Error .../>` |
 
 ### What NOT to change
-- **CrossLinks** — self-closing (`<CrossLink ... />`), no nesting, no polysemy
-- **Structural wrappers** that appear once per parent: `<annotations>`, `<interface>`, `<contract>`, `<inputs>`, `<outputs>`, `<errors>`, `<notes>`, `<purpose>`, `<path>`, `<depends>`
-- **Code-level markup** (`// START_BLOCK_...` / `// END_BLOCK_...`) — already uses unique names, stays as-is
+- `CrossLink` tags stay self-closing
+- single-use structural wrappers like `<contract>`, `<inputs>`, `<outputs>`, `<annotations>`, `<test-files>`, `<module-checks>`, and `<phase-gates>` stay generic
+- code-level markup already uses unique names and stays as-is
 
 ## Rules for Modifications
-1. Read the MODULE_CONTRACT before editing any file
-2. After editing — update MODULE_MAP if signatures changed
-3. After adding/removing modules — update knowledge-graph.xml
-4. After fixing bugs — add CHANGE_SUMMARY entry
-5. Never remove semantic markup anchors — they are load-bearing structure
+
+1. Read the MODULE_CONTRACT before editing any file.
+2. After editing source or test files, update MODULE_MAP if exports or helper surfaces changed.
+3. After adding or removing modules, update `docs/knowledge-graph.xml`.
+4. After changing test files, commands, critical scenarios, or log markers, update `docs/verification-plan.xml`.
+5. After fixing bugs, add a CHANGE_SUMMARY entry and strengthen nearby verification if the old evidence was weak.
+6. Never remove semantic markup anchors unless the structure is intentionally replaced with better anchors.

@@ -1,6 +1,6 @@
 ---
 name: grace-fix
-description: "Debug an issue using GRACE semantic navigation. Use when encountering bugs, errors, or unexpected behavior — navigates the knowledge graph to locate the relevant module, traces to the specific semantic block, analyzes the mismatch between contract and implementation, and applies a targeted fix."
+description: "Debug an issue using GRACE semantic navigation. Use when encountering bugs, errors, or unexpected behavior - navigate through the graph, verification plan, and semantic blocks to analyze the mismatch and apply a targeted fix."
 ---
 
 Debug an issue using GRACE semantic navigation.
@@ -10,13 +10,18 @@ Debug an issue using GRACE semantic navigation.
 ### Step 1: Locate via Knowledge Graph
 From the error/description, identify which module is likely involved:
 1. Read `docs/knowledge-graph.xml` for module overview
-2. Follow CrossLinks to find the relevant module(s)
-3. Read the MODULE_CONTRACT of the target module
+2. Read `docs/verification-plan.xml` for relevant scenarios, test files, or log markers if available
+3. Follow CrossLinks to find the relevant module(s)
+4. Read the MODULE_CONTRACT of the target module
 
 ### Step 2: Navigate to Block
 If the error contains a log reference like `[Module][function][BLOCK_NAME]`:
 - Search for `START_BLOCK_BLOCK_NAME` in the codebase — this is the exact location
 - Read the containing function's CONTRACT for context
+
+If the failure came from a named verification scenario or test:
+- read the matching `V-M-xxx` entry in `docs/verification-plan.xml`
+- open the mapped test file and expected evidence for that scenario
 
 If no log reference:
 - Use MODULE_MAP to find the relevant function
@@ -24,8 +29,9 @@ If no log reference:
 - Identify the likely BLOCK by purpose
 
 ### Step 3: Analyze
-Read the identified block and its CONTRACT. Determine:
+Read the identified block, its CONTRACT, and relevant verification entry. Determine:
 - What the block is supposed to do (from CONTRACT)
+- What evidence should prove that behavior (from tests, traces, or log markers)
 - What it actually does (from code)
 - Where the mismatch is
 
@@ -37,8 +43,9 @@ After fixing:
 1. Add a CHANGE_SUMMARY entry with what was fixed and why
 2. If the fix changed the function's behavior — update its CONTRACT
 3. If the fix changed module dependencies — update knowledge-graph.xml CrossLinks
-4. Run type checking or linting to verify
-5. If the failure revealed weak tests, weak logs, or poor execution-trace visibility — use `$grace-verification` to strengthen automated checks before considering the issue fully closed
+4. If the fix changed tests, commands, or required markers — update `docs/verification-plan.xml`
+5. Run the relevant module-local verification commands
+6. If the failure revealed weak tests, weak logs, or poor execution-trace visibility — use `$grace-verification` to strengthen automated checks before considering the issue fully closed
 
 ### Important
 - Never fix code without first reading its CONTRACT

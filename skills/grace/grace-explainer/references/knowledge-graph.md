@@ -1,6 +1,6 @@
 # Knowledge Graph Maintenance
 
-The file `docs/knowledge-graph.xml` is the **single source of truth** for the project's module structure. It maps every module, its exports, its dependencies, and how modules connect to each other.
+The file `docs/knowledge-graph.xml` is the single source of truth for the project's module structure. It maps every module, its exports, its dependencies, and how modules connect to each other.
 
 ## Structure
 
@@ -10,10 +10,11 @@ The file `docs/knowledge-graph.xml` is the **single source of truth** for the pr
     <keywords>keyword1, keyword2, keyword3</keywords>
     <annotation>Brief project description for LLM domain activation</annotation>
 
-    <M-CONFIG NAME="Config" TYPE="UTILITY">
+    <M-CONFIG NAME="Config" TYPE="UTILITY" STATUS="implemented">
       <purpose>Application configuration and environment management</purpose>
       <path>src/config/index.ts</path>
       <depends>none</depends>
+      <verification-ref>V-M-CONFIG</verification-ref>
       <annotations>
         <fn-loadConfig PURPOSE="Load and validate config from environment" />
         <type-AppConfig PURPOSE="Configuration type definition" />
@@ -77,10 +78,19 @@ Common relations: `reads-config`, `queries-db`, `calls-api`, `renders-component`
 
 CrossLinks MUST be bidirectionally consistent — if A depends on B, the CrossLink should exist in A's entry.
 
+## Verification References
+
+Modules may carry a `<verification-ref>` pointing to the matching `V-M-xxx` entry in `docs/verification-plan.xml`.
+
+This keeps navigation and proof linked:
+- the graph answers where the module lives and what it depends on
+- the verification plan answers how the module proves correctness
+
 ## Maintenance Rules
 
 1. **Always current** — when you add a module, add it to the graph. When you add a dependency, add a CrossLink. Never let the graph drift from reality.
 2. **Scan on doubt** — if unsure whether the graph is current, run `$grace-refresh` to scan and sync.
 3. **Version tracking** — increment the Project VERSION when the graph changes structurally (new modules, removed modules).
 4. **Annotations match exports** — if a module's exports change, update its `<annotations>` section.
-5. **No orphans** — if a module is deleted, remove its graph entry and all CrossLinks referencing it.
+5. **Verification refs stay valid** — if a module's verification entry changes ID, update `<verification-ref>`.
+6. **No orphans** — if a module is deleted, remove its graph entry and all CrossLinks referencing it.

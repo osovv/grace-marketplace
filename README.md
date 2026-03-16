@@ -1,14 +1,27 @@
-# GRACE Framework — AI Agent Skills
+# GRACE Framework - AI Agent Skills
 
-**GRACE** (Graph-RAG Anchored Code Engineering) is a methodology for AI-driven code generation with semantic markup, knowledge graphs, and contracts. Originally created by **Vladimir Ivanov** ([@turboplanner](https://t.me/turboplanner)).
+**GRACE** (Graph-RAG Anchored Code Engineering) is a methodology for AI-driven code generation with semantic markup, knowledge graphs, contracts, and log-driven verification. Originally created by **Vladimir Ivanov** ([@turboplanner](https://t.me/turboplanner)).
 
-GRACE provides structured scaffolding that helps LLMs generate, navigate, and maintain code with high reliability. Every module gets a contract before code exists, every code block gets semantic markers for RAG navigation, and a knowledge graph keeps the entire project map current.
+This repository packages GRACE as reusable skills for coding agents. The current workflow is opinionated around:
 
-This repository packages Vladimir's methodology as reusable skills for AI coding agents. All skills live in `skills/` and follow the [Agent Skills](https://agentskills.io) open standard. The repository ships in three compatible formats:
+- contract-first planning
+- verification-first execution
+- semantic markup for navigation and patching
+- knowledge-graph synchronization
+- controller-managed sequential or multi-agent implementation
 
-- **OpenPackage** (`openpackage.yml`) — universal format for 40+ coding agents via [opkg](https://github.com/enulus/OpenPackage)
-- **Claude Code Plugin** (`.claude-plugin/marketplace.json`) — native Claude Code marketplace
-- **Agent Skills** (`skills/`) — [open Agent Skills specification](https://github.com/Kilo-Org/kilo-marketplace) for Codex CLI, Kilo Code, and others
+## What Changed In This Version
+
+- `docs/verification-plan.xml` is now a first-class GRACE artifact.
+- `grace-verification` now owns testing, traces, and log-driven evidence instead of being a light add-on.
+- `grace-execute` and `grace-multiagent-execute` now consume verification-plan excerpts in their execution packets.
+- `grace-generate` was removed from the public workflow. The supported implementation paths are now `grace-execute` and `grace-multiagent-execute`.
+
+## Repository Layout
+
+- `skills/grace/` - Agent Skills format
+- `.claude-plugin/` - Claude Code marketplace packaging
+- `openpackage.yml` - OpenPackage metadata
 
 ## Installation
 
@@ -20,12 +33,12 @@ Install the [OpenPackage CLI](https://github.com/enulus/OpenPackage) first (`npm
 # Install GRACE to your workspace
 opkg install gh@osovv/grace-marketplace
 
-# Or install globally (available across all projects)
+# Or install globally
 opkg install gh@osovv/grace-marketplace -g
 
 # Install only specific resource types
-opkg install gh@osovv/grace-marketplace -s    # skills only
-opkg install gh@osovv/grace-marketplace -a    # agents only
+opkg install gh@osovv/grace-marketplace -s
+opkg install gh@osovv/grace-marketplace -a
 
 # Install to a specific platform
 opkg install gh@osovv/grace-marketplace --platforms claude-code
@@ -35,23 +48,15 @@ opkg install gh@osovv/grace-marketplace --platforms cursor
 ### Via Claude Code Plugin Marketplace
 
 ```bash
-# Add the marketplace
 /plugin marketplace add osovv/grace-marketplace
-
-# Install the plugin
 /plugin install grace@grace-marketplace
 ```
 
 ### Via npx skills (Vercel Skills CLI)
 
 ```bash
-# Install GRACE skills to Claude Code
 npx skills add osovv/grace-marketplace
-
-# Or install globally (available across all projects)
 npx skills add osovv/grace-marketplace -g
-
-# Install to a specific agent
 npx skills add osovv/grace-marketplace -a claude-code
 ```
 
@@ -61,20 +66,19 @@ npx skills add osovv/grace-marketplace -a claude-code
 
 Inside Codex, use the built-in skill installer:
 
-```
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-init
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-plan
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-generate
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-execute
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-multiagent-execute
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-setup-subagents
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-fix
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-refresh
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-status
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-ask
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-explainer
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-verification
-$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace-reviewer
+```text
+$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace/grace-init
+$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace/grace-plan
+$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace/grace-execute
+$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace/grace-multiagent-execute
+$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace/grace-setup-subagents
+$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace/grace-fix
+$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace/grace-refresh
+$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace/grace-status
+$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace/grace-ask
+$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace/grace-explainer
+$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace/grace-verification
+$skill-installer install https://github.com/osovv/grace-marketplace/tree/main/skills/grace/grace-reviewer
 ```
 
 After installation, restart Codex to activate the skills.
@@ -85,60 +89,64 @@ Copy skills to your Kilo Code skills directory:
 
 ```bash
 git clone https://github.com/osovv/grace-marketplace
-cp -r grace-marketplace/skills/grace-* ~/.kilocode/skills/
+cp -r grace-marketplace/skills/grace/grace-* ~/.kilocode/skills/
 ```
-
-Then reload the VS Code window (`Cmd+Shift+P` > "Developer: Reload Window") or restart Kilo CLI.
 
 ### Any Agent Skills-compatible agent
 
-The `skills/` directory follows the [Agent Skills](https://agentskills.io) open standard. Each skill is a self-contained folder with a `SKILL.md` file. To use with any compatible agent:
-
 ```bash
 git clone https://github.com/osovv/grace-marketplace
-cp -r grace-marketplace/skills/grace-* /path/to/your/agent/skills/
+cp -r grace-marketplace/skills/grace/grace-* /path/to/your/agent/skills/
 ```
 
 ## Quick Start
 
 ```bash
-# Initialize GRACE structure in your project
+# 1. Bootstrap GRACE docs and templates
 /grace-init
 
-# Define requirements, then plan the architecture
+# 2. Fill requirements.xml and technology.xml
+
+# 3. Plan modules, flows, graph, and verification refs
 /grace-plan
 
-# Generate code for a specific module
-/grace-generate <module-name>
+# 4. Deepen testing, traces, and log-driven evidence
+/grace-verification
 
-# Or execute the entire development plan
+# 5a. Execute the plan sequentially
 /grace-execute
 
-# Or execute independent modules in parallel waves
-# Default profile: balanced
+# 5b. Or execute in parallel-safe waves
 /grace-setup-subagents
 /grace-multiagent-execute
 ```
 
-`/grace-multiagent-execute` now supports `safe`, `balanced`, and `fast` controller profiles. Use `balanced` by default, `safe` for risky or weakly verified modules, and `fast` only when module-local and wave-level verification are already strong.
+`/grace-multiagent-execute` supports `safe`, `balanced`, and `fast` controller profiles. Use `balanced` by default, `safe` for risky or weakly verified modules, and `fast` only when module-local and wave-level verification are already strong.
+
+## Core Artifacts
+
+- `docs/requirements.xml` - product intent and use cases
+- `docs/technology.xml` - runtime, tooling, testing, observability, constraints
+- `docs/development-plan.xml` - modules, contracts, flows, phases, execution ownership
+- `docs/verification-plan.xml` - tests, traces, required log markers, and gates
+- `docs/knowledge-graph.xml` - project navigation graph
 
 ## Skills
 
 | Skill | Description |
 |---|---|
-| `grace-init` | Bootstrap GRACE structure (docs/, templates, knowledge graph) |
-| `grace-plan` | Architectural planning — module breakdown, contracts, knowledge graph |
-| `grace-generate` | Generate code for a module with full GRACE markup |
-| `grace-execute` | Execute full plan with validation and commits |
-| `grace-multiagent-execute` | Execute plan in parallel waves with safe/balanced/fast controller-managed integrity profiles |
-| `grace-setup-subagents` | Scaffold shell-specific GRACE subagent presets |
-| `grace-fix` | Debug via semantic navigation |
-| `grace-verification` | Design AI-friendly verification, logs, and trace checks |
-| `grace-refresh` | Sync knowledge graph with codebase |
-| `grace-status` | Project health report |
+| `grace-init` | Bootstrap GRACE docs, AGENTS, and XML templates |
+| `grace-plan` | Architect modules, flows, knowledge graph, and verification refs |
+| `grace-verification` | Design and maintain tests, traces, and log-driven evidence |
+| `grace-execute` | Execute the full plan sequentially with scoped review and commits |
+| `grace-multiagent-execute` | Execute independent modules in controller-managed parallel waves |
+| `grace-setup-subagents` | Scaffold shell-specific GRACE worker and reviewer presets |
+| `grace-fix` | Debug via semantic navigation, tests, and log markers |
+| `grace-refresh` | Sync shared artifacts with the real codebase |
+| `grace-status` | Project health report across docs, graph, and verification |
 | `grace-ask` | Answer questions with full project context |
 | `grace-explainer` | Complete GRACE methodology reference |
-| `grace-reviewer` | Validate semantic markup, contracts, and graph consistency |
+| `grace-reviewer` | Validate semantic markup, contracts, graph, and verification integrity |
 
 ## Compatibility
 

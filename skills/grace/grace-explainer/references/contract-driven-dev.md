@@ -4,7 +4,7 @@ In GRACE, the contract is the source of truth. Code implements the contract, not
 
 ## The Rule
 
-**Never write code without a contract.** Before generating any module, create or update its MODULE_CONTRACT with PURPOSE, SCOPE, INPUTS, OUTPUTS.
+**Never write code without a contract.** Before generating or editing any module, create or update its MODULE_CONTRACT with PURPOSE, SCOPE, INPUTS, OUTPUTS.
 
 ## MODULE_CONTRACT
 
@@ -19,7 +19,7 @@ Every file starts with:
 // END_MODULE_CONTRACT
 ```
 
-The contract is written BEFORE the code. It comes from the development plan (`docs/development-plan.xml`), which was approved by the user during the `$grace-plan` phase.
+The contract is written before the code. It comes from the development plan (`docs/development-plan.xml`), which was approved by the user during the `$grace-plan` phase.
 
 ## Function Contracts
 
@@ -39,10 +39,11 @@ Every exported function or component must have:
 
 ```
 Requirements (docs/requirements.xml)
-  → Architecture (docs/development-plan.xml)
-    → Module Contracts (MODULE_CONTRACT in each file)
-      → Function Contracts (START_CONTRACT in each function)
-        → Code (within semantic blocks)
+  -> Architecture (docs/development-plan.xml)
+    -> Verification plan (docs/verification-plan.xml)
+      -> Module Contracts (MODULE_CONTRACT in each file)
+        -> Function Contracts (START_CONTRACT in each function)
+          -> Code and tests (within semantic blocks)
 ```
 
 Never jump levels. If requirements are unclear — stop and clarify with the user.
@@ -54,7 +55,7 @@ PCAM = Purpose, Constraints, Autonomy, Metrics.
 - **Purpose**: Defined by the contract. You know WHAT to build.
 - **Constraints**: Defined by the development plan and knowledge graph. You know the BOUNDARIES.
 - **Autonomy**: You choose HOW to implement within those boundaries.
-- **Metrics**: The contract's OUTPUTS and the review checklist tell you if you're done.
+- **Metrics**: The contract's OUTPUTS plus the verification evidence tell you if you're done.
 
 You have freedom in HOW to implement, but not in WHAT. The contract and the knowledge graph define WHAT. If a contract seems wrong — propose a change, don't silently deviate.
 
@@ -63,9 +64,10 @@ You have freedom in HOW to implement, but not in WHAT. The contract and the know
 1. **Read before edit** — always read the MODULE_CONTRACT before editing any file
 2. **Update MODULE_MAP** — if you change function signatures, update MODULE_MAP
 3. **Update knowledge graph** — if you add/remove modules, update `docs/knowledge-graph.xml`
-4. **Track changes** — after fixing bugs, add a CHANGE_SUMMARY entry
-5. **Never remove markup** — semantic markup anchors are load-bearing structure
-6. **Propose, don't deviate** — if the contract is wrong, propose a change to the user. Don't silently implement something different.
+4. **Update verification plan** — if you change tests, required markers, or verification commands, update `docs/verification-plan.xml`
+5. **Track changes** — after fixing bugs, add a CHANGE_SUMMARY entry
+6. **Never remove markup** — semantic markup anchors are load-bearing structure
+7. **Propose, don't deviate** — if the contract is wrong, propose a change to the user. Don't silently implement something different.
 
 ## Contract in development-plan.xml
 
@@ -95,4 +97,4 @@ Modules in the development plan carry their contract in XML:
 </M-AUTH>
 ```
 
-This XML contract is the blueprint for the MODULE_CONTRACT in the source file.
+This XML contract is the blueprint for the MODULE_CONTRACT in the source file. The matching verification entry in `docs/verification-plan.xml` is the blueprint for how the module proves that it still satisfies the contract.

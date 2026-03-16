@@ -1,4 +1,0 @@
-interface:
-  display_name: "GRACE Generate"
-  short_description: "Generate module code with GRACE markup"
-  brand_color: "#4A90D9"

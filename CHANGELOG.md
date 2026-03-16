@@ -6,6 +6,26 @@ The format is inspired by Keep a Changelog, and this project follows Semantic Ve
 
 This changelog currently starts at `1.3.0`. Earlier history is available in the git log.
 
+## [3.0.0] - 2026-03-16
+
+### Added
+
+- Added `docs/verification-plan.xml` as a first-class GRACE artifact template.
+- Added richer `grace-init` templates for requirements, technology, development plan, and knowledge graph.
+- Added GRACE explainer reference material for verification-driven and log-driven development.
+
+### Changed
+
+- Reframed `grace-verification` around maintained testing, traces, and log-driven evidence.
+- Updated `grace-plan` to produce verification references and populate `verification-plan.xml`.
+- Updated `grace-execute` and `grace-multiagent-execute` to consume verification-plan excerpts in execution packets and sync verification deltas centrally.
+- Updated `grace-reviewer`, `grace-status`, `grace-refresh`, `grace-ask`, and `grace-fix` to treat verification as part of GRACE integrity.
+- Refreshed README, packaging metadata, and installation paths for the nested `skills/grace/*` layout.
+
+### Removed
+
+- Removed `grace-generate` from the public skill set in favor of the execution-centric workflow through `grace-execute` and `grace-multiagent-execute`.
+
 ## [2.1.0] - 2026-03-09
 
 ### Changed

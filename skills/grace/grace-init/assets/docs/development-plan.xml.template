@@ -1,11 +1,20 @@
-<DevelopmentPlan VERSION="0.1.0">
+<DevelopmentPlan VERSION="0.2.0">
+  <ArchitectureNotes>
+    <!-- High-signal planning notes.
+
+         <objective>What this plan optimizes for.</objective>
+         <non-goal>What the implementation should explicitly avoid.</non-goal>
+         <risk-1>Key design risk to watch during execution.</risk-1>
+    -->
+  </ArchitectureNotes>
+
   <Modules>
     <!-- Modules use unique ID-based tags:
-         <M-xxx NAME="..." TYPE="..." LAYER="N" ORDER="N">
-           <contract>
-             <purpose>What this module does</purpose>
-             <inputs>
-               <param name="..." type="..." />
+         <M-xxx NAME="..." TYPE="..." LAYER="N" ORDER="N" STATUS="planned">
+            <contract>
+              <purpose>What this module does</purpose>
+              <inputs>
+                <param name="..." type="..." />
              </inputs>
              <outputs>
                <param name="..." type="..." />
@@ -14,35 +23,59 @@
                <error code="..." />
              </errors>
            </contract>
-           <interface>
-             <export-functionName PURPOSE="..." />
-           </interface>
-           <depends>M-xxx, M-yyy</depends>
-         </M-xxx>
+            <interface>
+              <export-functionName PURPOSE="..." />
+            </interface>
+            <depends>M-xxx, M-yyy</depends>
+            <target>
+              <source>path/to/module.ts</source>
+              <tests>path/to/module.test.ts</tests>
+            </target>
+            <observability>
+              <log-prefix>[ModuleName]</log-prefix>
+              <critical-block>BLOCK_VALIDATE_INPUT</critical-block>
+            </observability>
+            <verification-ref>V-M-xxx</verification-ref>
+            <notes>
+              <note-1>Execution or coupling note for reviewers.</note-1>
+            </notes>
+          </M-xxx>
 
-         Module types: ENTRY_POINT, CORE_LOGIC, DATA_LAYER, UI_COMPONENT, UTILITY, INTEGRATION
-         LAYER: dependency depth (0 = no dependencies, 1 = depends on layer 0, etc.)
-         ORDER: implementation order within the layer
+          Module types: ENTRY_POINT, CORE_LOGIC, DATA_LAYER, UI_COMPONENT, UTILITY, INTEGRATION
+          LAYER: dependency depth (0 = no dependencies, 1 = depends on layer 0, etc.)
+          ORDER: implementation order within the layer
     -->
   </Modules>
 
   <DataFlow>
     <!-- Data flows use unique ID-based tags:
          <DF-xxx NAME="..." TRIGGER="...">
-           <step-1>Description of first step</step-1>
-           <step-2>Description of second step</step-2>
-         </DF-xxx>
-    -->
+            <step-1>Description of first step</step-1>
+            <step-2>Description of second step</step-2>
+            <evidence>Which module, trace, or log markers prove the flow worked</evidence>
+          </DF-xxx>
+     -->
   </DataFlow>
 
   <ImplementationOrder>
     <!-- Phases use unique tags:
          <Phase-1 name="Foundation" status="pending">
-           <step-1 module="M-CONFIG">Initialize configuration module</step-1>
-           <step-2 module="M-DB">Set up database layer</step-2>
-         </Phase-1>
+            <goal>What this phase proves or unlocks</goal>
+            <step-1 module="M-CONFIG" status="pending" verification="V-M-CONFIG">Initialize configuration module</step-1>
+            <step-2 module="M-DB" status="pending" verification="V-M-DB">Set up database layer</step-2>
+          </Phase-1>
 
-         Phase status: "pending" | "in-progress" | "done"
-    -->
+          Phase status: "pending" | "in-progress" | "done"
+          Step status: "pending" | "in-progress" | "done"
+     -->
   </ImplementationOrder>
+
+  <ExecutionPolicy>
+    <!-- Controller-owned shared artifacts and execution constraints.
+
+         <default-profile>balanced</default-profile>
+         <controller-owns>docs/development-plan.xml, docs/knowledge-graph.xml, docs/verification-plan.xml</controller-owns>
+         <worker-owns>Only module source files and module-local tests inside the approved write scope.</worker-owns>
+    -->
+  </ExecutionPolicy>
 </DevelopmentPlan>

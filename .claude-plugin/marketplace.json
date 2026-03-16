@@ -6,15 +6,15 @@
     "url": "https://github.com/osovv"
   },
   "metadata": {
-    "description": "GRACE (Graph-RAG Anchored Code Engineering) — a methodology by Vladimir Ivanov for AI-driven code generation with semantic markup, knowledge graphs, and contracts",
-    "version": "1.3.0"
+    "description": "GRACE (Graph-RAG Anchored Code Engineering) - a methodology by Vladimir Ivanov for contract-first AI engineering with semantic markup, knowledge graphs, and log-driven verification",
+    "version": "3.0.0"
   },
   "plugins": [
     {
       "name": "grace",
       "source": "./plugins/grace",
-      "description": "Complete GRACE methodology: semantic markup, knowledge graphs, module contracts, and governed autonomy for AI-driven code generation",
-      "version": "1.3.0",
+      "description": "Complete GRACE methodology: semantic markup, knowledge graphs, module contracts, testing, and log-driven verification for AI-driven engineering",
+      "version": "3.0.0",
       "author": {
         "name": "Vladimir Ivanov",
         "url": "https://t.me/turboplanner"
@@ -26,25 +26,26 @@
         "knowledge-graph",
         "contracts",
         "ai-code-generation",
+        "log-driven-development",
+        "verification",
         "llm-friendly"
       ],
       "category": "methodology",
       "strict": false,
       "agents": [],
       "skills": [
-        "./skills/grace-init",
-        "./skills/grace-plan",
-        "./skills/grace-generate",
-        "./skills/grace-execute",
-        "./skills/grace-multiagent-execute",
-        "./skills/grace-setup-subagents",
-        "./skills/grace-fix",
-        "./skills/grace-refresh",
-        "./skills/grace-status",
-        "./skills/grace-ask",
-        "./skills/grace-explainer",
-        "./skills/grace-verification",
-        "./skills/grace-reviewer"
+        "./skills/grace/grace-init",
+        "./skills/grace/grace-plan",
+        "./skills/grace/grace-execute",
+        "./skills/grace/grace-multiagent-execute",
+        "./skills/grace/grace-setup-subagents",
+        "./skills/grace/grace-fix",
+        "./skills/grace/grace-refresh",
+        "./skills/grace/grace-status",
+        "./skills/grace/grace-ask",
+        "./skills/grace/grace-explainer",
+        "./skills/grace/grace-verification",
+        "./skills/grace/grace-reviewer"
       ]
     }
   ]

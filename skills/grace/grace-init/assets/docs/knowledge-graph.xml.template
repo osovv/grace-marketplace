@@ -1,5 +1,5 @@
 <KnowledgeGraph>
-  <Project NAME="$PROJECT_NAME" VERSION="0.1.0">
+  <Project NAME="$PROJECT_NAME" VERSION="0.2.0">
     <keywords>$KEYWORDS</keywords>
     <annotation>$ANNOTATION</annotation>
 
@@ -7,21 +7,25 @@
          Each module gets a unique ID prefix (e.g., M-CONFIG, M-DB, M-AUTH).
 
          Example:
-         <M-CONFIG NAME="Config" TYPE="UTILITY">
-           <purpose>Application configuration and environment management</purpose>
-           <path>src/config/index.ts</path>
-           <depends>none</depends>
-           <annotations>
-             <fn-loadConfig PURPOSE="Load and validate config from environment" />
-             <type-AppConfig PURPOSE="Configuration type definition" />
-           </annotations>
-         </M-CONFIG>
+         <M-CONFIG NAME="Config" TYPE="UTILITY" STATUS="planned">
+            <purpose>Application configuration and environment management</purpose>
+            <path>src/config/index.ts</path>
+            <depends>none</depends>
+            <verification-ref>V-M-CONFIG</verification-ref>
+            <annotations>
+              <fn-loadConfig PURPOSE="Load and validate config from environment" />
+              <type-AppConfig PURPOSE="Configuration type definition" />
+              <export-config PURPOSE="Singleton config instance" />
+            </annotations>
+          </M-CONFIG>
 
-         Module types: ENTRY_POINT, CORE_LOGIC, DATA_LAYER, UI_COMPONENT, UTILITY, INTEGRATION
+          Module types: ENTRY_POINT, CORE_LOGIC, DATA_LAYER, UI_COMPONENT, UTILITY, INTEGRATION
 
-         CrossLinks connect dependent modules:
-         <CrossLink from="M-SOURCE" to="M-TARGET" relation="description" />
-    -->
+          CrossLinks connect dependent modules:
+          <CrossLink from="M-SOURCE" to="M-TARGET" relation="description" />
+
+          STATUS should usually be one of: planned, partial, implemented
+     -->
 
   </Project>
 </KnowledgeGraph>

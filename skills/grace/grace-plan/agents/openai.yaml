@@ -1,4 +1,4 @@
 interface:
   display_name: "GRACE Plan"
-  short_description: "Architectural planning phase"
+  short_description: "Architecture and verification planning"
   brand_color: "#4A90D9"

@@ -1,31 +1,66 @@
-<TechnologyStack VERSION="0.1.0">
-  <!-- Runtime and language -->
-  <Runtime>$RUNTIME $VERSION</Runtime>
-  <Language>$LANGUAGE $VERSION</Language>
+<TechnologyStack VERSION="0.2.0">
+  <Runtime>$RUNTIME $RUNTIME_VERSION</Runtime>
+  <Language>$LANGUAGE $LANGUAGE_VERSION</Language>
+  <Framework>$FRAMEWORK $FRAMEWORK_VERSION</Framework>
 
-  <!-- Framework (if applicable) -->
-  <Framework>$FRAMEWORK $VERSION</Framework>
-
-  <!-- Key libraries and dependencies -->
   <Dependencies>
-    <!-- List significant dependencies with exact versions:
-         <dep name="library-name" version="1.2.3" purpose="What it's used for" />
+    <!-- List significant dependencies with exact versions.
+
+         <dep name="library-name" version="1.2.3" purpose="What it is used for" />
     -->
   </Dependencies>
 
-  <!-- Version constraints -->
   <VersionConstraints>
-    <!-- Critical: specify exact versions to prevent AI from generating code for wrong API versions.
-         Example:
-         <constraint lib="react" min="18.0.0" max="18.x" reason="Using React 18 concurrent features" />
+    <!-- Pin critical API ranges so agents do not generate code for the wrong surface.
+
+         <constraint lib="react" min="19.0.0" max="19.x" reason="The app depends on React 19 APIs" />
     -->
   </VersionConstraints>
 
-  <!-- Build and tooling -->
   <Tooling>
-    <!-- <tool name="bundler" value="vite" version="5.x" />
-         <tool name="test-runner" value="vitest" version="1.x" />
+    <!-- Core workspace tooling.
+
+         <tool name="workspace" value="pnpm workspaces" version="9.x" />
+         <tool name="bundler" value="vite" version="6.x" />
          <tool name="linter" value="eslint" version="9.x" />
+         <tool name="formatter" value="prettier" version="3.x" />
+         <tool name="test-runner" value="$TEST_RUNNER" version="$TEST_RUNNER_VERSION" />
     -->
   </Tooling>
+
+  <Testing>
+    <!-- Make test strategy explicit early. This drives execution packets later.
+
+         <module-level>
+           <command>npm test -- src/example/index.test.ts</command>
+           <focus>Fast deterministic unit and contract checks</focus>
+         </module-level>
+         <wave-level>
+           <command>npm test -- src/example/integration.test.ts</command>
+           <focus>Checks only merged surfaces touched by a wave</focus>
+         </wave-level>
+         <phase-level>
+           <command>npm test</command>
+           <focus>Broader integration and regression confidence</focus>
+         </phase-level>
+         <mocking-policy>Prefer fakes and narrow stubs over broad monkey-patching.</mocking-policy>
+    -->
+  </Testing>
+
+  <Observability>
+    <!-- Log-driven development needs stable evidence surfaces.
+
+         <logger>$LOGGER_STACK</logger>
+         <log-format>[Module][function][BLOCK_NAME] message</log-format>
+         <required-fields>correlationId, actorId, requestId</required-fields>
+         <redaction>Never log secrets, credentials, or raw high-risk payloads.</redaction>
+    -->
+  </Observability>
+
+  <DeliveryShape>
+    <!-- Optional deployment or runtime shape notes.
+
+         <shape>Same-origin monolith with one database and one worker process.</shape>
+    -->
+  </DeliveryShape>
 </TechnologyStack>
