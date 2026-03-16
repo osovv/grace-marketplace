@@ -11,7 +11,6 @@ Execute a GRACE development plan with multiple agents while keeping planning art
 - `docs/verification-plan.xml` should exist with module-local verification commands and gate expectations
 - If the plan or graph is missing, tell the user to run `$grace-plan` first
 - If the verification plan is missing or still skeletal, use `$grace-verification` before dispatching a large wave
-- If the shell does not already have GRACE worker/reviewer presets, use `$grace-setup-subagents` before dispatching a large wave
 - Prefer this skill only when module-local verification commands already exist or can be defined clearly
 
 ## Core Principle

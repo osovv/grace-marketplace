@@ -83,12 +83,11 @@ Each layer feeds the next. The knowledge graph and verification plan are both ou
 4. `$grace-plan` — architect modules, data flows, and verification refs
 5. `$grace-verification` — design and maintain tests, traces, and log-driven evidence
 6. `$grace-execute` — generate all modules sequentially with review and commits
-7. `$grace-setup-subagents` — scaffold shell-specific GRACE worker/reviewer presets
-8. `$grace-multiagent-execute` — generate parallel-safe modules in controller-managed waves
-9. `$grace-refresh` — sync graph and verification refs after manual changes
-10. `$grace-fix error-description` — debug via semantic navigation
-11. `$grace-status` — health report
-12. `$grace-ask` — grounded Q&A over the project artifacts
+7. `$grace-multiagent-execute` — generate parallel-safe modules in controller-managed waves
+8. `$grace-refresh` — sync graph and verification refs after manual changes
+9. `$grace-fix error-description` — debug via semantic navigation
+10. `$grace-status` — health report
+11. `$grace-ask` — grounded Q&A over the project artifacts
 
 ## Detailed References
 

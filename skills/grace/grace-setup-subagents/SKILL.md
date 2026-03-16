@@ -1,6 +1,6 @@
 ---
 name: grace-setup-subagents
-description: "Create GRACE subagent presets for the current agent shell. Use when you want GRACE worker and reviewer agent files scaffolded for Claude Code, OpenCode, Codex, or another shell before using `$grace-multiagent-execute`."
+description: "Create GRACE subagent presets for the current agent shell. Use when you want GRACE worker and reviewer agent files scaffolded for Claude Code, OpenCode, Codex, or another shell."
 ---
 
 Create GRACE subagent files for the current shell by reusing the shell's own agent-file conventions.

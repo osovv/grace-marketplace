@@ -116,8 +116,7 @@ cp -r grace-marketplace/skills/grace/grace-* /path/to/your/agent/skills/
 # 5a. Execute the plan sequentially
 /grace-execute
 
-# 5b. Or execute in parallel-safe waves
-/grace-setup-subagents
+# 5b. Execute in parallel-safe waves
 /grace-multiagent-execute
 ```
 
