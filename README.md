@@ -1,5 +1,7 @@
 # GRACE Marketplace and CLI
 
+[Read in Russian](README.ru.md)
+
 **GRACE** means **Graph-RAG Anchored Code Engineering**: a contract-first AI engineering methodology built around semantic markup, shared XML artifacts, verification planning, and knowledge-graph navigation.
 
 This repository ships the GRACE skills plus the optional `grace` CLI. It is a packaging and distribution repository, not an end-user application.
