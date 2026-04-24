@@ -1,0 +1,11 @@
+{
+  "common": {
+    "welcome": "Welcome to FreeMove",
+    "start_diagnosis": "Start diagnosis",
+    "exercisePlayer": "Exercise player",
+    "deadlineLabel": "Deadline",
+    "panicButton": "Panic button",
+    "panicSending": "Sending alert...",
+    "panicDone": "Operator alerted"
+  }
+}

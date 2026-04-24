@@ -1,0 +1,281 @@
+// Prisma schema draft for grace-tma-platform
+// Scope: i18n, campaign suppression, panic escalation, MoveCoins idempotency
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LocaleCode {
+  ru
+  en
+  xx
+}
+
+enum SubscriptionStage {
+  Trial
+  Active
+  Expired
+}
+
+enum MedicalStatus {
+  normal
+  red_flag
+  suppressed
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  refunded
+}
+
+enum MoveCoinsActionType {
+  accrual
+  debit
+}
+
+enum EscalationStatus {
+  open
+  in_progress
+  resolved
+  doctor_required
+}
+
+enum CampaignStep {
+  entry
+  nurture
+  urgency
+  last_call
+  convert
+}
+
+enum CampaignEventType {
+  enrolled
+  transition
+  suppressed
+  converted
+  notification_sent
+  notification_blocked
+}
+
+model User {
+  id                String             @id @default(cuid())
+  tgId              String             @unique
+  subscriptionStage SubscriptionStage  @default(Trial)
+  age               Int?
+  gender            String?
+  mobilityIndex     Float?
+  preferredLocale   LocaleCode         @default(ru)
+  medicalStatus     MedicalStatus      @default(normal)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  diagnostics       Diagnostic[]
+  subscriptions     Subscription[]
+  transactions      MoveCoinsTransaction[]
+  escalations       MedicalEscalation[]
+  campaignEnrolls   CampaignEnrollment[]
+}
+
+model Diagnostic {
+  id          String   @id @default(cuid())
+  userId      String
+  zone        String
+  vasScore    Int
+  symptoms    Json
+  redFlag     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([redFlag, createdAt])
+}
+
+model Exercise {
+  id                String                @id @default(cuid())
+  slug              String                @unique
+  difficulty        String
+  videoUrl          String
+  subtitleMeta      Json?
+  active            Boolean               @default(true)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  translations      ExerciseTranslation[]
+}
+
+model ExerciseTranslation {
+  id                String      @id @default(cuid())
+  exerciseId        String
+  locale            LocaleCode
+  title             String
+  description       String?
+  subtitleText      String?
+  ctaPrimary        String?
+  ctaSecondary      String?
+
+  exercise          Exercise    @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([exerciseId, locale])
+  @@index([locale])
+}
+
+model DiagnosticQuestion {
+  id                String                         @id @default(cuid())
+  code              String                         @unique
+  kind              String
+  orderNo           Int
+  active            Boolean                        @default(true)
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
+
+  translations      DiagnosticQuestionTranslation[]
+}
+
+model DiagnosticQuestionTranslation {
+  id                String             @id @default(cuid())
+  questionId        String
+  locale            LocaleCode
+  questionText      String
+  helperText        String?
+  optionsJson       Json?
+
+  question          DiagnosticQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, locale])
+  @@index([locale])
+}
+
+model MoveCoinsTransaction {
+  id                String               @id @default(cuid())
+  userId            String
+  actionType        MoveCoinsActionType
+  amount            Int
+  reason            String?
+  actionId          String
+  sourceRef         String?
+  createdAt         DateTime             @default(now())
+
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Core idempotency key for reward/spend operations
+  @@unique([userId, actionId])
+  @@index([userId, createdAt])
+}
+
+model Subscription {
+  id                String      @id @default(cuid())
+  userId            String
+  planType          String
+  startedAt         DateTime
+  endedAt           DateTime
+  paymentStatus     PaymentStatus
+  isActive          Boolean     @default(false)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@index([endedAt])
+}
+
+model MedicalEscalation {
+  id                String            @id @default(cuid())
+  userId            String
+  source            String            @default("diagnostic")
+  triggerCode       String?
+  details           Json?
+  status            EscalationStatus  @default(open)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, createdAt])
+}
+
+model PanicEvent {
+  id                String   @id @default(cuid())
+  userId            String
+  exerciseId        String?
+  sessionRef        String?
+  payload           Json?
+  createdAt         DateTime @default(now())
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model Campaign {
+  id                String               @id @default(cuid())
+  key               String               @unique
+  name              String
+  active            Boolean              @default(true)
+  locale            LocaleCode?
+  startsAt          DateTime?
+  endsAt            DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  steps             CampaignStepDef[]
+  enrollments       CampaignEnrollment[]
+}
+
+model CampaignStepDef {
+  id                String       @id @default(cuid())
+  campaignId        String
+  step              CampaignStep
+  orderNo           Int
+  deadlineOffsetMin Int?
+  templateKey       String
+  active            Boolean      @default(true)
+
+  campaign          Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, step])
+  @@unique([campaignId, orderNo])
+}
+
+model CampaignEnrollment {
+  id                String       @id @default(cuid())
+  campaignId        String
+  userId            String
+  segmentKey        String
+  currentStep       CampaignStep @default(entry)
+  suppressed        Boolean      @default(false)
+  suppressionReason String?
+  enrolledAt        DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  campaign          Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events            CampaignEvent[]
+
+  @@unique([campaignId, userId])
+  @@index([suppressed, updatedAt])
+}
+
+model CampaignEvent {
+  id                String             @id @default(cuid())
+  enrollmentId      String
+  eventType         CampaignEventType
+  step              CampaignStep?
+  transitionKey     String?
+  payload           Json?
+  createdAt         DateTime           @default(now())
+
+  enrollment        CampaignEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  // Replay safety for transition events
+  @@unique([enrollmentId, transitionKey])
+  @@index([eventType, createdAt])
+}

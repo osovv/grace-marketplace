@@ -1,4 +1,15 @@
 node_modules/
+dist/
+.env
+.env.local
+.env.stage
+**/.env
+**/.env.local
+**/.env.stage
+apps/api/dist/
+apps/bot/dist/
+apps/tma/.next/
+apps/tma/out/
 !docs
 !AGENTS.md
 !CLAUDE.md

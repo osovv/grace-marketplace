@@ -1,0 +1,169 @@
+<TechnologyStack VERSION="0.2.0">
+  <Runtime>Node.js 22.x (LTS)</Runtime>
+  <Language>TypeScript 5.6.x</Language>
+  <Framework>Fastify 5.x + Next.js 15.x</Framework>
+
+  <Dependencies>
+    <dep name="fastify" version="5.x" purpose="Primary high-throughput backend HTTP framework" />
+    <dep name="@fastify/jwt" version="9.x" purpose="JWT auth for CRM and service endpoints" />
+    <dep name="@fastify/rate-limit" version="10.x" purpose="Inbound API protection for bot and app traffic" />
+    <dep name="zod" version="3.x" purpose="Request and domain payload validation" />
+    <dep name="prisma" version="6.x" purpose="Schema and data access layer for PostgreSQL" />
+    <dep name="@prisma/client" version="6.x" purpose="Runtime ORM client" />
+    <dep name="telegraf" version="4.x" purpose="Telegram bot framework for updates, /start language detection, and notifications" />
+    <dep name="next" version="15.x" purpose="Telegram Mini App and CRM front-end surfaces" />
+    <dep name="react" version="19.x" purpose="UI runtime for TMA and CRM dashboard" />
+    <dep name="tailwindcss" version="4.x" purpose="Design system implementation (Deep Ocean Medical IT)" />
+    <dep name="framer-motion" version="12.x" purpose="Subtle motion and tactile transitions for iOS-glass-style UI interactions" />
+    <dep name="recharts" version="2.x" purpose="Progress and clinical trend visualizations" />
+    <dep name="@supabase/supabase-js" version="2.x" purpose="Signed media URL generation and object storage integration" />
+    <dep name="pino" version="9.x" purpose="Structured backend logging with low overhead" />
+  </Dependencies>
+
+  <VersionConstraints>
+    <constraint lib="node" min="22.0.0" max="22.x" reason="Consistent runtime features and performance profile across services" />
+    <constraint lib="fastify" min="5.0.0" max="5.x" reason="Uniform plugin APIs and request lifecycle hooks" />
+    <constraint lib="next" min="15.0.0" max="15.x" reason="Single app-router behavior for TMA and CRM" />
+    <constraint lib="prisma" min="6.0.0" max="6.x" reason="Migration and client compatibility across environments" />
+    <constraint lib="react" min="19.0.0" max="19.x" reason="Shared component behavior and server/client boundary stability" />
+  </VersionConstraints>
+
+  <Tooling>
+    <tool name="workspace" value="npm workspaces or pnpm workspaces" version="latest stable" />
+    <tool name="package-manager" value="npm or pnpm" version="latest stable" />
+    <tool name="linter" value="eslint" version="9.x" />
+    <tool name="formatter" value="prettier" version="3.x" />
+    <tool name="unit-test-runner" value="vitest" version="2.x" />
+    <tool name="api-test-runner" value="supertest" version="7.x" />
+    <tool name="e2e-test-runner" value="playwright" version="1.x" />
+    <tool name="db-migrations" value="prisma migrate" version="6.x" />
+    <tool name="containerization" value="docker" version="latest stable" />
+    <tool name="ci" value="github actions" version="hosted runners" />
+  </Tooling>
+
+  <Testing>
+    <module-level>
+      <command>npm run test:unit</command>
+      <focus>Domain services, validation policies, subscription gates, and MoveCoins invariants.</focus>
+    </module-level>
+    <wave-level>
+      <command>npm run test:api</command>
+      <focus>Fastify routes, auth guards, Prisma repositories, and bot integration boundaries.</focus>
+    </wave-level>
+    <phase-level>
+      <command>npm run test:e2e</command>
+      <focus>TMA onboarding path, red-flag safety branch, CRM operations, and renewal flows.</focus>
+    </phase-level>
+    <mocking-policy>Prefer deterministic fakes for Telegram and LLM providers, with contract snapshots for provider payloads.</mocking-policy>
+  </Testing>
+
+  <Observability>
+    <logger>Pino + OpenTelemetry-compatible trace propagation</logger>
+    <log-format>[Module][function][BLOCK_NAME] message</log-format>
+    <required-fields>traceId, requestId, userId, tgId, actorRole</required-fields>
+    <redaction>Never log secrets, token payloads, raw symptoms text, or payment instrument data.</redaction>
+    <required-markers>
+      <marker>[API_GATEWAY][requestId]</marker>
+      <marker>[SAFETY_RED_FLAG_GUARD][userId]</marker>
+      <marker>[MOVECOINS][txId]</marker>
+      <marker>[SUBSCRIPTION_GATE][userId][status]</marker>
+      <marker>[BOT_NOTIFICATION_ENGINE][jobId]</marker>
+      <marker>[CAMPAIGN_FUNNEL][campaignId][stepId]</marker>
+    </required-markers>
+  </Observability>
+
+  <DesignSystem>
+    <style-name>Deep Ocean Medical Glass</style-name>
+    <ui-principles>minimal hierarchy, soft translucency, strong readability, medically calm tone</ui-principles>
+    <glass-rules>Use controlled backdrop blur, low-opacity surfaces, and elevated cards with conservative shadow depth.</glass-rules>
+    <accessibility-rules>Maintain WCAG-compliant contrast on text and controls; provide opaque fallback surfaces when blur/transparency is unavailable.</accessibility-rules>
+    <motion-rules>Use short and subtle transitions; never block critical actions behind animation completion.</motion-rules>
+  </DesignSystem>
+
+  <UiContract VERSION="1.0">
+    <ColorTokens>
+      <token name="bg-base">#0B1220</token>
+      <token name="bg-elevated">#111A2B</token>
+      <token name="glass-surface">rgba(255,255,255,0.10)</token>
+      <token name="glass-border">rgba(255,255,255,0.22)</token>
+      <token name="text-primary">#EAF2FF</token>
+      <token name="text-secondary">#B7C6DC</token>
+      <token name="accent-primary">#5BC0FF</token>
+      <token name="accent-success">#45D483</token>
+      <token name="accent-warning">#F6B94A</token>
+      <token name="accent-danger">#FF6B6B</token>
+    </ColorTokens>
+
+    <TypographyTokens>
+      <token name="font-family">Inter, SF Pro Text, system-ui, sans-serif</token>
+      <token name="title-lg">28/34 semibold</token>
+      <token name="title-md">22/28 semibold</token>
+      <token name="body-md">16/24 regular</token>
+      <token name="body-sm">14/20 regular</token>
+      <token name="label-sm">12/16 medium</token>
+    </TypographyTokens>
+
+    <SpacingAndShape>
+      <token name="radius-card">20px</token>
+      <token name="radius-control">14px</token>
+      <token name="spacing-xs">4px</token>
+      <token name="spacing-sm">8px</token>
+      <token name="spacing-md">12px</token>
+      <token name="spacing-lg">16px</token>
+      <token name="spacing-xl">24px</token>
+      <token name="shadow-card">0 8px 24px rgba(0,0,0,0.24)</token>
+    </SpacingAndShape>
+
+    <GlassEffects>
+      <blur-primary>16px</blur-primary>
+      <blur-secondary>10px</blur-secondary>
+      <saturation>1.15</saturation>
+      <fallback-surface>Opaque elevated card with no blur</fallback-surface>
+    </GlassEffects>
+
+    <Components>
+      <component name="GlassCard">Primary container for diagnostics, progress, and offer blocks.</component>
+      <component name="PrimaryButton">Solid accent action, min-height 48px, clear pressed/disabled states.</component>
+      <component name="GhostButton">Secondary action with glass border and hover opacity shift.</component>
+      <component name="SegmentControl">Used for period filters and category switching in dashboards.</component>
+      <component name="MetricTile">Displays key progress and funnel metrics with icon + delta state.</component>
+      <component name="UrgencyBanner">Bounded campaign deadline indicator sourced from server timestamp.</component>
+    </Components>
+
+    <InteractionStates>
+      <state name="hover">Opacity +4% or border emphasis only; no abrupt color jumps.</state>
+      <state name="pressed">Scale 0.98 with 120ms ease-out.</state>
+      <state name="focus">2px high-contrast ring on keyboard focusable controls.</state>
+      <state name="disabled">Minimum 40% visual de-emphasis while preserving legibility.</state>
+      <state name="loading">Skeleton shimmer or spinner with non-blocking cancel/back action when applicable.</state>
+    </InteractionStates>
+
+    <AccessibilityCriteria>
+      <text-contrast-min>4.5:1 for body text, 3:1 for large text.</text-contrast-min>
+      <tap-target-min>44x44 dp</tap-target-min>
+      <reduced-motion>Respect prefers-reduced-motion and disable scale/blur animations.</reduced-motion>
+      <critical-actions>Training start, renewal, support contact, and medical escalation must remain visible above first fold on core screens.</critical-actions>
+    </AccessibilityCriteria>
+  </UiContract>
+
+  <Internationalization>
+    <supported-locales>ru,en,xx</supported-locales>
+    <default-locale>ru</default-locale>
+    <tma-approach>next-intl with route-level messages and lightweight useI18n wrapper hook for shared UI tokens.</tma-approach>
+    <backend-approach>Localized content selected by Accept-Language header, then user-preference locale from Users table, then default locale fallback.</backend-approach>
+    <bot-approach>Telegraf detects language_code on /start and persists locale preference for downstream API and campaign usage.</bot-approach>
+  </Internationalization>
+
+  <DataModelAdditions>
+    <item-1>Users table includes preferredLocale (ru/en/xx) and medicalStatus fields.</item-1>
+    <item-2>ExerciseTranslation table keyed by (exerciseId, locale) for title/description/subtitles and localized CTA copy.</item-2>
+    <item-3>DiagnosticQuestion and DiagnosticQuestionTranslation tables store base question metadata and localized text/options keyed by locale.</item-3>
+    <item-4>MoveCoins transaction idempotency key uses actionId and is enforced by unique DB index.</item-4>
+  </DataModelAdditions>
+
+  <DeliveryShape>
+    <shape>TMA and CRM on Vercel, backend on Docker/Railway, PostgreSQL as system of record, Supabase for media storage.</shape>
+    <environments>dev, stage, production</environments>
+    <runtime-notes>Backend remains stateless; background workers handle notifications and retry queues.</runtime-notes>
+  </DeliveryShape>
+</TechnologyStack>

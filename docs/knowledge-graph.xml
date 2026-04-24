@@ -1,0 +1,155 @@
+<KnowledgeGraph VERSION="0.2.0">
+  <Nodes>
+    <M-001 NAME="TMA_ENTRY" TYPE="ENTRY_POINT" verification-ref="V-M-001">
+      <annotation-fn-bootstrapMiniApp>Bootstraps Telegram init context and resolves startapp route.</annotation-fn-bootstrapMiniApp>
+      <annotation-type-TmaSession>Represents authenticated TMA user session.</annotation-type-TmaSession>
+      <CrossLinks>M-009,M-014,M-002</CrossLinks>
+    </M-001>
+    <M-002 NAME="TMA_DIAGNOSTIC_WIZARD" TYPE="UI_COMPONENT" verification-ref="V-M-002">
+      <annotation-fn-submitDiagnostic>Submits normalized diagnostic payload to backend.</annotation-fn-submitDiagnostic>
+      <annotation-type-DiagnosticPayload>Zone, VAS, symptoms, red-flag answers.</annotation-type-DiagnosticPayload>
+      <CrossLinks>M-001,M-009,M-011</CrossLinks>
+    </M-002>
+    <M-003 NAME="TMA_VIDEO_ENGINE" TYPE="UI_COMPONENT" verification-ref="V-M-003">
+      <annotation-fn-completeExerciseSession>Emits completion event for reward processing.</annotation-fn-completeExerciseSession>
+      <annotation-type-PlaybackSession>Player state with timer, subtitle, and completion metadata.</annotation-type-PlaybackSession>
+      <CrossLinks>M-009,M-012,M-013,M-017</CrossLinks>
+    </M-003>
+    <M-004 NAME="TMA_PROGRESS_DASHBOARD" TYPE="UI_COMPONENT" verification-ref="V-M-004">
+      <annotation-fn-renderProgressCharts>Renders VAS and mobility trends for selected period.</annotation-fn-renderProgressCharts>
+      <annotation-fn-applyMedicalGlassTheme>Applies calm iOS-glass-inspired medical visual layer with readable fallback.</annotation-fn-applyMedicalGlassTheme>
+      <annotation-fn-resolveGlassFallback>Resolves opaque elevated fallback surface when blur/transparency support is limited.</annotation-fn-resolveGlassFallback>
+      <annotation-type-ProgressSnapshot>Aggregated user trend metrics for dashboard.</annotation-type-ProgressSnapshot>
+      <annotation-type-UiTokenSet>Canonical UI token bundle for color, typography, spacing, and glass effects.</annotation-type-UiTokenSet>
+      <CrossLinks>M-009,M-011,M-013</CrossLinks>
+    </M-004>
+    <M-005 NAME="BOT_ENTRY" TYPE="ENTRY_POINT" verification-ref="V-M-005">
+      <annotation-fn-dispatchUpdate>Routes Telegram updates into bot module handlers.</annotation-fn-dispatchUpdate>
+      <annotation-fn-detectStartLocale>Reads Telegram language_code on /start and passes locale persistence event.</annotation-fn-detectStartLocale>
+      <annotation-type-BotUpdateEnvelope>Canonical wrapper around Telegram update payload.</annotation-type-BotUpdateEnvelope>
+      <CrossLinks>M-006,M-007,M-008,M-009,M-025</CrossLinks>
+    </M-005>
+    <M-006 NAME="BOT_NOTIFICATION_ENGINE" TYPE="CORE_LOGIC" verification-ref="V-M-006">
+      <annotation-fn-scheduleNotificationJob>Schedules and retries reminder or weekly summary jobs.</annotation-fn-scheduleNotificationJob>
+      <annotation-fn-runCampaignWave>Dispatches timed campaign steps with per-segment cadence controls.</annotation-fn-runCampaignWave>
+      <annotation-type-NotificationJob>Delivery policy and template parameters per user.</annotation-type-NotificationJob>
+      <annotation-type-CampaignWaveStep>Segmented campaign message step with deadline metadata.</annotation-type-CampaignWaveStep>
+      <CrossLinks>M-005,M-009,M-020,M-023</CrossLinks>
+    </M-006>
+    <M-007 NAME="BOT_INLINE_CARDS" TYPE="CORE_LOGIC" verification-ref="V-M-007">
+      <annotation-fn-buildInlineProgressCard>Builds inline card for fm command query.</annotation-fn-buildInlineProgressCard>
+      <annotation-type-InlineCardData>Compact progress state for inline response rendering.</annotation-type-InlineCardData>
+      <CrossLinks>M-005,M-009</CrossLinks>
+    </M-007>
+    <M-008 NAME="BOT_AI_CONCIERGE" TYPE="INTEGRATION" verification-ref="V-M-008">
+      <annotation-fn-answerWithSafetyPolicy>Returns approved answer from curated medical knowledge base.</annotation-fn-answerWithSafetyPolicy>
+      <annotation-type-ConciergePromptContext>Prompt context with policy and user question metadata.</annotation-type-ConciergePromptContext>
+      <CrossLinks>M-005,M-009,M-015</CrossLinks>
+    </M-008>
+    <M-009 NAME="API_GATEWAY" TYPE="ENTRY_POINT" verification-ref="V-M-009">
+      <annotation-fn-registerApiRoutes>Registers authenticated and validated HTTP routes.</annotation-fn-registerApiRoutes>
+      <annotation-type-ApiRequestContext>Request-scoped context with correlation and actor data.</annotation-type-ApiRequestContext>
+      <CrossLinks>M-010,M-011,M-012,M-013,M-014,M-015,M-016,M-023</CrossLinks>
+    </M-009>
+    <M-010 NAME="DOMAIN_USERS" TYPE="CORE_LOGIC" verification-ref="V-M-010">
+      <annotation-fn-upsertUserProfile>Creates or updates user profile and stage attributes.</annotation-fn-upsertUserProfile>
+      <annotation-type-UserProfile>Core demographic and lifecycle attributes for user.</annotation-type-UserProfile>
+      <CrossLinks>M-016,M-011,M-014</CrossLinks>
+    </M-010>
+    <M-011 NAME="DOMAIN_DIAGNOSTICS" TYPE="CORE_LOGIC" verification-ref="V-M-011">
+      <annotation-fn-recordDiagnosticResult>Stores diagnostic result and computes risk state.</annotation-fn-recordDiagnosticResult>
+      <annotation-type-DiagnosticRecord>Persisted diagnostic submission with risk markers.</annotation-type-DiagnosticRecord>
+      <CrossLinks>M-010,M-015,M-016</CrossLinks>
+    </M-011>
+    <M-012 NAME="DOMAIN_EXERCISES" TYPE="CORE_LOGIC" verification-ref="V-M-012">
+      <annotation-fn-listEligibleExercises>Returns exercises filtered by safety and subscription level.</annotation-fn-listEligibleExercises>
+      <annotation-type-ExerciseDescriptor>Exercise metadata with difficulty and media reference.</annotation-type-ExerciseDescriptor>
+      <CrossLinks>M-014,M-016,M-017</CrossLinks>
+    </M-012>
+    <M-013 NAME="DOMAIN_MOVECOINS" TYPE="CORE_LOGIC" verification-ref="V-M-013">
+      <annotation-fn-applyLedgerMutation>Applies accrual or debit with idempotency key checks.</annotation-fn-applyLedgerMutation>
+      <annotation-fn-applyTransactionalMutationByActionId>Executes mutation in one Prisma transaction with actionId uniqueness guard.</annotation-fn-applyTransactionalMutationByActionId>
+      <annotation-type-LedgerTransaction>Immutable reward/economy mutation record.</annotation-type-LedgerTransaction>
+      <CrossLinks>M-016,M-023,M-014</CrossLinks>
+    </M-013>
+    <M-014 NAME="DOMAIN_SUBSCRIPTIONS" TYPE="CORE_LOGIC" verification-ref="V-M-014">
+      <annotation-fn-evaluateEntitlements>Resolves access rights by subscription status.</annotation-fn-evaluateEntitlements>
+      <annotation-type-SubscriptionState>Plan timing, status, and derived entitlement snapshot.</annotation-type-SubscriptionState>
+      <CrossLinks>M-010,M-012,M-016,M-023</CrossLinks>
+    </M-014>
+    <M-015 NAME="SAFETY_RED_FLAG_GUARD" TYPE="CORE_LOGIC" verification-ref="V-M-015">
+      <annotation-fn-enforceSafetyLock>Locks unsafe training paths and creates escalation entry.</annotation-fn-enforceSafetyLock>
+      <annotation-type-RedFlagDecision>Server-side safety decision with reason and escalation flags.</annotation-type-RedFlagDecision>
+      <CrossLinks>M-011,M-012,M-016,M-019,M-023</CrossLinks>
+    </M-015>
+    <M-016 NAME="DATA_PRISMA_REPOS" TYPE="DATA_LAYER" verification-ref="V-M-016">
+      <annotation-fn-runTransactionalMutation>Executes atomic write operations across domain tables.</annotation-fn-runTransactionalMutation>
+      <annotation-type-RepositoryUnitOfWork>Transaction boundary abstraction for domain services.</annotation-type-RepositoryUnitOfWork>
+      <CrossLinks>M-010,M-011,M-012,M-013,M-014,M-015</CrossLinks>
+    </M-016>
+    <M-017 NAME="STORAGE_MEDIA" TYPE="INTEGRATION" verification-ref="V-M-017">
+      <annotation-fn-generateSignedMediaUrl>Generates expiring signed URLs for media delivery.</annotation-fn-generateSignedMediaUrl>
+      <annotation-type-MediaAssetReference>Storage key and metadata for secure exercise assets.</annotation-type-MediaAssetReference>
+      <CrossLinks>M-003,M-012,M-021,M-023</CrossLinks>
+    </M-017>
+    <M-018 NAME="CRM_ENTRY" TYPE="ENTRY_POINT" verification-ref="V-M-018">
+      <annotation-fn-authorizeOperatorSession>Validates CRM operator session and role.</annotation-fn-authorizeOperatorSession>
+      <annotation-type-OperatorSession>CRM session context with role and scope claims.</annotation-type-OperatorSession>
+      <CrossLinks>M-009,M-019,M-020,M-021,M-022</CrossLinks>
+    </M-018>
+    <M-019 NAME="CRM_USER_MANAGEMENT" TYPE="UI_COMPONENT" verification-ref="V-M-019">
+      <annotation-fn-searchByTelegramId>Finds user record and renders activity timeline.</annotation-fn-searchByTelegramId>
+      <annotation-type-UserTimelineView>User diagnostics, rewards, and escalation history.</annotation-type-UserTimelineView>
+      <CrossLinks>M-018,M-009,M-015</CrossLinks>
+    </M-019>
+    <M-020 NAME="CRM_SUBSCRIPTION_MANAGER" TYPE="UI_COMPONENT" verification-ref="V-M-020">
+      <annotation-fn-updateSubscriptionAccess>Applies manual access changes and promo operations.</annotation-fn-updateSubscriptionAccess>
+      <annotation-fn-configureCampaignTimeline>Configures campaign segment rules and message cadence caps.</annotation-fn-configureCampaignTimeline>
+      <annotation-fn-renderUrgencyBanner>Renders campaign urgency block using server-sourced deadline and policy-safe copy.</annotation-fn-renderUrgencyBanner>
+      <annotation-type-SubscriptionAdminAction>Operator mutation request for subscription/economy state.</annotation-type-SubscriptionAdminAction>
+      <annotation-type-CampaignRuleSet>Campaign configuration with segment filters and deadline windows.</annotation-type-CampaignRuleSet>
+      <CrossLinks>M-006,M-018,M-009,M-013,M-014,M-022</CrossLinks>
+    </M-020>
+    <M-021 NAME="CRM_CONTENT_MANAGER" TYPE="UI_COMPONENT" verification-ref="V-M-021">
+      <annotation-fn-publishExerciseContent>Uploads media and publishes exercise/diagnostic text updates.</annotation-fn-publishExerciseContent>
+      <annotation-type-ContentPublishBatch>Batch metadata for validated publish operations.</annotation-type-ContentPublishBatch>
+      <CrossLinks>M-018,M-009,M-012,M-017</CrossLinks>
+    </M-021>
+    <M-022 NAME="CRM_ANALYTICS" TYPE="UI_COMPONENT" verification-ref="V-M-022">
+      <annotation-fn-renderBusinessClinicalMetrics>Displays DAU, MAU, revenue, conversion, and average VAS.</annotation-fn-renderBusinessClinicalMetrics>
+      <annotation-fn-renderCampaignFunnel>Displays funnel drop-off by campaign step and segment.</annotation-fn-renderCampaignFunnel>
+      <annotation-type-AnalyticsSnapshot>Time-windowed aggregate business, funnel, and clinical metrics.</annotation-type-AnalyticsSnapshot>
+      <CrossLinks>M-018,M-009,M-004,M-020</CrossLinks>
+    </M-022>
+    <M-023 NAME="OBSERVABILITY_AUDIT" TYPE="UTILITY" verification-ref="V-M-023">
+      <annotation-fn-writeAuditMarker>Writes required structured marker for traceable events.</annotation-fn-writeAuditMarker>
+      <annotation-type-AuditEvent>Structured redacted event with correlation fields.</annotation-type-AuditEvent>
+      <CrossLinks>M-006,M-009,M-013,M-014,M-015,M-017,M-024</CrossLinks>
+    </M-023>
+    <M-024 NAME="CAMPAIGN_ORCHESTRATOR" TYPE="CORE_LOGIC" verification-ref="V-M-024">
+      <annotation-fn-advanceCampaignStep>Advances campaign enrollment through finite valid transitions only.</annotation-fn-advanceCampaignStep>
+      <annotation-fn-applyMedicalSuppression>Suppresses campaign sends for active red-flag users and reroutes to safe support.</annotation-fn-applyMedicalSuppression>
+      <annotation-fn-enforceCanonicalCampaignScript>Enforces canonical high-conversion script order across campaign steps.</annotation-fn-enforceCanonicalCampaignScript>
+      <annotation-fn-resolveCampaignDeadline>Resolves canonical server-time deadline used by urgency banners across bot and TMA/CRM screens.</annotation-fn-resolveCampaignDeadline>
+      <annotation-type-CampaignEnrollment>Enrollment state with segment, step, and transition history.</annotation-type-CampaignEnrollment>
+      <annotation-type-CampaignTransitionKey>Idempotency key binding enrollment and transition event.</annotation-type-CampaignTransitionKey>
+      <CrossLinks>M-006,M-014,M-015,M-016,M-020,M-022,M-023,M-027</CrossLinks>
+    </M-024>
+    <M-025 NAME="I18N_RESOLUTION_SERVICE" TYPE="CORE_LOGIC" verification-ref="V-M-025">
+      <annotation-fn-resolveLocale>Resolves locale by user preference, then Accept-Language, then default fallback.</annotation-fn-resolveLocale>
+      <annotation-fn-persistBotDetectedLocale>Persists locale detected from bot /start updates for cross-surface consistency.</annotation-fn-persistBotDetectedLocale>
+      <annotation-type-LocaleResolutionContext>Locale negotiation context with header, preference, and default fields.</annotation-type-LocaleResolutionContext>
+      <CrossLinks>M-001,M-005,M-009,M-016,M-011,M-012</CrossLinks>
+    </M-025>
+    <M-026 NAME="TMA_PANIC_BUTTON" TYPE="UI_COMPONENT" verification-ref="V-M-026">
+      <annotation-fn-triggerImmediateEscalation>Triggers immediate UC-005 escalation from exercise UI.</annotation-fn-triggerImmediateEscalation>
+      <annotation-type-PanicEscalationRequest>Emergency request payload containing user context and active exercise session metadata.</annotation-type-PanicEscalationRequest>
+      <CrossLinks>M-003,M-009,M-015,M-019</CrossLinks>
+    </M-026>
+    <M-027 NAME="RED_FLAG_SUPPRESSION_GUARD" TYPE="CORE_LOGIC" verification-ref="V-M-027">
+      <annotation-fn-blockSuppressedCampaignActions>Blocks campaign notification/send actions for medically suppressed users.</annotation-fn-blockSuppressedCampaignActions>
+      <annotation-type-SuppressionDecision>Suppression decision object with reason, source medicalStatus, and audit fields.</annotation-type-SuppressionDecision>
+      <CrossLinks>M-006,M-015,M-016,M-024,M-023</CrossLinks>
+    </M-027>
+  </Nodes>
+</KnowledgeGraph>

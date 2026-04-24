@@ -1,0 +1,11 @@
+{
+  "common": {
+    "welcome": "Добро пожаловать в FreeMove",
+    "start_diagnosis": "Начать диагностику",
+    "exercisePlayer": "Плеер упражнений",
+    "deadlineLabel": "Дедлайн",
+    "panicButton": "Паник-кнопка",
+    "panicSending": "Отправляем сигнал...",
+    "panicDone": "Оператор уведомлен"
+  }
+}

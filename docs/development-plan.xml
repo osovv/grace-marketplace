@@ -1,0 +1,425 @@
+<DevelopmentPlan VERSION="0.2.0">
+  <Scope>
+    <summary>Telegram Mini App + Telegram Bot + Fastify backend + Next.js CRM architecture for diagnostics, exercises, subscription control, medical-safe retention, high-conversion funnel automation, and iOS-glass medical minimal UX.</summary>
+    <references>UC-001,UC-002,UC-003,UC-004,UC-005,UC-006,UC-007,UC-008,UC-009,UC-010,UC-011,UC-012,UC-013,UC-014,UC-015,UC-016,UC-017</references>
+  </Scope>
+
+  <DataFlows>
+    <DF-001>
+      <name>OnboardingFlow</name>
+      <path>BOT_ENTRY -> TMA_ENTRY -> TMA_DIAGNOSTIC_WIZARD -> API_GATEWAY -> DOMAIN_DIAGNOSTICS -> DOMAIN_MOVECOINS -> TMA_VIDEO_ENGINE</path>
+      <success-criteria>Diagnostic persisted and one-time +20 MC onboarding reward assigned.</success-criteria>
+    </DF-001>
+    <DF-002>
+      <name>EconomyFlow</name>
+      <path>TMA_VIDEO_ENGINE -> API_GATEWAY -> DOMAIN_MOVECOINS -> DATA_PRISMA_REPOS -> TMA_PROGRESS_DASHBOARD</path>
+      <success-criteria>MoveCoins accrual/debit is idempotent and reflected in user balance.</success-criteria>
+    </DF-002>
+    <DF-003>
+      <name>MedicalSafetyFlow</name>
+      <path>TMA_DIAGNOSTIC_WIZARD -> API_GATEWAY -> DOMAIN_DIAGNOSTICS -> SAFETY_RED_FLAG_GUARD -> CRM_USER_MANAGEMENT</path>
+      <success-criteria>Red-flag users are blocked from heavy training and escalated to CRM queue.</success-criteria>
+    </DF-003>
+    <DF-004>
+      <name>SubscriptionGateFlow</name>
+      <path>TMA_ENTRY -> API_GATEWAY -> DOMAIN_SUBSCRIPTIONS -> DOMAIN_EXERCISES -> TMA_VIDEO_ENGINE</path>
+      <success-criteria>Expired users are restricted from heavy level with renewal prompt.</success-criteria>
+    </DF-004>
+    <DF-005>
+      <name>CRMContentFlow</name>
+      <path>CRM_CONTENT_MANAGER -> API_GATEWAY -> DOMAIN_EXERCISES -> STORAGE_MEDIA -> TMA_VIDEO_ENGINE/BOT_INLINE_CARDS</path>
+      <success-criteria>New media/text content is published without client rebuild.</success-criteria>
+    </DF-005>
+    <DF-006>
+      <name>ConversionCampaignFlow</name>
+      <path>CRM_SUBSCRIPTION_MANAGER -> CAMPAIGN_ORCHESTRATOR -> BOT_NOTIFICATION_ENGINE -> API_GATEWAY -> DOMAIN_SUBSCRIPTIONS -> TMA_ENTRY</path>
+      <success-criteria>Segmented offer sequence is delivered with server-timed deadlines and conversion outcomes are attributed.</success-criteria>
+    </DF-006>
+    <DF-007>
+      <name>LocalizationResolutionFlow</name>
+      <path>BOT_ENTRY/TMA_ENTRY -> API_GATEWAY -> I18N_RESOLUTION_SERVICE -> DATA_PRISMA_REPOS -> DOMAIN_EXERCISES/DOMAIN_DIAGNOSTICS</path>
+      <success-criteria>Resolved locale consistently drives UI strings and localized content payloads.</success-criteria>
+    </DF-007>
+    <DF-008>
+      <name>PanicEscalationFlow</name>
+      <path>TMA_PANIC_BUTTON -> API_GATEWAY -> SAFETY_RED_FLAG_GUARD -> CRM_USER_MANAGEMENT -> BOT_NOTIFICATION_ENGINE</path>
+      <success-criteria>One-tap panic action immediately creates escalation and alerts operator channel.</success-criteria>
+    </DF-008>
+  </DataFlows>
+
+  <Modules>
+    <M-001 NAME="TMA_ENTRY" TYPE="ENTRY_POINT" verification-ref="V-M-001">
+      <MODULE_CONTRACT>
+        <PURPOSE>Initialize Telegram Mini App context, validate initData token, and resolve deep-link start routes.</PURPOSE>
+        <SCOPE>Startup handshake, session bootstrap, locale initialization, route decision for exercise/SOS paths.</SCOPE>
+        <DEPENDS>M-009,M-014,M-025</DEPENDS>
+        <LINKS>DF-001,DF-004,DF-007</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/tma/src/app/page.tsx</target-source>
+      <target-test>apps/tma/tests/entry.test.ts</target-test>
+    </M-001>
+    <M-002 NAME="TMA_DIAGNOSTIC_WIZARD" TYPE="UI_COMPONENT" verification-ref="V-M-002">
+      <MODULE_CONTRACT>
+        <PURPOSE>Collect zone/VAS/symptoms/red-flag answers and submit structured diagnostic payloads.</PURPOSE>
+        <SCOPE>Question flow, local state, payload validation, submit and recovery states.</SCOPE>
+        <DEPENDS>M-001,M-009,M-011</DEPENDS>
+        <LINKS>DF-001,DF-003</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/tma/src/features/diagnostic/wizard.tsx</target-source>
+      <target-test>apps/tma/tests/diagnostic-wizard.test.tsx</target-test>
+    </M-002>
+    <M-003 NAME="TMA_VIDEO_ENGINE" TYPE="UI_COMPONENT" verification-ref="V-M-003">
+      <MODULE_CONTRACT>
+        <PURPOSE>Play exercise videos with subtitles/timers, emit completion events, and expose one-tap panic escalation.</PURPOSE>
+        <SCOPE>Media playback UX, progress tracking, completion event emission, Panic Button action.</SCOPE>
+        <DEPENDS>M-009,M-012,M-013,M-017,M-026</DEPENDS>
+        <LINKS>DF-001,DF-002,DF-004,DF-008</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/tma/src/features/video/engine.tsx</target-source>
+      <target-test>apps/tma/tests/video-engine.test.tsx</target-test>
+    </M-003>
+    <M-004 NAME="TMA_PROGRESS_DASHBOARD" TYPE="UI_COMPONENT" verification-ref="V-M-004">
+      <MODULE_CONTRACT>
+        <PURPOSE>Render progress analytics (VAS and mobility trends) for user feedback.</PURPOSE>
+        <SCOPE>Charts, trend summaries, period filters, and calm glass-based visual hierarchy.</SCOPE>
+        <DEPENDS>M-009,M-011,M-013</DEPENDS>
+        <LINKS>DF-002</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/tma/src/features/progress/dashboard.tsx</target-source>
+      <target-test>apps/tma/tests/progress-dashboard.test.tsx</target-test>
+    </M-004>
+    <M-005 NAME="BOT_ENTRY" TYPE="ENTRY_POINT" verification-ref="V-M-005">
+      <MODULE_CONTRACT>
+        <PURPOSE>Receive Telegram updates and dispatch commands/events to bot modules.</PURPOSE>
+        <SCOPE>Webhook/long-poll setup, update parsing, command routing.</SCOPE>
+        <DEPENDS>M-006,M-007,M-008,M-009</DEPENDS>
+        <LINKS>DF-001,DF-002</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/bot/src/index.ts</target-source>
+      <target-test>apps/bot/tests/entry.test.ts</target-test>
+    </M-005>
+    <M-006 NAME="BOT_NOTIFICATION_ENGINE" TYPE="CORE_LOGIC" verification-ref="V-M-006">
+      <MODULE_CONTRACT>
+        <PURPOSE>Schedule and deliver retention and conversion notifications with retry/backoff, anti-spam policy, and deterministic funnel scripts.</PURPOSE>
+        <SCOPE>Reminder triggers, weekly reports, reward announcements, deadline campaign waves, scripted sequence steps, delivery retries.</SCOPE>
+        <DEPENDS>M-005,M-009,M-020,M-023,M-027</DEPENDS>
+        <LINKS>DF-002,DF-004,DF-006,DF-008</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/bot/src/notifications/engine.ts</target-source>
+      <target-test>apps/bot/tests/notification-engine.test.ts</target-test>
+    </M-006>
+    <M-007 NAME="BOT_INLINE_CARDS" TYPE="CORE_LOGIC" verification-ref="V-M-007">
+      <MODULE_CONTRACT>
+        <PURPOSE>Generate inline progress cards using fm command payload.</PURPOSE>
+        <SCOPE>Inline query parser, rendering payload assembly, fallback messaging.</SCOPE>
+        <DEPENDS>M-005,M-009</DEPENDS>
+        <LINKS>DF-002</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/bot/src/inline/cards.ts</target-source>
+      <target-test>apps/bot/tests/inline-cards.test.ts</target-test>
+    </M-007>
+    <M-008 NAME="BOT_AI_CONCIERGE" TYPE="INTEGRATION" verification-ref="V-M-008">
+      <MODULE_CONTRACT>
+        <PURPOSE>Provide guided Q/A via approved Osteoclinic knowledge with safety restrictions.</PURPOSE>
+        <SCOPE>Prompt policy, provider adapter, answer filtering, fallback responses.</SCOPE>
+        <DEPENDS>M-005,M-009,M-015</DEPENDS>
+        <LINKS>DF-003</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/bot/src/ai/concierge.ts</target-source>
+      <target-test>apps/bot/tests/ai-concierge.test.ts</target-test>
+    </M-008>
+    <M-009 NAME="API_GATEWAY" TYPE="ENTRY_POINT" verification-ref="V-M-009">
+      <MODULE_CONTRACT>
+        <PURPOSE>Expose validated HTTP endpoints for TMA, bot, and CRM clients.</PURPOSE>
+        <SCOPE>Routing, auth middleware, rate limit, validation, error mapping.</SCOPE>
+        <DEPENDS>M-010,M-011,M-012,M-013,M-014,M-015,M-016,M-023</DEPENDS>
+        <LINKS>DF-001,DF-002,DF-003,DF-004,DF-005</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/api/src/server.ts</target-source>
+      <target-test>apps/api/tests/api-gateway.test.ts</target-test>
+    </M-009>
+    <M-010 NAME="DOMAIN_USERS" TYPE="CORE_LOGIC" verification-ref="V-M-010">
+      <MODULE_CONTRACT>
+        <PURPOSE>Manage user profile, lifecycle stage, and mobility index updates.</PURPOSE>
+        <SCOPE>Read/write user profile and profile-derived domain rules.</SCOPE>
+        <DEPENDS>M-016</DEPENDS>
+        <LINKS>DF-001,DF-004</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/api/src/domain/users/service.ts</target-source>
+      <target-test>apps/api/tests/domain-users.test.ts</target-test>
+    </M-010>
+    <M-011 NAME="DOMAIN_DIAGNOSTICS" TYPE="CORE_LOGIC" verification-ref="V-M-011">
+      <MODULE_CONTRACT>
+        <PURPOSE>Persist diagnostic outcomes and derive clinical risk state.</PURPOSE>
+        <SCOPE>Input normalization, red-flag evaluation hooks, historical retrieval.</SCOPE>
+        <DEPENDS>M-015,M-016</DEPENDS>
+        <LINKS>DF-001,DF-003</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/api/src/domain/diagnostics/service.ts</target-source>
+      <target-test>apps/api/tests/domain-diagnostics.test.ts</target-test>
+    </M-011>
+    <M-012 NAME="DOMAIN_EXERCISES" TYPE="CORE_LOGIC" verification-ref="V-M-012">
+      <MODULE_CONTRACT>
+        <PURPOSE>Serve exercise catalog with level and policy-aware filtering.</PURPOSE>
+        <SCOPE>Catalog retrieval, difficulty filtering, media metadata composition.</SCOPE>
+        <DEPENDS>M-014,M-016,M-017</DEPENDS>
+        <LINKS>DF-004,DF-005</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/api/src/domain/exercises/service.ts</target-source>
+      <target-test>apps/api/tests/domain-exercises.test.ts</target-test>
+    </M-012>
+    <M-013 NAME="DOMAIN_MOVECOINS" TYPE="CORE_LOGIC" verification-ref="V-M-013">
+      <MODULE_CONTRACT>
+        <PURPOSE>Apply accrual/debit rules with balance invariants and actionId idempotency guarantees.</PURPOSE>
+        <SCOPE>Ledger mutations, reward rules, Prisma transaction boundary, anti-duplicate processing by actionId key.</SCOPE>
+        <DEPENDS>M-016,M-023</DEPENDS>
+        <LINKS>DF-001,DF-002</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/api/src/domain/movecoins/service.ts</target-source>
+      <target-test>apps/api/tests/domain-movecoins.test.ts</target-test>
+    </M-013>
+    <M-014 NAME="DOMAIN_SUBSCRIPTIONS" TYPE="CORE_LOGIC" verification-ref="V-M-014">
+      <MODULE_CONTRACT>
+        <PURPOSE>Resolve subscription status and enforce access policies.</PURPOSE>
+        <SCOPE>Plan lifecycle, status checks, entitlement evaluation.</SCOPE>
+        <DEPENDS>M-016,M-023</DEPENDS>
+        <LINKS>DF-004</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/api/src/domain/subscriptions/service.ts</target-source>
+      <target-test>apps/api/tests/domain-subscriptions.test.ts</target-test>
+    </M-014>
+    <M-015 NAME="SAFETY_RED_FLAG_GUARD" TYPE="CORE_LOGIC" verification-ref="V-M-015">
+      <MODULE_CONTRACT>
+        <PURPOSE>Apply mandatory medical safety gate and trigger escalation workflows.</PURPOSE>
+        <SCOPE>Risk rule engine, training lock state, escalation task creation.</SCOPE>
+        <DEPENDS>M-016,M-023</DEPENDS>
+        <LINKS>DF-003</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/api/src/domain/safety/red-flag-guard.ts</target-source>
+      <target-test>apps/api/tests/red-flag-guard.test.ts</target-test>
+    </M-015>
+    <M-016 NAME="DATA_PRISMA_REPOS" TYPE="DATA_LAYER" verification-ref="V-M-016">
+      <MODULE_CONTRACT>
+        <PURPOSE>Provide persistence adapters for users, diagnostics, exercises, transactions, and subscriptions.</PURPOSE>
+        <SCOPE>Repository interfaces, Prisma queries, transactional boundaries.</SCOPE>
+        <DEPENDS></DEPENDS>
+        <LINKS>DF-001,DF-002,DF-003,DF-004,DF-005</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/api/src/data/prisma/repositories.ts</target-source>
+      <target-test>apps/api/tests/data-prisma-repos.test.ts</target-test>
+    </M-016>
+    <M-017 NAME="STORAGE_MEDIA" TYPE="INTEGRATION" verification-ref="V-M-017">
+      <MODULE_CONTRACT>
+        <PURPOSE>Manage media storage uploads and signed URL generation through Supabase.</PURPOSE>
+        <SCOPE>Upload policy, path strategy, signed URL issuance, TTL enforcement.</SCOPE>
+        <DEPENDS>M-023</DEPENDS>
+        <LINKS>DF-005</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/api/src/integrations/storage/supabase-media.ts</target-source>
+      <target-test>apps/api/tests/storage-media.test.ts</target-test>
+    </M-017>
+    <M-018 NAME="CRM_ENTRY" TYPE="ENTRY_POINT" verification-ref="V-M-018">
+      <MODULE_CONTRACT>
+        <PURPOSE>Authenticate CRM operators and bootstrap protected admin routes.</PURPOSE>
+        <SCOPE>Session gating, role checks, route-level permissions.</SCOPE>
+        <DEPENDS>M-009,M-019,M-020,M-021,M-022</DEPENDS>
+        <LINKS>DF-003,DF-004,DF-005</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/crm/src/app/layout.tsx</target-source>
+      <target-test>apps/crm/tests/crm-entry.test.tsx</target-test>
+    </M-018>
+    <M-019 NAME="CRM_USER_MANAGEMENT" TYPE="UI_COMPONENT" verification-ref="V-M-019">
+      <MODULE_CONTRACT>
+        <PURPOSE>Support TG_ID-based search and full diagnostic/activity inspection.</PURPOSE>
+        <SCOPE>User list/detail, diagnostic timeline, escalation status view.</SCOPE>
+        <DEPENDS>M-018,M-009</DEPENDS>
+        <LINKS>DF-003</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/crm/src/features/users/management.tsx</target-source>
+      <target-test>apps/crm/tests/user-management.test.tsx</target-test>
+    </M-019>
+    <M-020 NAME="CRM_SUBSCRIPTION_MANAGER" TYPE="UI_COMPONENT" verification-ref="V-M-020">
+      <MODULE_CONTRACT>
+        <PURPOSE>Handle subscription access, promo actions, campaign timelines, and bonus MoveCoins grants.</PURPOSE>
+        <SCOPE>Subscription updates, promo code actions, segmented campaign setup, reminder frequency caps, bonus transaction UI.</SCOPE>
+        <DEPENDS>M-018,M-009,M-013,M-014</DEPENDS>
+        <LINKS>DF-004,DF-006</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/crm/src/features/subscriptions/manager.tsx</target-source>
+      <target-test>apps/crm/tests/subscription-manager.test.tsx</target-test>
+    </M-020>
+    <M-024 NAME="CAMPAIGN_ORCHESTRATOR" TYPE="CORE_LOGIC" verification-ref="V-M-024">
+      <MODULE_CONTRACT>
+        <PURPOSE>Orchestrate campaign enrollment, finite-step transitions, proven high-conversion script order, and suppression policies for medical-risk users.</PURPOSE>
+        <SCOPE>Enrollment lifecycle, step transition validation, idempotency keys, red-flag suppression, attribution event emission, canonical deadline enforcement.</SCOPE>
+        <DEPENDS>M-006,M-014,M-015,M-016,M-023,M-027</DEPENDS>
+        <LINKS>DF-003,DF-006</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/api/src/domain/campaigns/orchestrator.ts</target-source>
+      <target-test>apps/api/tests/campaign-orchestrator.test.ts</target-test>
+    </M-024>
+    <M-025 NAME="I18N_RESOLUTION_SERVICE" TYPE="CORE_LOGIC" verification-ref="V-M-025">
+      <MODULE_CONTRACT>
+        <PURPOSE>Resolve locale for API payloads and UI contexts using user preference and request headers.</PURPOSE>
+        <SCOPE>Locale negotiation, fallback chain, persistence updates from bot /start events.</SCOPE>
+        <DEPENDS>M-016,M-023</DEPENDS>
+        <LINKS>DF-007</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/api/src/domain/i18n/resolution-service.ts</target-source>
+      <target-test>apps/api/tests/i18n-resolution-service.test.ts</target-test>
+    </M-025>
+    <M-026 NAME="TMA_PANIC_BUTTON" TYPE="UI_COMPONENT" verification-ref="V-M-026">
+      <MODULE_CONTRACT>
+        <PURPOSE>Provide prominent one-tap emergency escalation entry from exercise screens.</PURPOSE>
+        <SCOPE>Panic CTA UI, confirmation handling, escalation trigger call, temporary local lock state.</SCOPE>
+        <DEPENDS>M-003,M-009,M-015</DEPENDS>
+        <LINKS>DF-008</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/tma/src/features/video/panic-button.tsx</target-source>
+      <target-test>apps/tma/tests/panic-button.test.tsx</target-test>
+    </M-026>
+    <M-027 NAME="RED_FLAG_SUPPRESSION_GUARD" TYPE="CORE_LOGIC" verification-ref="V-M-027">
+      <MODULE_CONTRACT>
+        <PURPOSE>Block campaign notifications and conversion steps for users with medical suppression states.</PURPOSE>
+        <SCOPE>Suppression policy checks by medicalStatus before send/step execution, audit reason emission.</SCOPE>
+        <DEPENDS>M-015,M-016,M-023</DEPENDS>
+        <LINKS>DF-003,DF-006,DF-008</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/api/src/domain/campaigns/red-flag-suppression-guard.ts</target-source>
+      <target-test>apps/api/tests/red-flag-suppression-guard.test.ts</target-test>
+    </M-027>
+    <M-021 NAME="CRM_CONTENT_MANAGER" TYPE="UI_COMPONENT" verification-ref="V-M-021">
+      <MODULE_CONTRACT>
+        <PURPOSE>Upload exercise media and edit diagnostic texts without redeployment.</PURPOSE>
+        <SCOPE>Content CRUD, upload workflow, publish state controls.</SCOPE>
+        <DEPENDS>M-018,M-009,M-012,M-017</DEPENDS>
+        <LINKS>DF-005</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/crm/src/features/content/manager.tsx</target-source>
+      <target-test>apps/crm/tests/content-manager.test.tsx</target-test>
+    </M-021>
+    <M-022 NAME="CRM_ANALYTICS" TYPE="UI_COMPONENT" verification-ref="V-M-022">
+      <MODULE_CONTRACT>
+        <PURPOSE>Expose business, funnel, and clinical dashboards (DAU/MAU, revenue, conversion, avg VAS).</PURPOSE>
+        <SCOPE>Metric rendering, date filters, cohort breakdowns, campaign-step conversion views.</SCOPE>
+        <DEPENDS>M-018,M-009</DEPENDS>
+        <LINKS>DF-002,DF-006</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>apps/crm/src/features/analytics/dashboard.tsx</target-source>
+      <target-test>apps/crm/tests/analytics-dashboard.test.tsx</target-test>
+    </M-022>
+    <M-023 NAME="OBSERVABILITY_AUDIT" TYPE="UTILITY" verification-ref="V-M-023">
+      <MODULE_CONTRACT>
+        <PURPOSE>Provide unified audit logging and trace evidence for security and domain events.</PURPOSE>
+        <SCOPE>Log schemas, marker helpers, correlation and redaction utilities.</SCOPE>
+        <DEPENDS></DEPENDS>
+        <LINKS>DF-001,DF-002,DF-003,DF-004,DF-005,DF-006</LINKS>
+      </MODULE_CONTRACT>
+      <target-source>packages/shared-observability/src/audit.ts</target-source>
+      <target-test>packages/shared-observability/tests/audit.test.ts</target-test>
+    </M-023>
+  </Modules>
+
+  <Phases>
+    <Phase-1>
+      <name>Foundation</name>
+      <modules>M-009,M-016,M-023,M-001,M-005,M-018</modules>
+      <why>Establishes runtime, data layer, and authenticated entry points required by all downstream modules.</why>
+    </Phase-1>
+    <Phase-2>
+      <name>ClinicalCore</name>
+      <modules>M-010,M-011,M-015,M-002</modules>
+      <why>Introduces diagnostic capture and non-negotiable medical safety guardrails early.</why>
+    </Phase-2>
+    <Phase-3>
+      <name>EconomyAndSubscriptions</name>
+      <modules>M-012,M-013,M-014,M-003</modules>
+      <why>Enables exercise access control and MoveCoins economy once safety core is live.</why>
+    </Phase-3>
+    <Phase-4>
+      <name>BotIntelligence</name>
+      <modules>M-006,M-007,M-008,M-024,M-025,M-027</modules>
+      <why>Adds retention and conversion campaign orchestration plus concierge capabilities over validated backend contracts.</why>
+    </Phase-4>
+    <Phase-5>
+      <name>CRMOperations</name>
+      <modules>M-019,M-020,M-021,M-022,M-004,M-026</modules>
+      <why>Completes operator workflows, campaign control surfaces, and user-facing/funnel analytics.</why>
+    </Phase-5>
+    <Phase-6>
+      <name>Hardening</name>
+      <modules>M-017</modules>
+      <why>Finalizes media security, performance, and reliability checks before production scale.</why>
+    </Phase-6>
+  </Phases>
+
+  <UiImplementationTargets VERSION="1.0">
+    <objective>Translate UiContract tokens and component rules into concrete TMA and CRM implementation surfaces.</objective>
+
+    <SharedUiPackage>
+      <target-source>packages/ui-medical-glass/src/tokens.ts</target-source>
+      <target-source>packages/ui-medical-glass/src/theme.css</target-source>
+      <target-source>packages/ui-medical-glass/src/components/GlassCard.tsx</target-source>
+      <target-source>packages/ui-medical-glass/src/components/PrimaryButton.tsx</target-source>
+      <target-source>packages/ui-medical-glass/src/components/MetricTile.tsx</target-source>
+      <target-source>packages/ui-medical-glass/src/components/UrgencyBanner.tsx</target-source>
+      <target-test>packages/ui-medical-glass/tests/theme-contrast.test.ts</target-test>
+      <target-test>packages/ui-medical-glass/tests/component-a11y.test.tsx</target-test>
+    </SharedUiPackage>
+
+    <TmaScreens>
+      <screen id="TMA-SCR-001">
+        <name>OnboardingEntryScreen</name>
+        <target-source>apps/tma/src/app/page.tsx</target-source>
+        <depends>M-001,M-024</depends>
+        <required-components>GlassCard,PrimaryButton,UrgencyBanner</required-components>
+      </screen>
+      <screen id="TMA-SCR-002">
+        <name>DiagnosticWizardScreen</name>
+        <target-source>apps/tma/src/features/diagnostic/wizard.tsx</target-source>
+        <depends>M-002,M-015</depends>
+        <required-components>GlassCard,SegmentControl,PrimaryButton</required-components>
+      </screen>
+      <screen id="TMA-SCR-003">
+        <name>ExercisePlayerScreen</name>
+        <target-source>apps/tma/src/features/video/engine.tsx</target-source>
+        <depends>M-003,M-012,M-013</depends>
+        <required-components>GlassCard,PrimaryButton,GhostButton</required-components>
+      </screen>
+      <screen id="TMA-SCR-004">
+        <name>ProgressDashboardScreen</name>
+        <target-source>apps/tma/src/features/progress/dashboard.tsx</target-source>
+        <depends>M-004,M-011,M-013</depends>
+        <required-components>GlassCard,MetricTile,SegmentControl</required-components>
+      </screen>
+    </TmaScreens>
+
+    <CrmScreens>
+      <screen id="CRM-SCR-001">
+        <name>UserManagementScreen</name>
+        <target-source>apps/crm/src/features/users/management.tsx</target-source>
+        <depends>M-019,M-015</depends>
+        <required-components>GlassCard,SegmentControl,PrimaryButton</required-components>
+      </screen>
+      <screen id="CRM-SCR-002">
+        <name>SubscriptionCampaignScreen</name>
+        <target-source>apps/crm/src/features/subscriptions/manager.tsx</target-source>
+        <depends>M-020,M-024</depends>
+        <required-components>GlassCard,UrgencyBanner,PrimaryButton,GhostButton</required-components>
+      </screen>
+      <screen id="CRM-SCR-003">
+        <name>AnalyticsFunnelScreen</name>
+        <target-source>apps/crm/src/features/analytics/dashboard.tsx</target-source>
+        <depends>M-022,M-024</depends>
+        <required-components>GlassCard,MetricTile,SegmentControl</required-components>
+      </screen>
+    </CrmScreens>
+
+    <DeliveryNotes>
+      <note-1>All critical CTA controls stay visible within first viewport on core conversion and safety screens.</note-1>
+      <note-2>When blur support is unavailable, fallback to opaque elevated surfaces from UiContract.</note-2>
+      <note-3>UrgencyBanner text always reads server-sourced deadline from campaign orchestration APIs.</note-3>
+      <note-4>Red-flag state visually overrides promotional blocks and routes to support-safe actions.</note-4>
+    </DeliveryNotes>
+  </UiImplementationTargets>
+</DevelopmentPlan>

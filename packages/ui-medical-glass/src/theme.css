@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.22);
+  --glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+
+.medical-glass {
+  backdrop-filter: blur(16px) saturate(1.15);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}

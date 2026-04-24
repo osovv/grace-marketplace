@@ -1,0 +1,239 @@
+<RequirementsAnalysis VERSION="0.2.0">
+  <Project>
+    <name>grace-tma-platform</name>
+    <annotation>Scalable Telegram Mini App platform with bot assistant, Fastify backend, and protected CRM for rehabilitation and conversion-retention workflows with a calm medical iOS-glass experience layer.</annotation>
+    <keywords>telegram mini app, bot, fastify, prisma, postgresql, crm, subscriptions, movecoins, diagnostics, medical safety, conversion funnel, campaign automation, ios glass, medical minimalism</keywords>
+  </Project>
+
+  <Actors>
+    <actor-Patient>User interacting via Telegram bot and Mini App for diagnostics and exercises.</actor-Patient>
+    <actor-Operator>CRM manager handling subscriptions, escalations, and content operations.</actor-Operator>
+    <actor-Doctor>Medical specialist reviewing red-flag escalations.</actor-Doctor>
+    <actor-System>Automated backend services for billing gates, rewards, analytics, and notifications.</actor-System>
+  </Actors>
+
+  <UseCases>
+    <UC-001>
+      <Actor>Patient</Actor>
+      <Action>Starts from bot and opens Mini App through deep link</Action>
+      <Goal>Complete onboarding with first diagnostic and first training</Goal>
+      <Preconditions>Telegram account is available and backend can validate initData</Preconditions>
+      <AcceptanceCriteria>Diagnostic is saved, onboarding reward +20 MoveCoins is recorded once, first training is available</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-001</RelatedFlows>
+    </UC-001>
+
+    <UC-002>
+      <Actor>Patient</Actor>
+      <Action>Completes diagnostic wizard with zone, VAS score, symptoms, and red flags</Action>
+      <Goal>Receive safe and personalized access to exercise content</Goal>
+      <Preconditions>User is authenticated and diagnostic questionnaire version is active</Preconditions>
+      <AcceptanceCriteria>Diagnostic record exists, computed mobility index is updated, safety gate is evaluated server-side</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-001, DF-003</RelatedFlows>
+    </UC-002>
+
+    <UC-003>
+      <Actor>Patient</Actor>
+      <Action>Completes exercise session or sharing action</Action>
+      <Goal>Earn MoveCoins and spend them on premium courses or merchandise</Goal>
+      <Preconditions>Exercise session is eligible and anti-fraud checks pass</Preconditions>
+      <AcceptanceCriteria>Accrual/debit transactions are logged idempotently and user balance remains non-negative</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-002</RelatedFlows>
+    </UC-003>
+
+    <UC-004>
+      <Actor>System</Actor>
+      <Action>Checks subscription status on each Mini App entry</Action>
+      <Goal>Apply access policy by subscription stage</Goal>
+      <Preconditions>User has a subscription record or defaults to trial policy</Preconditions>
+      <AcceptanceCriteria>Expired users are blocked from heavy level and receive renewal prompt while active users retain full access</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-004</RelatedFlows>
+    </UC-004>
+
+    <UC-005>
+      <Actor>System</Actor>
+      <Action>Detects red flag diagnostic outcome</Action>
+      <Goal>Block unsafe training and escalate to CRM/doctor queue</Goal>
+      <Preconditions>Diagnostic submission contains red flag criteria matched by server rules</Preconditions>
+      <AcceptanceCriteria>Training lock is enabled immediately, escalation task is created with SLA metadata, and user receives safe guidance</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-003</RelatedFlows>
+    </UC-005>
+
+    <UC-006>
+      <Actor>Operator</Actor>
+      <Action>Manages users, subscriptions, bonuses, and diagnostic history in CRM</Action>
+      <Goal>Operate retention and medical escalation workflows without engineering intervention</Goal>
+      <Preconditions>Operator is authenticated with role-based access</Preconditions>
+      <AcceptanceCriteria>Operator can search by TG_ID, inspect history, update subscription access, and issue bonus MoveCoins with audit logs</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-003, DF-004</RelatedFlows>
+    </UC-006>
+
+    <UC-007>
+      <Actor>Operator</Actor>
+      <Action>Updates exercise media and diagnostic text content from CRM</Action>
+      <Goal>Publish content changes without rebuilding client applications</Goal>
+      <Preconditions>Content passes validation and storage upload policies</Preconditions>
+      <AcceptanceCriteria>Updated content is visible in TMA/Bot immediately through API-backed catalogs</AcceptanceCriteria>
+      <Priority>medium</Priority>
+      <RelatedFlows>DF-005</RelatedFlows>
+    </UC-007>
+
+    <UC-008>
+      <Actor>System</Actor>
+      <Action>Sends trigger-based notifications and inline progress cards in bot</Action>
+      <Goal>Increase retention and engagement</Goal>
+      <Preconditions>User has notification consent and event triggers are emitted</Preconditions>
+      <AcceptanceCriteria>Reminder, weekly summary, and reward messages are delivered with retry/backoff policies and can render inline cards</AcceptanceCriteria>
+      <Priority>medium</Priority>
+      <RelatedFlows>DF-002, DF-004</RelatedFlows>
+    </UC-008>
+    <UC-009>
+      <Actor>System</Actor>
+      <Action>Runs timed conversion campaigns with deadline windows and personalized offer steps</Action>
+      <Goal>Convert trial and inactive users to paid plans without manual operator work</Goal>
+      <Preconditions>User belongs to campaign segment and consent/policy checks pass</Preconditions>
+      <AcceptanceCriteria>Campaign steps are delivered in configured sequence, countdown messages remain time-consistent, and conversion outcomes are tracked</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-004, DF-006</RelatedFlows>
+    </UC-009>
+    <UC-010>
+      <Actor>Operator</Actor>
+      <Action>Manages campaign copy, promo windows, and support escalation scripts in CRM</Action>
+      <Goal>Tune commercial funnel and support quality without deployment cycles</Goal>
+      <Preconditions>Operator has campaign-management role permissions</Preconditions>
+      <AcceptanceCriteria>Operator can publish offer waves, cap reminder frequency, and activate support scripts with full audit trail</AcceptanceCriteria>
+      <Priority>medium</Priority>
+      <RelatedFlows>DF-005, DF-006</RelatedFlows>
+    </UC-010>
+    <UC-011>
+      <Actor>System</Actor>
+      <Action>Advances user campaign state through finite steps (entry, nurture, urgency, last_call, convert)</Action>
+      <Goal>Orchestrate deterministic conversion flow with replay-safe transitions</Goal>
+      <Preconditions>User is enrolled into campaign and transition policy allows next step</Preconditions>
+      <AcceptanceCriteria>Only one valid transition is accepted per step key, duplicate events are ignored, and state history is auditable</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-006</RelatedFlows>
+    </UC-011>
+    <UC-012>
+      <Actor>System</Actor>
+      <Action>Suppresses campaign messaging for red-flag users and reroutes to support-safe communication</Action>
+      <Goal>Guarantee that medical risk users never receive urgency sales pressure</Goal>
+      <Preconditions>User has active red-flag lock or unresolved medical escalation</Preconditions>
+      <AcceptanceCriteria>Campaign sends are blocked, suppression reason is logged, and support/clinical message path is used instead</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-003, DF-006</RelatedFlows>
+    </UC-012>
+    <UC-013>
+      <Actor>System</Actor>
+      <Action>Executes high-conversion campaign script with bounded urgency windows similar to proven Telegram fitness funnels</Action>
+      <Goal>Maintain strong conversion while preserving trust and medical-safe communication boundaries</Goal>
+      <Preconditions>User is eligible for campaign segment and has no active medical suppression state</Preconditions>
+      <AcceptanceCriteria>Flow follows deterministic script (entry, social proof, value reminder, urgency, last-call) with measurable conversion per step</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-006</RelatedFlows>
+    </UC-013>
+    <UC-014>
+      <Actor>Patient</Actor>
+      <Action>Uses Mini App and bot interfaces styled in medical minimal iOS glass design language</Action>
+      <Goal>Receive calm, premium, and readable UX that reduces anxiety and friction</Goal>
+      <Preconditions>Client supports modern CSS features for blur/transparency with accessible fallbacks</Preconditions>
+      <AcceptanceCriteria>Primary user journeys are fully usable with glass surfaces, clear contrast, tactile hierarchy, and no noisy visual overload</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-001, DF-002, DF-004</RelatedFlows>
+    </UC-014>
+    <UC-015>
+      <Actor>System</Actor>
+      <Action>Resolves localized content and interface language across TMA, Bot, and Backend for ru/en/xx</Action>
+      <Goal>Deliver consistent multilingual UX and localized medical content</Goal>
+      <Preconditions>Supported locale list and fallback order are configured</Preconditions>
+      <AcceptanceCriteria>API returns localized exercises/questions by Accept-Language or user preference, and TMA/Bot strings match resolved locale</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-001, DF-004, DF-005, DF-007</RelatedFlows>
+    </UC-015>
+    <UC-016>
+      <Actor>Patient</Actor>
+      <Action>Triggers Panic Button from exercise screen</Action>
+      <Goal>Instantly escalate to operator for urgent support path</Goal>
+      <Preconditions>User is in active exercise context and session is authenticated</Preconditions>
+      <AcceptanceCriteria>Panic action creates immediate UC-005 escalation event, notifies operator channel/CRM queue, and locks high-risk flows pending review</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-003, DF-008</RelatedFlows>
+    </UC-016>
+    <UC-017>
+      <Actor>System</Actor>
+      <Action>Wraps MoveCoins mutations in transaction with actionId-based idempotency key</Action>
+      <Goal>Prevent double accrual/debit and maintain ledger integrity</Goal>
+      <Preconditions>actionId is present for each reward/spend request</Preconditions>
+      <AcceptanceCriteria>Duplicate actionId requests are no-op safe, balance invariants remain valid, and transaction logs are auditable</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-002</RelatedFlows>
+    </UC-017>
+  </UseCases>
+
+  <ExperienceGuidelines>
+    <guideline-1>Visual language is calm medical minimalism: restrained palette, spacious layout, reduced cognitive load.</guideline-1>
+    <guideline-2>Glass surfaces use subtle blur and translucency inspired by iOS glass, but preserve readability and accessibility.</guideline-2>
+    <guideline-3>Urgency blocks in conversion funnels must remain ethical: no deceptive countdown resets or contradictory deadlines.</guideline-3>
+    <guideline-4>All critical actions (start training, renew, contact support, escalate) remain one-tap and visually prominent.</guideline-4>
+    <guideline-5>Red-flag and medical-safe messages always override sales or promo visuals in hierarchy and timing.</guideline-5>
+  </ExperienceGuidelines>
+
+  <NonGoals>
+    <item-1>No native iOS/Android app in v1; Telegram surfaces are primary channels.</item-1>
+    <item-2>No direct diagnostic advice generation by LLM without clinical guardrails and curated answers.</item-2>
+    <item-3>No multi-region active-active deployment in first release.</item-3>
+    <item-4>No replacement of licensed medical consultation by automated bot recommendations.</item-4>
+  </NonGoals>
+
+  <Constraints>
+    <constraint-1>Server-side safety checks are mandatory for red-flag outcomes; client-only checks are insufficient.</constraint-1>
+    <constraint-2>Medical and personal data must be protected via strict RBAC and data-minimizing logs.</constraint-2>
+    <constraint-3>All MoveCoins mutations must be transactional, auditable, and idempotent.</constraint-3>
+    <constraint-4>Subscription access rules are enforced on every protected API call and TMA entry.</constraint-4>
+    <constraint-5>Media access uses signed URLs with expiration; no unrestricted public links for protected assets.</constraint-5>
+    <constraint-6>Telegram API and webhook reliability must include queueing, retries, and backoff.</constraint-6>
+    <constraint-7>Campaign countdown and urgency messages must be generated from server time to avoid inconsistent or misleading deadlines.</constraint-7>
+    <constraint-8>Notification cadence must enforce anti-spam limits per user and per campaign stage.</constraint-8>
+    <constraint-9>Users with active red-flag status are excluded from urgency and conversion campaign steps until medical unlock.</constraint-9>
+    <constraint-10>Campaign state transitions must be idempotent and monotonic per enrollment timeline.</constraint-10>
+    <constraint-11>Design system must implement iOS-glass-inspired components with accessibility-safe contrast and fallback styles for low-support devices.</constraint-11>
+    <constraint-12>Campaign urgency text must use one canonical server deadline source and cannot silently restart expired countdowns.</constraint-12>
+    <constraint-13>Localization fallback order is strict: explicit user preference, Accept-Language match, default locale.</constraint-13>
+    <constraint-14>Campaign sends and conversion steps are blocked when medicalStatus indicates red-flag suppression state.</constraint-14>
+    <constraint-15>Panic Button must be one-tap reachable in exercise UI and never hidden behind secondary navigation.</constraint-15>
+    <constraint-16>Every MoveCoins mutation requires actionId and executes in a Prisma transaction boundary.</constraint-16>
+  </Constraints>
+
+  <Risks>
+    <risk-1>False negatives in red-flag detection can expose users to unsafe exercise recommendations.</risk-1>
+    <risk-2>Duplicate event processing may produce incorrect MoveCoins balances without strong idempotency keys.</risk-2>
+    <risk-3>CRM over-permissioning can leak sensitive history if role policy is weak.</risk-3>
+    <risk-4>Notification spikes can exceed Telegram throughput limits and degrade delivery quality.</risk-4>
+    <risk-5>Subscription state drift between payment callbacks and access checks can lock out active users.</risk-5>
+    <risk-6>Aggressive campaign cadence can increase churn, complaints, or Telegram abuse reports.</risk-6>
+    <risk-7>Countdown/promo mismatch between bot copy and backend state can reduce trust and legal compliance.</risk-7>
+    <risk-8>Invalid campaign step transitions may create loops, duplicate sends, or broken attribution.</risk-8>
+    <risk-9>Missing red-flag suppression in conversion flows can create clinical and reputational incidents.</risk-9>
+    <risk-10>Overuse of glass effects may reduce readability or performance on low-end devices if fallback policy is weak.</risk-10>
+    <risk-11>Aggressive conversion copy can conflict with clinical tone and reduce long-term trust.</risk-11>
+    <risk-12>Locale mismatch between bot, TMA, and API can produce mixed-language user journeys.</risk-12>
+    <risk-13>Missing suppression check in campaign path can send notifications to medically blocked users.</risk-13>
+    <risk-14>Absent idempotency enforcement in MoveCoins flow can cause balance drift under retries.</risk-14>
+  </Risks>
+
+  <OpenQuestions>
+    <question-1>Which payment providers and webhook contracts are used for subscription lifecycle events?</question-1>
+    <question-2>What SLA and escalation routing should apply for red-flag cases by severity level?</question-2>
+    <question-3>What retention window applies to diagnostic records and media under compliance policy?</question-3>
+    <question-4>Should AI concierge responses be fully canned from approved FAQ or allow constrained generation with moderation?</question-4>
+    <question-5>What legal and policy constraints apply to urgency offers, discounts, and campaign copy in target jurisdictions?</question-5>
+    <question-6>What maximum daily campaign-contact limit is acceptable before user fatigue increases materially?</question-6>
+    <question-7>What criteria unlock a red-flag user back into eligible campaign segments?</question-7>
+    <question-8>What attribution model is canonical for conversion (first-touch, last-touch, or weighted multi-touch)?</question-8>
+  </OpenQuestions>
+</RequirementsAnalysis>

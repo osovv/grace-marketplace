@@ -1,0 +1,179 @@
+<VerificationPlan VERSION="0.2.0">
+  <Policy>
+    <principle-1>Verification is contract-driven: each module has explicit checks mapped by verification-ref.</principle-1>
+    <principle-2>Medical safety and access policies are validated server-side before UI assumptions.</principle-2>
+    <principle-3>Critical reward/payment operations require idempotency and audit evidence.</principle-3>
+    <principle-4>Each critical data flow emits stable markers with request and actor correlation.</principle-4>
+  </Policy>
+
+  <CriticalFlows>
+    <flow id="DF-001">
+      <name>OnboardingFlow</name>
+      <must-pass>Bot deep link opens TMA, diagnostic submission persists, +20 MC applied exactly once.</must-pass>
+      <must-fail>Replay diagnostic completion event does not duplicate onboarding reward.</must-fail>
+      <required-markers>[API_GATEWAY][requestId];[DOMAIN_DIAGNOSTICS][userId];[MOVECOINS][txId]</required-markers>
+    </flow>
+    <flow id="DF-002">
+      <name>EconomyFlow</name>
+      <must-pass>Exercise completion creates accrual transaction and updates balance.</must-pass>
+      <must-fail>Debit that exceeds balance is rejected and logged.</must-fail>
+      <required-markers>[MOVECOINS][txId];[AUDIT_LEDGER][userId]</required-markers>
+    </flow>
+    <flow id="DF-003">
+      <name>MedicalSafetyFlow</name>
+      <must-pass>redFlag=true creates escalation and locks heavy exercises.</must-pass>
+      <must-fail>Attempt to bypass lock from client is denied by API policy.</must-fail>
+      <required-markers>[SAFETY_RED_FLAG_GUARD][userId];[CRM_ESCALATION][ticketId]</required-markers>
+    </flow>
+    <flow id="DF-004">
+      <name>SubscriptionGateFlow</name>
+      <must-pass>Active users retain heavy-level access.</must-pass>
+      <must-fail>Expired users are blocked from heavy level and receive renewal signal.</must-fail>
+      <required-markers>[SUBSCRIPTION_GATE][userId][status]</required-markers>
+    </flow>
+    <flow id="DF-005">
+      <name>CRMContentFlow</name>
+      <must-pass>Operator upload creates signed media path and content becomes available.</must-pass>
+      <must-fail>Unauthenticated or unauthorized upload attempts are denied.</must-fail>
+      <required-markers>[STORAGE_MEDIA][assetId];[CRM_CONTENT_MANAGER][operatorId]</required-markers>
+    </flow>
+    <flow id="DF-006">
+      <name>ConversionCampaignFlow</name>
+      <must-pass>Segmented campaign steps are sent in valid finite-step order with server-timed deadline copy and canonical script sequence.</must-pass>
+      <must-fail>Out-of-window steps, invalid transitions, over-cadence sends, and medically suppressed recipients are blocked by policy guard.</must-fail>
+      <required-markers>[CAMPAIGN_FUNNEL][campaignId][stepId];[CAMPAIGN_ORCHESTRATOR][enrollmentId][transition];[BOT_NOTIFICATION_ENGINE][jobId]</required-markers>
+    </flow>
+    <flow id="DF-007">
+      <name>LocalizationResolutionFlow</name>
+      <must-pass>Locale is resolved in deterministic order and returned content is language-consistent across UI and API payloads.</must-pass>
+      <must-fail>Unsupported locale values gracefully fallback without mixed-language payload fragments.</must-fail>
+      <required-markers>[I18N_RESOLUTION][userId][locale];[API_GATEWAY][requestId]</required-markers>
+    </flow>
+    <flow id="DF-008">
+      <name>PanicEscalationFlow</name>
+      <must-pass>Panic action triggers immediate escalation event and operator alert.</must-pass>
+      <must-fail>Failure to notify operator or create escalation record is surfaced as critical incident.</must-fail>
+      <required-markers>[PANIC_BUTTON][userId];[SAFETY_RED_FLAG_GUARD][userId];[CRM_ESCALATION][ticketId]</required-markers>
+    </flow>
+  </CriticalFlows>
+
+  <ModuleChecks>
+    <V-M-001 module="M-001">
+      <checks>initData validation, startapp routing, unauthorized bootstrap rejection</checks>
+      <commands>npm run test:tma -- entry.test.ts</commands>
+    </V-M-001>
+    <V-M-002 module="M-002">
+      <checks>question progression, payload completeness, VAS range validation</checks>
+      <commands>npm run test:tma -- diagnostic-wizard.test.tsx</commands>
+    </V-M-002>
+    <V-M-003 module="M-003">
+      <checks>completion event emission, timer behavior, subtitle metadata handling</checks>
+      <commands>npm run test:tma -- video-engine.test.tsx</commands>
+    </V-M-003>
+    <V-M-004 module="M-004">
+      <checks>chart rendering from API payload, empty-state handling, glass-surface readability and contrast fallback, UiContract token compliance on dashboard surfaces</checks>
+      <commands>npm run test:tma -- progress-dashboard.test.tsx</commands>
+    </V-M-004>
+    <V-M-005 module="M-005">
+      <checks>update dispatch and command routing coverage</checks>
+      <commands>npm run test:bot -- entry.test.ts</commands>
+    </V-M-005>
+    <V-M-006 module="M-006">
+      <checks>trigger scheduling, retry/backoff, duplicate message guard, campaign cadence cap, countdown consistency</checks>
+      <commands>npm run test:bot -- notification-engine.test.ts</commands>
+    </V-M-006>
+    <V-M-007 module="M-007">
+      <checks>inline fm parser and card rendering contract</checks>
+      <commands>npm run test:bot -- inline-cards.test.ts</commands>
+    </V-M-007>
+    <V-M-008 module="M-008">
+      <checks>safe-answer constraints, fallback behavior, forbidden-medical-advice filter</checks>
+      <commands>npm run test:bot -- ai-concierge.test.ts</commands>
+    </V-M-008>
+    <V-M-009 module="M-009">
+      <checks>route auth, schema validation, rate-limit behavior</checks>
+      <commands>npm run test:api -- api-gateway.test.ts</commands>
+    </V-M-009>
+    <V-M-010 module="M-010">
+      <checks>user profile lifecycle and mobility index update semantics</checks>
+      <commands>npm run test:api -- domain-users.test.ts</commands>
+    </V-M-010>
+    <V-M-011 module="M-011">
+      <checks>diagnostic persistence, red-flag derivation, history retrieval</checks>
+      <commands>npm run test:api -- domain-diagnostics.test.ts</commands>
+    </V-M-011>
+    <V-M-012 module="M-012">
+      <checks>difficulty filtering by subscription and safety lock conditions</checks>
+      <commands>npm run test:api -- domain-exercises.test.ts</commands>
+    </V-M-012>
+    <V-M-013 module="M-013">
+      <checks>balance non-negativity, idempotent accrual/debit by actionId, Prisma transaction atomicity, audit write</checks>
+      <commands>npm run test:api -- domain-movecoins.test.ts</commands>
+    </V-M-013>
+    <V-M-014 module="M-014">
+      <checks>status transitions, entitlement rules, expired gating</checks>
+      <commands>npm run test:api -- domain-subscriptions.test.ts</commands>
+    </V-M-014>
+    <V-M-015 module="M-015">
+      <checks>mandatory lock on red flag, escalation task creation</checks>
+      <commands>npm run test:api -- red-flag-guard.test.ts</commands>
+    </V-M-015>
+    <V-M-016 module="M-016">
+      <checks>repository transaction boundaries and query integrity</checks>
+      <commands>npm run test:api -- data-prisma-repos.test.ts</commands>
+    </V-M-016>
+    <V-M-017 module="M-017">
+      <checks>signed URL TTL and denied access to unsigned paths</checks>
+      <commands>npm run test:api -- storage-media.test.ts</commands>
+    </V-M-017>
+    <V-M-018 module="M-018">
+      <checks>CRM session gating and role enforcement</checks>
+      <commands>npm run test:crm -- crm-entry.test.tsx</commands>
+    </V-M-018>
+    <V-M-019 module="M-019">
+      <checks>TG_ID search accuracy and timeline integrity</checks>
+      <commands>npm run test:crm -- user-management.test.tsx</commands>
+    </V-M-019>
+    <V-M-020 module="M-020">
+      <checks>manual access updates, promo grants, campaign segment rules, reminder cap policy, bonus MC audit events</checks>
+      <commands>npm run test:crm -- subscription-manager.test.tsx</commands>
+    </V-M-020>
+    <V-M-021 module="M-021">
+      <checks>content upload validation, publish behavior without rebuild</checks>
+      <commands>npm run test:crm -- content-manager.test.tsx</commands>
+    </V-M-021>
+    <V-M-022 module="M-022">
+      <checks>analytics metric correctness, date-range filtering, campaign-step conversion attribution, and glass metric tile readability under dark theme</checks>
+      <commands>npm run test:crm -- analytics-dashboard.test.tsx</commands>
+    </V-M-022>
+    <V-M-023 module="M-023">
+      <checks>required marker emission, redaction policy, correlation propagation</checks>
+      <commands>npm run test:shared -- audit.test.ts</commands>
+    </V-M-023>
+    <V-M-024 module="M-024">
+      <checks>finite-step transition validity, canonical script order, idempotent transition key handling, red-flag suppression, attribution event emission, deadline consistency</checks>
+      <commands>npm run test:api -- campaign-orchestrator.test.ts</commands>
+    </V-M-024>
+    <V-M-025 module="M-025">
+      <checks>locale negotiation by user preference and Accept-Language fallback chain, persistence of detected bot locale</checks>
+      <commands>npm run test:api -- i18n-resolution-service.test.ts</commands>
+    </V-M-025>
+    <V-M-026 module="M-026">
+      <checks>one-tap panic visibility, escalation request dispatch, disabled-state handling after submission</checks>
+      <commands>npm run test:tma -- panic-button.test.tsx</commands>
+    </V-M-026>
+    <V-M-027 module="M-027">
+      <checks>suppression guard blocks campaign sends and conversion steps for medicalStatus blocked users</checks>
+      <commands>npm run test:api -- red-flag-suppression-guard.test.ts</commands>
+    </V-M-027>
+  </ModuleChecks>
+
+  <PhaseGates>
+    <gate id="Phase-1">M-009,M-016,M-023 green + smoke auth tests for M-001,M-005,M-018</gate>
+    <gate id="Phase-2">DF-003 and V-M-011/V-M-015 pass before release to pilot users</gate>
+    <gate id="Phase-3">DF-002 and DF-004 pass with negative-balance and expired-access regression tests</gate>
+    <gate id="Phase-4">Bot delivery retry policy, DF-006 campaign sequencing, V-M-024/V-M-027 suppression checks, i18n resolution checks, and AI safety tests pass with no critical violations</gate>
+    <gate id="Phase-5">CRM RBAC, content publication, campaign controls, Panic Button escalation flow, and UiContract accessibility checks pass in staging</gate>
+    <gate id="Phase-6">Performance, security, and observability sign-off completed for production</gate>
+  </PhaseGates>
+</VerificationPlan>

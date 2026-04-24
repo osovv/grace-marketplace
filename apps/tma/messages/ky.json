@@ -1,0 +1,11 @@
+{
+  "common": {
+    "welcome": "FreeMove'го кош келиңиз",
+    "start_diagnosis": "Диагностиканы баштоо",
+    "exercisePlayer": "Көнүгүү ойноткучу",
+    "deadlineLabel": "Акыркы мөөнөт",
+    "panicButton": "Паника баскычы",
+    "panicSending": "Сигнал жөнөтүлүүдө...",
+    "panicDone": "Операторго билдирилди"
+  }
+}
