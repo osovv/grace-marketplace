@@ -97,11 +97,6 @@ export const lintCommand = defineCommand({
       description: "Exit policy: errors, warnings, or never",
       default: "errors",
     },
-    allowMissingDocs: {
-      type: "boolean",
-      description: "Allow repositories that do not yet have full GRACE docs",
-      default: false,
-    },
   },
   async run(context) {
     const format = String(context.args.format ?? "text");
@@ -123,7 +118,6 @@ export const lintCommand = defineCommand({
     }
 
     const result = lintGraceProject(String(context.args.path ?? "."), {
-      allowMissingDocs: Boolean(context.args.allowMissingDocs),
       profile,
     });
 

@@ -34,7 +34,6 @@ export type LintResult = {
 };
 
 export type LintOptions = {
-  allowMissingDocs?: boolean;
   profile?: LintProfile;
 };
 
