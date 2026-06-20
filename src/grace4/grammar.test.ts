@@ -152,4 +152,30 @@ describe("GRACE 4 Artifact Grammar", () => {
 
     expect(allCodes.filter((code) => code === "context.not-applicable-reason-missing")).toHaveLength(2);
   });
+
+  it("warns when superseded change does not reference a replacement C-*", () => {
+    const noReplacement = validateChangeArtifact(
+      parseGraceXmlArtifact(
+        "archive/spec.xml",
+        `<GraceChangeSpec graceVersion="4.0" status="superseded"><C-SUPERSEDED><Summary>Old change.</Summary></C-SUPERSEDED></GraceChangeSpec>`),
+      "archive",
+    );
+    expect(codes(noReplacement)).toContain("change.superseded-missing-replacement");
+
+    const withChildTag = validateChangeArtifact(
+      parseGraceXmlArtifact(
+        "archive/spec.xml",
+        `<GraceChangeSpec graceVersion="4.0" status="superseded"><C-SUPERSEDED><C-REPLACEMENT /><Summary>Old change.</Summary></C-SUPERSEDED></GraceChangeSpec>`),
+      "archive",
+    );
+    expect(codes(withChildTag)).not.toContain("change.superseded-missing-replacement");
+
+    const withReplacementTag = validateChangeArtifact(
+      parseGraceXmlArtifact(
+        "archive/spec.xml",
+        `<GraceChangeSpec graceVersion="4.0" status="superseded"><C-SUPERSEDED><Replacement>C-REPLACEMENT</Replacement><Summary>Old change.</Summary></C-SUPERSEDED></GraceChangeSpec>`),
+      "archive",
+    );
+    expect(codes(withReplacementTag)).not.toContain("change.superseded-missing-replacement");
+  });
 });

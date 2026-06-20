@@ -1,41 +1,39 @@
 # Knowledge Graph Maintenance
 
-The file `docs/knowledge-graph.xml` is the single source of truth for the project's module structure. It maps every module, its public interface, its dependencies, and how modules connect to each other.
+The `.grace/graph/` directory is the single source of truth for the project's module structure. It maps every module, its public interface, its dependencies, and how modules connect to each other. The `index.xml` file lists GD-* document routes and the modules each document owns.
 
 ## Structure
 
 ```xml
-<KnowledgeGraph>
-  <Project NAME="project-name" VERSION="1.0.0">
-    <keywords>keyword1, keyword2, keyword3</keywords>
-    <annotation>Brief project description for LLM domain activation</annotation>
+<GraceGraphIndex graceVersion="4.0">
+  <GraphDocuments>
+    <GD-MAIN>
+      <Path>graph/main.xml</Path>
+      <Owns>
+        <M-CONFIG />
+        <M-DB />
+      </Owns>
+    </GD-MAIN>
+  </GraphDocuments>
+</GraceGraphIndex>
+```
 
-    <M-CONFIG NAME="Config" TYPE="UTILITY" STATUS="implemented">
-      <purpose>Application configuration and environment management</purpose>
-      <path>src/config/index.ts</path>
-      <depends>none</depends>
-      <verification-ref>V-M-CONFIG</verification-ref>
-      <annotations>
-        <fn-loadConfig PURPOSE="Load and validate config from environment" />
-        <type-AppConfig PURPOSE="Configuration type definition" />
-        <export-config PURPOSE="Singleton config instance" />
-      </annotations>
+Each GD-* document contains the actual module and data-flow definitions:
+
+```xml
+<GraceGraphDocument graceVersion="4.0">
+  <GD-MAIN>
+    <M-CONFIG>
+      <Summary>Application configuration and environment management</Summary>
+      <Path>src/config/index.ts</Path>
+      <M-DB />
     </M-CONFIG>
-
-    <M-DB NAME="Database" TYPE="DATA_LAYER">
-      <purpose>Database connection and query layer</purpose>
-      <path>src/db/index.ts</path>
-      <depends>M-CONFIG</depends>
-      <annotations>
-        <fn-connect PURPOSE="Establish database connection" />
-        <fn-query PURPOSE="Execute parameterized query" />
-        <class-DatabasePool PURPOSE="Connection pool manager" />
-      </annotations>
-      <CrossLink from="M-DB" to="M-CONFIG" relation="reads-config" />
+    <M-DB>
+      <Summary>Database connection and query layer</Summary>
+      <Path>src/db/index.ts</Path>
     </M-DB>
-
-  </Project>
-</KnowledgeGraph>
+  </GD-MAIN>
+</GraceGraphDocument>
 ```
 
 ## Module Tag Convention
@@ -77,22 +75,20 @@ Canonical grep-stable naming rules:
 
 Do not mirror every private helper from the source file into `<annotations>`. Private orchestration helpers, local-only utility functions, and implementation-only types stay in the module file header and local contracts.
 
-## CrossLinks
+## Links
 
-CrossLinks are self-closing tags that connect modules:
+Links between modules are expressed as direct child tags:
+
 ```xml
-<CrossLink from="M-SOURCE" to="M-TARGET" relation="description" />
+<M-CONFIG>
+  <Summary>Config management</Summary>
+  <M-DB />   <!-- M-CONFIG links to M-DB -->
+</M-CONFIG>
 ```
-
-Common relations: `reads-config`, `queries-db`, `calls-api`, `renders-component`, `validates-input`.
-
-CrossLinks MUST be bidirectionally consistent — if A depends on B, the CrossLink should exist in A's entry.
 
 ## Verification References
 
-Modules may carry a `<verification-ref>` pointing to the matching `V-M-xxx` entry in `docs/verification-plan.xml`.
-
-The verification reference should be mechanically derivable from the module ID by replacing the leading `M-` with `V-M-`.
+The `.grace/verification/` directory provides matching V-M-* entries. The verification reference is mechanically derivable from the module ID by replacing the leading `M-` with `V-M-`.
 
 This keeps navigation and proof linked:
 - the graph answers where the module lives and what it depends on
@@ -100,9 +96,9 @@ This keeps navigation and proof linked:
 
 ## Maintenance Rules
 
-1. **Always current** — when you add a module, add it to the graph. When you add a dependency, add a CrossLink. Never let the graph drift from reality.
+1. **Always current** — when you add a module, add it to the graph. When you add a dependency, link it. Never let the graph drift from reality.
 2. **Scan on doubt** — if unsure whether the graph is current, run `$grace-refresh` to scan and sync.
-3. **Version tracking** — increment the Project VERSION when the graph changes structurally (new modules, removed modules).
+3. **Version tracking** — increment the graph index when the graph changes structurally (new modules, removed modules).
 4. **Annotations match the public interface** — if a module's public exports change, update its `<annotations>` section.
-5. **Verification refs stay valid** — if a module's verification entry changes ID, update `<verification-ref>`.
-6. **No orphans** — if a module is deleted, remove its graph entry and all CrossLinks referencing it.
+5. **Verification refs stay valid** — if a module's verification entry changes ID, update its graph document.
+6. **No orphans** — if a module is deleted, remove its graph entry and all links referencing it.

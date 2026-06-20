@@ -85,27 +85,32 @@ function listPlanFiles(directory: string): string[] {
   });
 }
 
-function validateAssertions(result: LintResult, root: string, planFiles: string[]) {
-  const paths = resolveGrace4Paths(root);
-  const graph = buildGraphProjection(paths);
-  const verification = buildVerificationProjection(paths, graph);
+function validateAssertions(result: LintResult, planFilesActive: string[], planFilesArchived: string[], graph: GraphProjection, verification: VerificationProjection, root: string) {
   const context = { root, graph, verification };
 
-  for (const planFile of planFiles) {
-    for (const section of ["BaselineAssertions", "TargetAssertions"] as const) {
-      const extraction = extractAssertionsWithIssues(planFile, section);
-      for (const issue of extraction.issues) {
-        addGrace4Issue(result, issue);
-      }
-      for (const assertion of extraction.assertions) {
-        for (const issue of evaluateAssertion(assertion, context)) {
-          addGrace4Issue(result, issue);
-        }
-      }
-    }
+  // Active plans: evaluate both BaselineAssertions and TargetAssertions
+  for (const planFile of planFilesActive) {
+    evaluateSection(result, planFile, "BaselineAssertions", context);
+    evaluateSection(result, planFile, "TargetAssertions", context);
+  }
+
+  // Archived plans: evaluate only TargetAssertions (BaselineAssertions are execution preconditions that may legitimately fail after application)
+  for (const planFile of planFilesArchived) {
+    evaluateSection(result, planFile, "TargetAssertions", context);
   }
 }
 
+function evaluateSection(result: LintResult, planFile: string, section: "BaselineAssertions" | "TargetAssertions", context: { root: string; graph: GraphProjection; verification: VerificationProjection }) {
+  const extraction = extractAssertionsWithIssues(planFile, section);
+  for (const issue of extraction.issues) {
+    addGrace4Issue(result, issue);
+  }
+  for (const assertion of extraction.assertions) {
+    for (const issue of evaluateAssertion(assertion, context)) {
+      addGrace4Issue(result, issue);
+    }
+  }
+}
 /** Lints the current GRACE 4 .grace document state and file-local semantic markup. */
 export function lintGraceProject(projectRoot: string, options: LintOptions = {}): LintResult {
   const root = path.resolve(projectRoot);
@@ -158,10 +163,9 @@ export function lintGraceProject(projectRoot: string, options: LintOptions = {})
     addGrace4Issue(result, issue);
   }
 
-  validateAssertions(result, root, [
-    ...listPlanFiles(paths.changesActiveDir),
-    ...listPlanFiles(paths.changesArchiveDir),
-  ]);
+  const planFilesActive = [...listPlanFiles(paths.changesActiveDir)];
+  const planFilesArchived = [...listPlanFiles(paths.changesArchiveDir)];
+  validateAssertions(result, planFilesActive, planFilesArchived, graph, verification, root);
 
   return finalizeResult(result);
 }

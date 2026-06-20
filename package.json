@@ -36,6 +36,7 @@
     "src/language-registry.ts",
     "src/lint",
     "src/query",
+    "src/verification",
     "README.md",
     "LICENSE"
   ],

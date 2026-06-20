@@ -33,7 +33,7 @@ This repo is mainly about methodology content, skill instructions, and marketpla
 - Keep `plugins/grace/skills/grace/*` synchronized with the canonical `skills/grace/*` copies when published skills change.
 - Keep versions synchronized across `README.md`, `openpackage.yml`, `.claude-plugin/marketplace.json`, and `plugins/grace/.claude-plugin/plugin.json`.
 - Validate repo integrity with `bun run ./scripts/validate-marketplace.ts` after packaging or metadata changes.
-- For CLI changes or when checking the public lint workflow, also use `bun run grace lint --path . --allow-missing-docs`.
+- For CLI changes or when checking the public lint workflow, also use `bun run grace lint --path .`.
 - Do not assume every directory under `skills/grace/` is published; the actual shipped set is declared in `.claude-plugin/marketplace.json`.
 
 ## How To Think About Changes

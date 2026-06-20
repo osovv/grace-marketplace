@@ -325,9 +325,10 @@ function toModuleVerificationRecord(record: VerificationAnchorRecord): ModuleVer
   return {
     id: record.id,
     moduleId: record.moduleId,
+    priority: record.priority,
     testFiles: inferTestFiles(record.commands),
     moduleChecks: record.commands,
-    scenarios: record.scenarios.map((text, index) => ({ tag: `Scenario-${index + 1}`, text })),
+    scenarios: record.scenarios.map((text, index) => ({ tag: "Scenario-" + (index + 1), text })),
     requiredLogMarkers: record.markers,
     requiredTraceAssertions: [],
   };

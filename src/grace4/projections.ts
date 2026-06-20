@@ -27,6 +27,7 @@ export type VerificationAnchorRecord = {
   moduleId: string;
   owner: string;
   file: string;
+  priority?: string;
   commands: string[];
   scenarios: string[];
   markers: string[];
@@ -197,6 +198,7 @@ export function buildVerificationProjection(paths: Grace4ProjectPaths, graph: Gr
         moduleId: moduleIdForVerification(node.tag),
         owner: route.owner,
         file: route.file,
+        priority: collectPriority(node),
         commands: collectTextByTag(node, /command/i),
         scenarios: collectTextByTag(node, /scenario/i),
         markers: collectTextByTag(node, /marker/i),
@@ -339,6 +341,11 @@ function moduleIdForVerification(verificationId: string) {
 
 function isGraphAnchor(anchor: string) {
   return ANCHOR_PATTERNS.module.test(anchor) || ANCHOR_PATTERNS.dataFlow.test(anchor);
+}
+
+function collectPriority(node: GraceXmlNode): string | undefined {
+  const priority = childText(node, "Priority")?.trim();
+  return priority || undefined;
 }
 
 function resolveArtifactPath(graceDir: string, artifactPath: string) {

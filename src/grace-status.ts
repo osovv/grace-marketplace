@@ -7,7 +7,7 @@ import { defineCommand, type CommandDef, runMain } from "citty";
 import { lintGraceProject } from "./lint/core";
 import type { LintIssue } from "./lint/types";
 import { detectGraceProjectKind, formatGrace3MigrationGuidance, resolveGrace4Paths } from "./grace4/project";
-import { buildGraphProjection, buildVerificationProjection } from "./grace4/projections";
+import { collectActiveChangeScopes, detectScopeOverlaps, detectUnsafeConcurrentExecution } from "./grace4/scope";
 import { collectActiveChangeScopes, detectScopeOverlaps, detectUnsafeConcurrentExecution } from "./grace4/scope";
 import { readGraceXmlArtifact } from "./grace4/xml";
 import { collectModuleHealth } from "./query/health";
@@ -98,7 +98,10 @@ function collectChangeBundleStatuses(root: string, location: "active" | "archive
     if (specStatus === "approved" && planStatus === "draft") derivedStates.push("needs-plan-approval");
     if (specStatus === "approved" && planStatus === "approved") derivedStates.push("ready-to-execute");
 
-    const bundleLintIssues = lintIssues.filter((issue) => issue.file.includes(bundlePath) || issue.file.includes(relativeBundlePath));
+    const bundleLintIssues = lintIssues.filter((issue) => {
+      const resolvedIssue = path.resolve(issue.file);
+      return resolvedIssue === path.resolve(bundlePath) || resolvedIssue.startsWith(path.resolve(bundlePath) + path.sep);
+    });
     if (bundleLintIssues.length > 0) derivedStates.push("integrity-issues");
 
     return { changeId, location, specStatus, planStatus, derivedStates: [...new Set(derivedStates)], path: relativeBundlePath } satisfies ChangeBundleStatus;
@@ -157,8 +160,9 @@ export function collectProjectStatus(projectRoot: string, options: { includeModu
   const lint = lintGraceProject(root, { profile: "standard" });
   const integrityErrors = lint.issues.filter((issue) => issue.severity === "error");
   const integrityWarnings = lint.issues.filter((issue) => issue.severity === "warning");
-  const graph = buildGraphProjection(paths);
-  const verification = buildVerificationProjection(paths, graph);
+  // Reuse index-based projections to avoid redundant graph/verification rebuilds
+  const index = loadGraceArtifactIndex(root);
+  const { graph, verification } = index;
   const activeScopes = collectActiveChangeScopes(paths);
   const overlapIssues = detectScopeOverlaps(activeScopes);
   const unsafeIssues = detectUnsafeConcurrentExecution(activeScopes);

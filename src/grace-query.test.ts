@@ -36,7 +36,7 @@ function writeGrace4Artifacts(root: string) {
   writeProjectFile(
     root,
     ".grace/verification/main.xml",
-    `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-PROVIDER-PERSIST><Command>bun test src/provider/config-repo.test.ts</Command><Scenario>Reads and writes provider config records.</Scenario><Marker>[ProviderConfigPersistence][getProviderConfig][BLOCK_GET_PROVIDER_CONFIG]</Marker></V-M-PROVIDER-PERSIST></VD-MAIN></GraceVerificationDocument>`,
+    `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-PROVIDER-PERSIST><Priority>high</Priority><Command>bun test src/provider/config-repo.test.ts</Command><Scenario>Reads and writes provider config records.</Scenario><Marker>[ProviderConfigPersistence][getProviderConfig][BLOCK_GET_PROVIDER_CONFIG]</Marker></V-M-PROVIDER-PERSIST></VD-MAIN></GraceVerificationDocument>`,
   );
 }
 
@@ -264,6 +264,27 @@ describe("grace query core", () => {
     expect(verificationFindResult.exitCode).toBe(0);
     const verificationFindJson = JSON.parse(Buffer.from(verificationFindResult.stdout).toString("utf8"));
     expect(verificationFindJson[0].verification.id).toBe("V-M-PROVIDER-PERSIST");
+
+    const priorityFindResult = Bun.spawnSync({
+      cmd: [process.execPath, "run", "./src/grace.ts", "verification", "find", "--priority", "high", "--path", root, "--json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(priorityFindResult.exitCode).toBe(0);
+    const priorityFindJson = JSON.parse(Buffer.from(priorityFindResult.stdout).toString("utf8"));
+    expect(priorityFindJson.length).toBeGreaterThan(0);
+    expect(priorityFindJson[0].verification.id).toBe("V-M-PROVIDER-PERSIST");
+
+    const priorityMismatchResult = Bun.spawnSync({
+      cmd: [process.execPath, "run", "./src/grace.ts", "verification", "find", "--priority", "low", "--path", root, "--json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(priorityMismatchResult.exitCode).toBe(0);
+    const priorityMismatchJson = JSON.parse(Buffer.from(priorityMismatchResult.stdout).toString("utf8"));
+    expect(priorityMismatchJson).toHaveLength(0);
 
     const verificationResult = Bun.spawnSync({
       cmd: [process.execPath, "run", "./src/grace.ts", "verification", "show", "V-M-PROVIDER-PERSIST", "--path", root],

@@ -4,7 +4,7 @@ In GRACE, verification is not an afterthought. It is a maintained architectural 
 
 ## Core Idea
 
-`docs/verification-plan.xml` answers the question:
+`.grace/verification/` answers the question:
 
 "How will another agent prove that this module or flow is still correct?"
 
@@ -14,16 +14,17 @@ That proof has three layers:
 2. trace or log assertions for execution trajectory
 3. phase-level or integration checks for merged surfaces
 
-For long autonomous runs, verification is also an autonomy gate. It must prove that another agent can continue or debug from the visible evidence instead of from hidden reasoning.
+For longer autonomous runs, verification is also an autonomy gate. It must prove that another agent can continue or debug from the visible evidence instead of from hidden reasoning.
 
 ## Verification Plan Structure
 
-Typical sections:
+The `.grace/verification/` directory holds one or more VD-* verification documents. Each VD-* document wraps V-M-* entries. The `index.xml` maps VD-* routes to their document paths.
 
-- `GlobalPolicy` - project-wide log format, redaction rules, and verification levels
-- `CriticalFlows` - the high-risk product paths that must remain observable
-- `ModuleVerification` - one `V-M-xxx` entry per important module
-- `PhaseGates` - broader checks required before calling a phase done
+Each V-M-* entry contains:
+
+- `<Command>` - module-local verification command
+- `<Scenario>` - named success or failure behavior
+- `<Marker>` - required log markers for trace assertions
 
 ## Module Verification Entry
 
@@ -82,7 +83,7 @@ logger.info("[ChatDomain][createChat][BLOCK_INSERT_CHAT] Chat created", {
 - **Wave level**: checks for only the merged surfaces touched in the wave
 - **Phase level**: broader regression and integrity gates
 
-Execution packets in `grace-execute` and `grace-multiagent-execute` should reuse these levels instead of inventing new checks ad hoc.
+Execution packets in `grace-execute` should reuse these levels instead of inventing new checks ad hoc.
 
 ## Autonomy Gate
 
@@ -93,7 +94,7 @@ Before sending a module to a longer autonomous run, check:
 3. success and failure scenarios are named
 4. required log markers or trace assertions make divergence observable
 5. wave-level or phase-level follow-up is named when module-local checks are not enough
-6. operational packets or checkpoint reports capture assumptions, stop conditions, and next action
+6. the GraceChangePlan scope defines DurableScope and ObservedWriteScope
 
 ## Failure Packets
 

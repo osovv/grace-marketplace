@@ -180,6 +180,23 @@ export function validateChangeArtifact(
     );
   }
 
+  if (status === "superseded" && wrappers.length === 1) {
+    const wrapper = wrappers[0];
+    const hasReplacement = wrapper.children.some(
+      (child) => ANCHOR_PATTERNS.change.test(child.tag) || child.tag === "Replacement" || child.tag === "ReplacementChange",
+    );
+    if (!hasReplacement) {
+      result.issues.push(
+        issue(
+          "warning",
+          "change.superseded-missing-replacement",
+          artifact.file,
+          "Superseded " + root.tag + " should reference a replacement C-* as a child tag or via <Replacement>/<ReplacementChange> text.",
+        ),
+      );
+    }
+  }
+
   return result;
 }
 

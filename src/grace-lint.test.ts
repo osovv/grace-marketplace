@@ -134,4 +134,30 @@ describe("lintGraceProject", () => {
     expect(parsed.tool).toBe("grace-lint");
     expect(parsed.summary.errors).toBe(0);
   });
+  it("does not evaluate BaselineAssertions for archived plans", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    // Only create archived plan with BaselineAssertions
+    writeProjectFile(
+      root,
+      ".grace/changes/archive/C-DONE/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="applied"><C-DONE><BaselineAssertions><MustExist><Value>M-EXAMPLE</Value></MustExist></BaselineAssertions></C-DONE></GraceChangePlan>`,
+    );
+    expect(lintGraceProject(root).issues.filter((issue) => issue.code === "assertion.MustExist")).toHaveLength(0);
+
+    // Remove M-EXAMPLE from graph so the archived baseline would fail if evaluated
+    writeProjectFile(
+      root,
+      ".grace/graph/index.xml",
+      `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns /></GD-MAIN></GraphDocuments></GraceGraphIndex>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/graph/main.xml",
+      `<GraceGraphDocument graceVersion="4.0"><GD-MAIN /></GraceGraphDocument>`,
+    );
+
+    const after = lintGraceProject(root);
+    expect(after.issues.filter((issue) => issue.code === "assertion.MustExist")).toHaveLength(0);
+  });
 });

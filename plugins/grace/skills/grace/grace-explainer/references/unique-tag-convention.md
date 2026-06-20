@@ -1,6 +1,6 @@
 # Unique Tag Convention
 
-In `docs/*.xml` files, every **repeated entity** must use its **unique ID as the XML tag name** instead of a generic type tag with an `ID` attribute.
+In `.grace/*.xml` files, every **repeated entity** must use its **unique ID as the XML tag name** instead of a generic type tag with an `ID` attribute.
 
 ## The Problem: Closing-Tag Polysemy
 
