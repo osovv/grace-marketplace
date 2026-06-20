@@ -22,6 +22,28 @@ const changelogPath = path.join(repoRoot, "CHANGELOG.md");
 const componentFields = ["skills", "agents", "commands"] as const;
 const pluginComponentFields = ["commands", "agents", "hooks", "mcpServers", "lspServers", "outputStyles"] as const;
 
+/** Required published GRACE 4 skill directory names. */
+const REQUIRED_GRACE4_SKILLS = new Set([
+  "grace-init",
+  "grace-spec",
+  "grace-plan",
+  "grace-execute",
+  "grace-refactor",
+  "grace-setup-subagents",
+  "grace-fix",
+  "grace-refresh",
+  "grace-status",
+  "grace-ask",
+  "grace-cli",
+  "grace-explainer",
+  "grace-verification",
+  "grace-reviewer",
+  "grace-migrate",
+]);
+
+/** Skill names that must not be published in the GRACE 4 marketplace manifest. */
+const FORBIDDEN_GRACE4_SKILLS = new Set(["grace-multiagent-execute"]);
+
 function readJson(filePath: string): JsonObject {
   return JSON.parse(readFileSync(filePath, "utf8")) as JsonObject;
 }
@@ -241,6 +263,48 @@ function validatePackagedMirror(
   }
 }
 
+function skillNamesFromEntry(entry: JsonObject): Set<string> {
+  const skills = Array.isArray(entry.skills) ? entry.skills : [];
+  return new Set(
+    skills
+      .filter((skill): skill is string => typeof skill === "string")
+      .map((skill) => path.basename(skill.replace(/\/+$/, "")))
+      .filter(Boolean),
+  );
+}
+
+/** Validates that the marketplace skills array matches the GRACE 4 release surface. */
+function validateGrace4SkillSurface(entry: JsonObject, errors: string[]): void {
+  if (String(entry.name ?? "") !== "grace") {
+    return;
+  }
+
+  const publishedSkills = skillNamesFromEntry(entry);
+  for (const requiredSkill of REQUIRED_GRACE4_SKILLS) {
+    if (!publishedSkills.has(requiredSkill)) {
+      errors.push(`grace: missing required GRACE 4 skill in marketplace skills array (${requiredSkill})`);
+    }
+  }
+
+  for (const forbiddenSkill of FORBIDDEN_GRACE4_SKILLS) {
+    if (publishedSkills.has(forbiddenSkill)) {
+      errors.push(`grace: forbidden GRACE 4 skill is still published (${forbiddenSkill})`);
+    }
+  }
+}
+
+/** Validates that package.json declares fast-xml-parser as a runtime dependency. */
+function validateGrace4Dependencies(errors: string[]): void {
+  const packageJson = readJson(packagePath);
+  const dependencies = typeof packageJson.dependencies === "object" && packageJson.dependencies
+    ? packageJson.dependencies as JsonObject
+    : {};
+
+  if (typeof dependencies["fast-xml-parser"] !== "string") {
+    errors.push("package.json: missing runtime dependency fast-xml-parser required by GRACE 4 XML parsing");
+  }
+}
+
 function validate(): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -273,6 +337,8 @@ function validate(): ValidationResult {
     errors.push("package.json: missing version");
   }
 
+  validateGrace4Dependencies(errors);
+
   const rootManifestFiles = readdirSync(marketplaceDir);
   const extraRootManifestFiles = rootManifestFiles.filter((fileName) => fileName !== "marketplace.json");
   if (extraRootManifestFiles.length > 0) {
@@ -303,6 +369,7 @@ function validate(): ValidationResult {
     const pluginManifestPath = path.join(pluginManifestDir, "plugin.json");
 
     validateRequiredFields(pluginName, "marketplace.json", entry, ["name", "version", "description"], errors);
+    validateGrace4SkillSurface(entry, errors);
 
     if (!isDirectory(sourceDir)) {
       errors.push(`${pluginName}: source directory not found (${path.relative(repoRoot, sourceDir)})`);
