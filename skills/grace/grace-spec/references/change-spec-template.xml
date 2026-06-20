@@ -1,0 +1,25 @@
+<GraceChangeSpec graceVersion="4.0" status="draft">
+  <C-CHANGE-ID>
+    <Summary>$SUMMARY</Summary>
+    <Problem>$PROBLEM</Problem>
+    <Goals>
+      <Goal>$GOAL</Goal>
+    </Goals>
+    <NonGoals>
+      <NonGoal>$NON_GOAL</NonGoal>
+    </NonGoals>
+    <AcceptanceCriteria>
+      <Criterion>$ACCEPTANCE_CRITERION</Criterion>
+    </AcceptanceCriteria>
+    <AffectedAreas>
+      <M-AFFECTED-MODULE />
+    </AffectedAreas>
+    <VerificationIntent>
+      <ExpectedCommand>$EXPECTED_COMMAND</ExpectedCommand>
+      <ExpectedEvidence>$EXPECTED_EVIDENCE</ExpectedEvidence>
+    </VerificationIntent>
+    <Assumptions>
+      <Assumption>$ASSUMPTION</Assumption>
+    </Assumptions>
+  </C-CHANGE-ID>
+</GraceChangeSpec>

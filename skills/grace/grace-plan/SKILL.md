@@ -1,127 +1,45 @@
 ---
 name: grace-plan
-description: "Run the GRACE architectural planning phase. Use when you have requirements and technology decisions defined and need to design the module architecture, create contracts, map data flows, and establish verification references. Produces development-plan.xml, verification-plan.xml, and knowledge-graph.xml."
+description: Read an approved GRACE 4 GraceChangeSpec and optional design context, then create a GraceChangePlan with assertions, scopes, tasks, and verification gates.
 ---
 
-Run the GRACE architectural planning phase.
+<skill>
+<purpose>
+Convert one approved active `GraceChangeSpec` into a `GraceChangePlan`. The plan is the executable contract for `grace-execute`; this skill does not implement source code.
+</purpose>
 
-## Prerequisites
-- `docs/requirements.xml` must exist and have at least one UseCase
-- `docs/technology.xml` must exist with stack decisions
-- `docs/verification-plan.xml` should exist as the shared verification artifact template
-- If requirements or technology are missing, tell the user to run `$grace-init` first
-- If the verification plan template is missing, recreate it before finalizing the planning artifacts
+<inputs>
+- Required: `.grace/changes/active/C-CHANGE-ID/spec.xml`
+- Optional: `.grace/changes/active/C-CHANGE-ID/design-context.xml`
+- Context: `.grace/context/*.xml`, `.grace/graph/index.xml`, `.grace/verification/index.xml`, and routed current-state documents.
+</inputs>
 
-## Architectural Principles
+<preflight>
+- Refuse missing specs.
+- Refuse specs whose root is not `GraceChangeSpec`, lacks exactly one direct `C-*` wrapper, or has status other than `approved`.
+- Refuse `draft`, `rejected`, `cancelled`, `applied`, or `superseded` specs.
+- Treat `spec.xml` as normative. Read `design-context.xml` only as explanatory context; if it conflicts with the spec, the spec wins.
+</preflight>
 
-When designing the architecture, apply these principles:
+<must_do>
+Produce `plan.xml` from `references/change-plan-template.xml` with:
 
-### Contract-First Design
-Every module gets a MODULE_CONTRACT before any code is written:
-- PURPOSE: one sentence, what it does
-- SCOPE: what operations are included
-- DEPENDS: list of module dependencies
-- LINKS: knowledge graph node references
+- `GraceChangePlan graceVersion="4.0" status="draft"` unless the user explicitly approves the final plan in the same session.
+- the same `C-*` wrapper as the spec.
+- `IntentSummary` mapping spec goals to implementation outcomes.
+- `BaselineAssertions` for current-state assumptions.
+- `TargetAssertions` for required end state.
+- `DurableScope` covering graph anchors, verification anchors, context artifacts, and graph/verification documents expected to change.
+- `ObservedWriteScope` covering files and globs expected to be edited.
+- `ImplementationPlan` with `T-*` tasks, dependencies, per-task acceptance criteria, and verification commands.
+- explicit overlap or stale-state warnings surfaced to the user without silently mutating approved artifacts.
+</must_do>
 
-### Module Taxonomy
-Classify each module as one of:
-- **ENTRY_POINT** — where execution begins (CLI, HTTP handler, event listener)
-- **CORE_LOGIC** — business rules and domain logic
-- **DATA_LAYER** — persistence, queries, caching
-- **UI_COMPONENT** — user interface elements
-- **UTILITY** — shared helpers, configuration, logging
-- **INTEGRATION** — external service adapters
-
-### Semantic Anchoring
-Favor semantically rich module, function, flow, and block names.
-
-- prefer names that carry domain meaning over abstract IDs or arbitrary placeholders
-- make PURPOSE and SCOPE fields concrete enough that a worker can infer intent without guessing
-- when a rule is subtle, include one or two compact examples in notes or verification scenarios instead of relying on a vague prose rule
-
-### Reliability-First Stack Selection
-Use `docs/technology.xml` to define an approved implementation stack for agents.
-
-- name the preferred runtime libraries, test tools, logging stack, and framework surfaces explicitly
-- note discouraged or non-default libraries when they would weaken autonomous reliability
-- plan around tools and abstractions that the team is actually willing to verify and maintain
-
-### Knowledge Graph Design
-Structure `docs/knowledge-graph.xml` for maximum navigability:
-- Each module gets a unique ID tag: `M-xxx NAME="..." TYPE="..."`
-- Functions annotated as `fn-name`, types as `type-Name`
-- CrossLinks connect dependent modules bidirectionally
-- Annotations describe only the module's public interface
-- Do not push private helpers or implementation-only types into shared XML artifacts
-
-### Verification-Aware Planning
-Planning is incomplete if modules cannot be verified.
-
-For every significant module, define during planning:
-- a `verification-ref` like `V-M-xxx`
-- likely source and test file targets
-- critical scenarios that must be checked
-- the log or trace anchors needed to debug failures later
-- which checks stay module-local versus wave-level or phase-level
-
-## Process
-
-### Phase 1: Analyze Requirements
-Read `docs/requirements.xml`. For each UseCase, identify:
-- What modules/components are needed
-- What data flows between them
-- What external services or APIs are involved
-
-### Phase 2: Design Module Architecture
-Propose a module breakdown. For each module, define:
-- Purpose (one sentence)
-- Type: ENTRY_POINT / CORE_LOGIC / DATA_LAYER / UI_COMPONENT / UTILITY / INTEGRATION
-- Dependencies on other modules
-- Key public interfaces (what the module exposes to other modules or callers)
-- Tentative source path, test path, and `verification-ref`
-- Semantic anchors the worker should reuse: module naming, function naming, and critical block names
-
-Present this to the user as a structured list and **wait for approval** before proceeding.
-
-### Phase 3: Design Verification Surfaces
-Before finalizing the plan, derive the first verification draft:
-- map critical UseCases to `DF-xxx` data flows
-- assign `V-M-xxx` verification entries for important modules
-- list the most important success and failure scenarios
-- identify required log markers or trace evidence for critical branches
-- note module-local checks plus any wave-level or phase-level follow-up
-- define stop conditions or replan triggers for the highest-risk modules so execution can halt cleanly instead of drifting
-
-Present this verification draft to the user as part of the same approval checkpoint. If the verification story is weak, revise the architecture before proceeding.
-
-### Phase 4: Mental Walkthroughs
-Run "mental tests" for 2-3 key user scenarios step by step:
-- Which modules are involved?
-- What data flows through them?
-- Where could it break?
-- Which logs or trace markers would prove the path was correct?
-- Are there circular dependencies?
-
-Present the walkthrough to the user. If issues are found — revise the architecture.
-
-### Phase 5: Generate Artifacts
-After user approval:
-
-1. Update `docs/development-plan.xml` with the full module breakdown, public module contracts, target paths, observability notes, data flows, and implementation order. Use unique ID-based tags: `M-xxx` for modules, `Phase-N` for phases, `DF-xxx` for flows, `step-N` for steps, and `V-M-xxx` references for verification.
-2. Update `docs/verification-plan.xml` with global verification policy, critical flows, module verification stubs, autonomy-gate evidence, and phase gates.
-3. Update `docs/knowledge-graph.xml` with all modules (as `M-xxx` tags), their public-interface annotations (as `fn-name`, `type-Name`, etc.), `verification-ref` links, and CrossLinks between them.
-4. Ensure `docs/technology.xml` explicitly names the preferred stack and observability surfaces the worker should stay inside.
-5. Print: "Architecture approved. Run `$grace-verification` to deepen tests and trace expectations, `grace lint --profile autonomous` to check execution readiness, `$grace-execute` for sequential execution, or `$grace-multiagent-execute` for parallel-safe waves."
-
-## Important
-- Do NOT generate any code during this phase
-- This phase produces ONLY planning documents and verification artifacts
-- Every architectural decision must be explicitly approved by the user
-
-## Output Format
-Always produce:
-1. Module breakdown table (ID, name, type, purpose, dependencies, target paths, verification ref)
-2. Data flow diagrams (textual)
-3. Verification surface overview (critical flows, module-local checks, log or trace anchors, stop conditions)
-4. Implementation order (phased, with dependency justification)
-5. Risk assessment (what could go wrong, and what should stop or replan execution)
+<hard_rules>
+- Do not implement code.
+- Do not silently approve a plan; approval requires explicit user confirmation.
+- Do not edit current graph or verification artifacts unless the plan itself is the requested artifact change.
+- Semantic anchors are XML tags, never attributes.
+- After writing the plan, recommend `grace lint --path <project-root>` and `grace status --path <project-root>`.
+</hard_rules>
+</skill>

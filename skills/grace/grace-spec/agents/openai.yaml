@@ -1,0 +1,4 @@
+interface:
+  display_name: "GRACE Spec"
+  short_description: "GRACE 4 change specification"
+  brand_color: "#7A5AF8"

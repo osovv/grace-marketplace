@@ -1,0 +1,14 @@
+<DesignContext graceVersion="4.0">
+  <Change>C-CHANGE-ID</Change>
+  <NormativeStatus>non-normative</NormativeStatus>
+  <Rationale>$RATIONALE</Rationale>
+  <Alternatives>
+    <Alternative>$ALTERNATIVE</Alternative>
+  </Alternatives>
+  <DeferredDecisions>
+    <Decision>$DEFERRED_DECISION</Decision>
+  </DeferredDecisions>
+  <Scenarios>
+    <Scenario>$SCENARIO</Scenario>
+  </Scenarios>
+</DesignContext>
