@@ -1,0 +1,1235 @@
+<plan>
+  <spec>.vvoc/specs/grace4-artifact-model/spec.xml</spec>
+  <design-context>.vvoc/specs/grace4-artifact-model/design-context.xml</design-context>
+  <created>2026-06-20</created>
+  <status>approved</status>
+
+  <meta>
+    <summary>Implement the approved GRACE 4 core/release contract across the Bun CLI, Artifact Grammar validation layer, query/status/navigation commands, canonical skills, packaged mirrors, marketplace metadata, README, release metadata, and tests. The implementation keeps this repository operationally GRACE 3 during product development, but the released GRACE 4 tooling is `.grace` only and has no dual-mode behavior.</summary>
+    <waves>5</waves>
+    <affected_modules>CLI core, GRACE 4 artifact parser, Artifact Grammar, graph projection, verification projection, assertion evaluator, scope detector, lint/status/query commands, canonical skills, packaged mirrors, marketplace manifests, README, release metadata, test fixtures, marketplace validation</affected_modules>
+    <complexity>high</complexity>
+  </meta>
+
+  <architecture>
+    <module>
+      <name>Grace4 Core Types and Project Detection</name>
+      <purpose>Centralize GRACE 4 root tags, semantic anchor patterns, statuses, project layout paths, detection rules, and result types shared by CLI commands and tests.</purpose>
+      <file>
+        <path>src/grace4/types.ts</path>
+        <role>Create shared data model types and constants for GRACE 4 artifacts, projections, assertions, scopes, change bundles, and validation diagnostics.</role>
+      </file>
+      <file>
+        <path>src/grace4/project.ts</path>
+        <role>Create `.grace` project path resolution, project-kind detection, and GRACE 3 guidance helpers without dual-mode validation.</role>
+      </file>
+      <contract>Expose typed constants for standard root tags, semantic anchor regexes, allowed change statuses, active/archive status sets, context artifact names, and canonical `.grace` paths. Expose `detectGraceProjectKind`, `resolveGrace4Paths`, and `formatGrace3MigrationGuidance` for command-layer use.</contract>
+      <depends_on>
+      </depends_on>
+    </module>
+    <module>
+      <name>XML Parser Adapter</name>
+      <purpose>Provide a parser-backed XML tree abstraction using `fast-xml-parser`, replacing regex as structural XML parsing.</purpose>
+      <file>
+        <path>src/grace4/xml.ts</path>
+        <role>Create parser adapter, parsed node model, file parser helpers, text extraction, and tag traversal utilities.</role>
+      </file>
+      <contract>Parse XML with `fast-xml-parser` preserving dynamic tag names, attributes, text nodes, CDATA-safe content boundaries, and enough location metadata for diagnostics where feasible. Return typed parse success or parse diagnostics and never treat raw regex as structural XML.</contract>
+      <depends_on>
+        <module>Grace4 Core Types and Project Detection</module>
+      </depends_on>
+    </module>
+    <module>
+      <name>Artifact Grammar Validator</name>
+      <purpose>Validate current `.grace` document state according to the approved GRACE 4 Artifact Grammar.</purpose>
+      <file>
+        <path>src/grace4/grammar.ts</path>
+        <role>Create root validation, version consistency, metadata attribute rules, semantic-anchor discipline, context artifact rules, change lifecycle location invariants, and project-level validation orchestration.</role>
+      </file>
+      <contract>Expose `validateGrace4Project`, `validateGraceArtifact`, and helper validators. Report structured diagnostics for malformed root tags, missing or unsupported `graceVersion`, forbidden semantic-anchor attributes, invalid statuses, missing required artifacts, invalid active/archive status placement, and GRACE 3 detection guidance.</contract>
+      <depends_on>
+        <module>Grace4 Core Types and Project Detection</module>
+        <module>XML Parser Adapter</module>
+      </depends_on>
+    </module>
+    <module>
+      <name>Graph and Verification Projections</name>
+      <purpose>Build deterministic logical projections from indexed graph and verification artifacts, independent of monolithic or segmented physical storage.</purpose>
+      <file>
+        <path>src/grace4/projections.ts</path>
+        <role>Create graph projection, verification projection, index ownership validation, cross-link validation, and module-to-verification coverage.</role>
+      </file>
+      <contract>Expose `buildGraphProjection` and `buildVerificationProjection`. Validate `GD-*` and `VD-*` ownership, missing routes, duplicate anchors, unlisted anchors, wrapper mismatch, dangling links, and deterministic `M-*` to `V-M-*` correspondence.</contract>
+      <depends_on>
+        <module>Artifact Grammar Validator</module>
+      </depends_on>
+    </module>
+    <module>
+      <name>Assertions and Scope</name>
+      <purpose>Evaluate baseline and target assertions and compute durable and observed write conflicts for active changes.</purpose>
+      <file>
+        <path>src/grace4/assertions.ts</path>
+        <role>Create core assertion vocabulary parser/evaluator for `MustExist`, `MustNotExist`, `MustOwn`, `MustLink`, `MustVerify`, `MustPassCommand`, `MustContain`, and `MustNotContain`.</role>
+      </file>
+      <file>
+        <path>src/grace4/scope.ts</path>
+        <role>Create DurableScope and ObservedWriteScope extraction, overlap detection, active change bundle scanning, and derived conflict states.</role>
+      </file>
+      <contract>Expose pure functions that evaluate assertions against projections and filesystem state, classify assertion failures, scan active changes, surface overlap as warnings, and block only unsafe concurrent execution scenarios.</contract>
+      <depends_on>
+        <module>Graph and Verification Projections</module>
+      </depends_on>
+    </module>
+    <module>
+      <name>GRACE 4 Query and Navigation Layer</name>
+      <purpose>Replace GRACE 3 docs-based query loading with `.grace` projections used by `grace module`, `grace verification`, and `grace file`.</purpose>
+      <file>
+        <path>src/query/types.ts</path>
+        <role>Modify query records for GRACE 4 projections while preserving stable command output concepts where possible.</role>
+      </file>
+      <file>
+        <path>src/query/core.ts</path>
+        <role>Modify artifact index loading to use `.grace` projections instead of GRACE 3 `docs/*.xml` regex extraction.</role>
+      </file>
+      <file>
+        <path>src/query/health.ts</path>
+        <role>Modify module health to use graph and verification projections, not development-plan records.</role>
+      </file>
+      <file>
+        <path>src/query/render.ts</path>
+        <role>Modify text/table renderers for GRACE 4 records and derived status fields.</role>
+      </file>
+      <contract>Expose query helpers that resolve `M-*` through Graph Projection and `V-M-*` through Verification Projection. Do not load or parse GRACE 3 `docs/*.xml` as valid project data.</contract>
+      <depends_on>
+        <module>Graph and Verification Projections</module>
+      </depends_on>
+    </module>
+    <module>
+      <name>GRACE 4 CLI Commands</name>
+      <purpose>Rewrite lint, status, module, verification, and file commands to be `.grace` only and to report GRACE 3 projects as migration candidates.</purpose>
+      <file>
+        <path>src/grace-lint.ts</path>
+        <role>Modify CLI options and command behavior for GRACE 4 validation.</role>
+      </file>
+      <file>
+        <path>src/lint/types.ts</path>
+        <role>Modify lint options/result types for `.grace` validation and remove `allowMissingDocs` compatibility semantics.</role>
+      </file>
+      <file>
+        <path>src/lint/core.ts</path>
+        <role>Modify lint orchestration to call GRACE 4 parser, grammar, projections, assertion, and scope checks.</role>
+      </file>
+      <file>
+        <path>src/grace-status.ts</path>
+        <role>Modify status output for durable health, active/archive change activity, derived overlap/stale/drift states, and migration guidance.</role>
+      </file>
+      <file>
+        <path>src/grace-module.ts</path>
+        <role>Modify module find/show/health command behavior to resolve through `.grace` graph projection.</role>
+      </file>
+      <file>
+        <path>src/grace-verification.ts</path>
+        <role>Modify verification find/show behavior to resolve through `.grace` verification projection.</role>
+      </file>
+      <file>
+        <path>src/grace-file.ts</path>
+        <role>Modify file-local/private context command behavior to stay compatible with file-local markup but not require GRACE 3 docs.</role>
+      </file>
+      <contract>All commands accept `--path` as project root. Commands validate `.grace` presence, return structured JSON/text results, and emit guidance for GRACE 3 projects without validating or converting them.</contract>
+      <depends_on>
+        <module>Artifact Grammar Validator</module>
+        <module>Assertions and Scope</module>
+        <module>GRACE 4 Query and Navigation Layer</module>
+      </depends_on>
+    </module>
+    <module>
+      <name>GRACE 4 Fixtures and Tests</name>
+      <purpose>Replace GRACE 3 test fixtures with deterministic `.grace` fixture coverage for grammar, projection, lifecycle, assertions, scope, recovery, migration guidance, and command behavior.</purpose>
+      <file>
+        <path>src/grace4/xml.test.ts; src/grace4/grammar.test.ts; src/grace4/projections.test.ts; src/grace4/assertions.test.ts; src/grace4/scope.test.ts; src/grace4/test-fixtures.ts</path>
+        <role>Create focused unit tests and fixture builders for GRACE 4 parser, grammar, projections, assertions, and scope.</role>
+      </file>
+      <file>
+        <path>src/grace-lint.test.ts</path>
+        <role>Modify lint tests for `.grace` only behavior.</role>
+      </file>
+      <file>
+        <path>src/grace-status.test.ts</path>
+        <role>Modify status tests for GRACE 4 durable health and operational activity.</role>
+      </file>
+      <file>
+        <path>src/grace-query.test.ts</path>
+        <role>Modify module, verification, and file command tests for projection-based navigation.</role>
+      </file>
+      <contract>Tests must cover all fixture classes named in the approved spec and must fail if CLI silently validates GRACE 3 docs as a GRACE 4 project.</contract>
+      <depends_on>
+        <module>GRACE 4 CLI Commands</module>
+      </depends_on>
+    </module>
+    <module>
+      <name>GRACE 4 Skill Surface</name>
+      <purpose>Rewrite canonical skills to `.grace` only, add `grace-spec` and `grace-migrate`, remove `grace-multiagent-execute`, and update init templates.</purpose>
+      <file>
+        <path>skills/grace/grace-init/SKILL.md; skills/grace/grace-spec/SKILL.md; skills/grace/grace-plan/SKILL.md; skills/grace/grace-execute/SKILL.md; skills/grace/grace-migrate/SKILL.md; skills/grace/grace-refresh/SKILL.md; skills/grace/grace-status/SKILL.md; skills/grace/grace-ask/SKILL.md; skills/grace/grace-fix/SKILL.md; skills/grace/grace-refactor/SKILL.md; skills/grace/grace-verification/SKILL.md; skills/grace/grace-reviewer/SKILL.md; skills/grace/grace-cli/SKILL.md; skills/grace/grace-explainer/SKILL.md; skills/grace/grace-setup-subagents/SKILL.md</path>
+        <role>Modify canonical GRACE skill sources and auxiliary files.</role>
+      </file>
+      <file>
+        <path>plugins/grace/skills/grace/grace-init/SKILL.md; plugins/grace/skills/grace/grace-spec/SKILL.md; plugins/grace/skills/grace/grace-plan/SKILL.md; plugins/grace/skills/grace/grace-execute/SKILL.md; plugins/grace/skills/grace/grace-migrate/SKILL.md; plugins/grace/skills/grace/grace-refresh/SKILL.md; plugins/grace/skills/grace/grace-status/SKILL.md; plugins/grace/skills/grace/grace-ask/SKILL.md; plugins/grace/skills/grace/grace-fix/SKILL.md; plugins/grace/skills/grace/grace-refactor/SKILL.md; plugins/grace/skills/grace/grace-verification/SKILL.md; plugins/grace/skills/grace/grace-reviewer/SKILL.md; plugins/grace/skills/grace/grace-cli/SKILL.md; plugins/grace/skills/grace/grace-explainer/SKILL.md; plugins/grace/skills/grace/grace-setup-subagents/SKILL.md</path>
+        <role>Modify packaged mirrors to match canonical skill sources byte-for-byte.</role>
+      </file>
+      <contract>Every published GRACE 4 skill references `.grace` artifacts only, uses `graceVersion="4.0"` examples, routes planning through `GraceChangeSpec` and `GraceChangePlan`, and does not mention `grace-multiagent-execute` as a separate published workflow.</contract>
+      <depends_on>
+        <module>Artifact Grammar Validator</module>
+      </depends_on>
+    </module>
+    <module>
+      <name>Marketplace Packaging and Release Surface</name>
+      <purpose>Ship the GRACE 4 skill set and CLI dependency/version updates through repository packaging metadata and release documentation.</purpose>
+      <file>
+        <path>package.json</path>
+        <role>Modify version and dependencies, adding `fast-xml-parser`.</role>
+      </file>
+      <file>
+        <path>.claude-plugin/marketplace.json</path>
+        <role>Modify version and published skill list.</role>
+      </file>
+      <file>
+        <path>plugins/grace/.claude-plugin/plugin.json</path>
+        <role>Modify packaged plugin version and metadata consistency.</role>
+      </file>
+      <file>
+        <path>openpackage.yml</path>
+        <role>Modify OpenPackage version and description as needed for GRACE 4.</role>
+      </file>
+      <file>
+        <path>README.md</path>
+        <role>Modify install, quick start, skill table, CLI overview, and GRACE 4 artifact model documentation.</role>
+      </file>
+      <file>
+        <path>CHANGELOG.md</path>
+        <role>Add GRACE 4 release entry.</role>
+      </file>
+      <file>
+        <path>scripts/validate-marketplace.ts</path>
+        <role>Modify validation checks if needed to assert GRACE 4 skill surface and remove `grace-multiagent-execute` from published set.</role>
+      </file>
+      <contract>Published metadata must be version-synchronized, canonical and packaged skill mirrors must match, GRACE 4 skills must be present, `grace-multiagent-execute` must be absent, and validation scripts must catch packaging drift.</contract>
+      <depends_on>
+        <module>GRACE 4 Skill Surface</module>
+      </depends_on>
+    </module>
+  </architecture>
+
+  <tasks>
+    <wave>
+      <num>1</num>
+      <goal>Build the parser-backed GRACE 4 artifact core and current-state validation model.</goal>
+      <task>
+        <id>T-001</id>
+        <title>Add GRACE 4 dependency, shared types, and project detection</title>
+        <file>package.json; src/grace4/types.ts; src/grace4/project.ts</file>
+        <status>pending</status>
+        <description>Add `fast-xml-parser` as a runtime dependency and create shared GRACE 4 constants, types, path resolution, project detection, and migration guidance helpers. Do not implement GRACE 3 validation paths.</description>
+        <depends_on>
+        </depends_on>
+        <snippet><![CDATA[
+// package.json dependency contract:
+// "dependencies": {
+//   "citty": "^0.2.2",
+//   "fast-xml-parser": "^5.2.5",
+//   "typescript": "^6.0.2"
+// }
+
+/** Supported GRACE artifact grammar version for this release. */
+export const GRACE4_VERSION = "4.0" as const;
+
+/** Standard GRACE 4 root tags accepted by Artifact Grammar. */
+export const GRACE4_ROOT_TAGS = [
+  "GraceRequirements",
+  "GraceTechnology",
+  "GracePrinciples",
+  "GraceDeployment",
+  "GraceUXGuidelines",
+  "GraceGraphIndex",
+  "GraceGraphDocument",
+  "GraceVerificationIndex",
+  "GraceVerificationDocument",
+  "GraceChangeSpec",
+  "GraceChangePlan",
+] as const;
+
+/** Lifecycle statuses allowed on GraceChangeSpec and GraceChangePlan roots. */
+export const CHANGE_STATUSES = ["draft", "approved", "applied", "rejected", "cancelled", "superseded"] as const;
+
+/** Statuses valid for bundles under .grace/changes/active. */
+export const ACTIVE_CHANGE_STATUSES = new Set(["draft", "approved"] as const);
+
+/** Statuses valid for bundles under .grace/changes/archive. */
+export const ARCHIVED_CHANGE_STATUSES = new Set(["applied", "rejected", "cancelled", "superseded"] as const);
+
+/** Semantic anchor regexes. Semantic anchors are tags and never attributes. */
+export const ANCHOR_PATTERNS = {
+  graphDocument: /^GD-[A-Z0-9]+(?:-[A-Z0-9]+)*$/,
+  verificationDocument: /^VD-[A-Z0-9]+(?:-[A-Z0-9]+)*$/,
+  change: /^C-[A-Z0-9]+(?:-[A-Z0-9]+)*$/,
+  module: /^M-[A-Z0-9]+(?:-[A-Z0-9]+)*$/,
+  verification: /^V-M-[A-Z0-9]+(?:-[A-Z0-9]+)*$/,
+  dataFlow: /^DF-[A-Z0-9]+(?:-[A-Z0-9]+)*$/,
+  task: /^T-[0-9]{3}$/,
+} as const;
+
+/** Current-state validation issue emitted by GRACE 4 validators. */
+export type Grace4Issue = {
+  severity: "error" | "warning";
+  code: string;
+  file: string;
+  line?: number;
+  message: string;
+};
+
+/** Resolved canonical .grace path set for one project root. */
+export type Grace4ProjectPaths = {
+  root: string;
+  graceDir: string;
+  contextDir: string;
+  graphIndex: string;
+  graphDir: string;
+  verificationIndex: string;
+  verificationDir: string;
+  changesActiveDir: string;
+  changesArchiveDir: string;
+};
+
+/** Kind of GRACE project detected at a filesystem root. */
+export type GraceProjectKind = "grace4" | "grace3" | "none";
+
+/** Resolves canonical GRACE 4 project paths from a repository root. */
+export function resolveGrace4Paths(root: string): Grace4ProjectPaths;
+
+/** Detects whether a root contains .grace, legacy docs, or no GRACE artifacts. */
+export function detectGraceProjectKind(root: string): GraceProjectKind;
+
+/** Returns a user-facing message for legacy GRACE 3 projects without validating them. */
+export function formatGrace3MigrationGuidance(root: string): string;
+]]></snippet>
+        <acceptance>
+          <criterion>`package.json` contains `fast-xml-parser` in runtime dependencies and keeps Bun as the runtime contract.</criterion>
+          <criterion>`detectGraceProjectKind` returns `grace4` when `.grace` exists, `grace3` when legacy `docs/development-plan.xml`, `docs/knowledge-graph.xml`, or `docs/verification-plan.xml` exists without `.grace`, and `none` otherwise.</criterion>
+          <criterion>`formatGrace3MigrationGuidance` tells users to use the `grace-migrate` skill and does not claim CLI migration support.</criterion>
+          <criterion>All semantic anchor regexes reject lowercase anchors and generic attribute-style identifiers.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun test src/grace4/project.test.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-002</id>
+        <title>Create fast-xml-parser adapter</title>
+        <file>src/grace4/xml.ts; src/grace4/xml.test.ts</file>
+        <status>pending</status>
+        <description>Create a parser-backed XML adapter that returns normalized root nodes and parse diagnostics. This replaces regex structural parsing for GRACE 4 artifacts.</description>
+        <depends_on>
+          <task_id>T-001</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+import { XMLParser } from "fast-xml-parser";
+import type { Grace4Issue } from "./types";
+
+/** Parsed XML node preserving the original tag name and child order. */
+export type GraceXmlNode = {
+  tag: string;
+  attributes: Record<string, string>;
+  children: GraceXmlNode[];
+  text: string;
+};
+
+/** Parsed GRACE XML artifact root plus diagnostics. */
+export type ParsedGraceXmlArtifact = {
+  file: string;
+  root: GraceXmlNode | null;
+  issues: Grace4Issue[];
+};
+
+/** Parser configured for dynamic GRACE tag names and explicit attributes. */
+export function createGraceXmlParser(): XMLParser;
+
+/** Parses one XML artifact string into a normalized root node and parse diagnostics. */
+export function parseGraceXmlArtifact(file: string, text: string): ParsedGraceXmlArtifact;
+
+/** Reads and parses one XML artifact from disk. Missing files produce a validation issue. */
+export function readGraceXmlArtifact(file: string): ParsedGraceXmlArtifact;
+
+/** Returns direct children whose tag exactly matches the requested name. */
+export function childNodes(node: GraceXmlNode, tag: string): GraceXmlNode[];
+
+/** Returns the first direct child text value for the requested tag. */
+export function childText(node: GraceXmlNode, tag: string): string | undefined;
+
+/** Walks all descendants depth-first, including the starting node. */
+export function walkNodes(node: GraceXmlNode): Iterable<GraceXmlNode>;
+
+/** Returns true when the node has any attributes other than the allowed list. */
+export function hasForbiddenAttributes(node: GraceXmlNode, allowed: ReadonlySet<string>): boolean;
+]]></snippet>
+        <acceptance>
+          <criterion>Malformed XML returns a `xml.parse` error instead of throwing from public parser helpers.</criterion>
+          <criterion>Dynamic tags such as `M-AUTH-SESSION`, `GD-MAIN`, and `V-M-AUTH-SESSION` are preserved exactly as node tags.</criterion>
+          <criterion>CDATA content is treated as text content and is not scanned as structural GRACE anchors by parser traversal.</criterion>
+          <criterion>Root attributes are represented separately from child tags.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun test src/grace4/xml.test.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-003</id>
+        <title>Implement Artifact Grammar current-state validation</title>
+        <file>src/grace4/grammar.ts; src/grace4/grammar.test.ts</file>
+        <status>pending</status>
+        <description>Implement root tag validation, `graceVersion`, allowed metadata attributes, semantic-anchor tag discipline, context applicability, change status rules, and active/archive status location checks.</description>
+        <depends_on>
+          <task_id>T-001</task_id>
+          <task_id>T-002</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+import type { Grace4Issue, Grace4ProjectPaths } from "./types";
+import type { ParsedGraceXmlArtifact, GraceXmlNode } from "./xml";
+
+/** Result of validating a single GRACE 4 artifact. */
+export type ArtifactValidationResult = {
+  file: string;
+  rootTag?: string;
+  graceVersion?: string;
+  issues: Grace4Issue[];
+};
+
+/** Result of validating all current .grace documents in one project. */
+export type Grace4ValidationResult = {
+  root: string;
+  issues: Grace4Issue[];
+  artifacts: ArtifactValidationResult[];
+};
+
+/** Validates the root tag, graceVersion, and allowed root attributes for one artifact. */
+export function validateArtifactRoot(artifact: ParsedGraceXmlArtifact): ArtifactValidationResult;
+
+/** Validates that semantic anchors appear only as tags and never as attributes. */
+export function validateSemanticAnchorDiscipline(file: string, root: GraceXmlNode): Grace4Issue[];
+
+/** Validates the five mandatory context artifacts and applicability semantics. */
+export function validateContextArtifacts(paths: Grace4ProjectPaths): ArtifactValidationResult[];
+
+/** Validates GraceChangeSpec and GraceChangePlan root statuses and C-* wrapper shape. */
+export function validateChangeArtifact(artifact: ParsedGraceXmlArtifact, location: "active" | "archive"): ArtifactValidationResult;
+
+/** Validates current-state .grace artifact grammar and lifecycle location invariants. */
+export function validateGrace4Project(root: string): Grace4ValidationResult;
+]]></snippet>
+        <acceptance>
+          <criterion>Every standard artifact without `graceVersion` produces `artifact.missing-grace-version`.</criterion>
+          <criterion>Every artifact with unsupported `graceVersion` produces `artifact.unsupported-grace-version`.</criterion>
+          <criterion>Only `GraceChangeSpec` and `GraceChangePlan` may have a `status` root attribute.</criterion>
+          <criterion>Any semantic anchor appearing as an attribute value on a GRACE artifact produces `artifact.semantic-anchor-attribute`.</criterion>
+          <criterion>Active bundles with `applied`, `rejected`, `cancelled`, or `superseded` status produce an error.</criterion>
+          <criterion>Archived bundles with `draft` or `approved` status produce an error.</criterion>
+          <criterion>Deployment and UX context artifacts marked `not-applicable` require a non-empty reason.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun test src/grace4/grammar.test.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-004</id>
+        <title>Build graph and verification logical projections</title>
+        <file>src/grace4/projections.ts; src/grace4/projections.test.ts</file>
+        <status>pending</status>
+        <description>Implement graph and verification index routing, document wrapper matching, ownership validation, duplicate detection, dangling reference detection, and deterministic module-to-verification coverage.</description>
+        <depends_on>
+          <task_id>T-003</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+import type { Grace4Issue, Grace4ProjectPaths } from "./types";
+
+/** One graph anchor owned by a graph document. */
+export type GraphAnchorRecord = {
+  id: string;
+  kind: "module" | "data-flow";
+  owner: string;
+  file: string;
+  text: string;
+  links: string[];
+};
+
+/** Unified current graph projection independent of physical segmentation. */
+export type GraphProjection = {
+  documents: Map<string, string>;
+  modules: Map<string, GraphAnchorRecord>;
+  dataFlows: Map<string, GraphAnchorRecord>;
+  issues: Grace4Issue[];
+};
+
+/** One aggregate V-M-* verification contract owned by a verification document. */
+export type VerificationAnchorRecord = {
+  id: string;
+  moduleId: string;
+  owner: string;
+  file: string;
+  commands: string[];
+  scenarios: string[];
+  markers: string[];
+};
+
+/** Unified current verification projection independent of physical segmentation. */
+export type VerificationProjection = {
+  documents: Map<string, string>;
+  entries: Map<string, VerificationAnchorRecord>;
+  issues: Grace4Issue[];
+};
+
+/** Builds and validates the logical graph projection from .grace/graph. */
+export function buildGraphProjection(paths: Grace4ProjectPaths): GraphProjection;
+
+/** Builds and validates the logical verification projection from .grace/verification. */
+export function buildVerificationProjection(paths: Grace4ProjectPaths, graph: GraphProjection): VerificationProjection;
+]]></snippet>
+        <acceptance>
+          <criterion>Graph index entries route `M-*` and `DF-*` anchors to exactly one `GD-*` owner and file.</criterion>
+          <criterion>A graph document wrapper that does not match its index `GD-*` route produces an ownership mismatch error.</criterion>
+          <criterion>An anchor found in a graph document but missing from the index produces an unlisted anchor error.</criterion>
+          <criterion>Duplicate `M-*`, `DF-*`, or `V-M-*` anchors across segmented documents produce duplicate anchor errors.</criterion>
+          <criterion>Each `M-*` in the graph projection requires exactly one deterministic `V-M-*` entry.</criterion>
+          <criterion>Monolithic and segmented fixture projects with identical anchors produce equivalent projections.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun test src/grace4/projections.test.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-005</id>
+        <title>Implement assertion evaluator and scope detector</title>
+        <file>src/grace4/assertions.ts; src/grace4/scope.ts; src/grace4/assertions.test.ts; src/grace4/scope.test.ts</file>
+        <status>pending</status>
+        <description>Implement the approved core assertion vocabulary, DurableScope and ObservedWriteScope extraction, active change scanning, overlap warnings, and unsafe concurrent execution blockers.</description>
+        <depends_on>
+          <task_id>T-004</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+import type { Grace4Issue, Grace4ProjectPaths } from "./types";
+import type { GraphProjection, VerificationProjection } from "./projections";
+
+/** Supported machine-checkable GRACE 4 assertion kinds. */
+export type AssertionKind =
+  | "MustExist"
+  | "MustNotExist"
+  | "MustOwn"
+  | "MustLink"
+  | "MustVerify"
+  | "MustPassCommand"
+  | "MustContain"
+  | "MustNotContain";
+
+/** Parsed assertion from BaselineAssertions or TargetAssertions. */
+export type GraceAssertion = {
+  kind: AssertionKind;
+  file: string;
+  values: string[];
+};
+
+/** Context required to evaluate a GRACE 4 assertion. */
+export type AssertionContext = {
+  root: string;
+  graph: GraphProjection;
+  verification: VerificationProjection;
+};
+
+/** Evaluates one assertion and returns current-state issues. */
+export function evaluateAssertion(assertion: GraceAssertion, context: AssertionContext): Grace4Issue[];
+
+/** Extracts assertions from BaselineAssertions or TargetAssertions under a GraceChangePlan. */
+export function extractAssertions(planFile: string, section: "BaselineAssertions" | "TargetAssertions"): GraceAssertion[];
+
+/** Durable semantic scope declared by a GraceChangePlan. */
+export type DurableScope = {
+  graphAnchors: string[];
+  verificationAnchors: string[];
+  contextArtifacts: string[];
+  graphDocuments: string[];
+  verificationDocuments: string[];
+};
+
+/** Observed repository write scope declared by a GraceChangePlan. */
+export type ObservedWriteScope = {
+  files: string[];
+  globs: string[];
+};
+
+/** Active change summary used for overlap detection and status reporting. */
+export type ActiveChangeScope = {
+  changeId: string;
+  bundlePath: string;
+  specStatus: string;
+  planStatus?: string;
+  durable: DurableScope;
+  observedWrites: ObservedWriteScope;
+};
+
+/** Reads active change bundles and extracts declared scopes from approved or draft plans. */
+export function collectActiveChangeScopes(paths: Grace4ProjectPaths): ActiveChangeScope[];
+
+/** Returns overlap diagnostics without blocking coexistence of approved plans. */
+export function detectScopeOverlaps(changes: ActiveChangeScope[]): Grace4Issue[];
+
+/** Returns blocking diagnostics for attempted concurrent or parallel-safe execution. */
+export function detectUnsafeConcurrentExecution(changes: ActiveChangeScope[]): Grace4Issue[];
+]]></snippet>
+        <acceptance>
+          <criterion>Each approved assertion kind is parsed from `GraceChangePlan` fixtures and unknown assertion tags produce diagnostics.</criterion>
+          <criterion>`MustExist` and `MustNotExist` work for semantic anchors and filesystem paths.</criterion>
+          <criterion>`MustOwn` validates `GD-*` or `VD-*` ownership from projections.</criterion>
+          <criterion>`MustLink` validates graph links and rejects dangling links.</criterion>
+          <criterion>`MustVerify` requires a `V-M-*` entry and fresh verification evidence hook support.</criterion>
+          <criterion>`MustPassCommand` runs only during explicit target verification paths and reports failed commands as assertion issues.</criterion>
+          <criterion>Overlapping approved DurableScope entries are reported as warnings and do not invalidate current state.</criterion>
+          <criterion>Overlapping ObservedWriteScope entries block parallel-safe execution checks.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun test src/grace4/assertions.test.ts src/grace4/scope.test.ts</command>
+        </verification>
+      </task>
+    </wave>
+
+    <wave>
+      <num>2</num>
+      <goal>Rewrite CLI validation, status, and navigation to use GRACE 4 `.grace` projections only.</goal>
+      <task>
+        <id>T-006</id>
+        <title>Rewrite query layer for `.grace` projections</title>
+        <file>src/query/types.ts; src/query/core.ts; src/query/health.ts; src/query/render.ts</file>
+        <status>pending</status>
+        <description>Replace GRACE 3 `docs/*.xml` regex extraction with GRACE 4 projection-backed artifact indexing while preserving command-level search and rendering concepts.</description>
+        <depends_on>
+          <task_id>T-004</task_id>
+          <task_id>T-005</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+import type { GraphAnchorRecord, GraphProjection, VerificationAnchorRecord, VerificationProjection } from "../grace4/projections";
+import type { Grace4Issue } from "../grace4/types";
+
+/** Module record resolved from the GRACE 4 current graph projection. */
+export type Grace4ModuleRecord = {
+  id: string;
+  graph: GraphAnchorRecord;
+  verification: VerificationAnchorRecord | null;
+  localFiles: FileMarkupRecord[];
+};
+
+/** Projection-backed artifact index used by module, verification, and file commands. */
+export type GraceArtifactIndex = {
+  root: string;
+  graph: GraphProjection;
+  verification: VerificationProjection;
+  modules: Grace4ModuleRecord[];
+  verifications: VerificationAnchorRecord[];
+  files: FileMarkupRecord[];
+  issues: Grace4Issue[];
+};
+
+/** Loads the GRACE 4 projection-backed artifact index for a project root. */
+export function loadGraceArtifactIndex(root: string): GraceArtifactIndex;
+
+/** Finds modules by module id, text content, path, dependency, or verification id. */
+export function findModules(index: GraceArtifactIndex, options: ModuleFindOptions): ModuleMatch[];
+
+/** Resolves one module by M-* id or observed file path. */
+export function resolveModule(index: GraceArtifactIndex, value: string): Grace4ModuleRecord | null;
+
+/** Finds verification entries by V-M-* id, module id, command, scenario, or marker text. */
+export function findVerifications(index: GraceArtifactIndex, options: VerificationFindOptions): VerificationMatch[];
+
+/** Resolves one verification entry by V-M-* id or module id. */
+export function resolveVerification(index: GraceArtifactIndex, value: string): VerificationAnchorRecord | null;
+]]></snippet>
+        <acceptance>
+          <criterion>`loadGraceArtifactIndex` reads `.grace/graph` and `.grace/verification` only.</criterion>
+          <criterion>No `docs/development-plan.xml`, `docs/knowledge-graph.xml`, or `docs/verification-plan.xml` constant remains in `src/query/core.ts`.</criterion>
+          <criterion>`grace module find` can find a module by `M-*`, observed file path text, dependency id, and verification id from `.grace` fixtures.</criterion>
+          <criterion>`grace verification find` can find a verification entry by `V-M-*`, module id, command text, scenario text, and marker text.</criterion>
+          <criterion>Module health no longer depends on development-plan phases or steps.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun test src/grace-query.test.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-007</id>
+        <title>Rewrite lint command and lint core for GRACE 4</title>
+        <file>src/grace-lint.ts; src/lint/types.ts; src/lint/core.ts; src/lint/catalog.ts</file>
+        <status>pending</status>
+        <description>Make `grace lint` validate current `.grace` document state through parser-backed Artifact Grammar and projections. Remove GRACE 3 required-doc compatibility behavior and update diagnostics catalog.</description>
+        <depends_on>
+          <task_id>T-003</task_id>
+          <task_id>T-004</task_id>
+          <task_id>T-005</task_id>
+          <task_id>T-006</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+import { detectGraceProjectKind, formatGrace3MigrationGuidance } from "../grace4/project";
+import { validateGrace4Project } from "../grace4/grammar";
+import type { LintOptions, LintResult } from "./types";
+
+/** Options for GRACE 4 linting. No GRACE 3 compatibility switches are supported. */
+export type LintOptions = {
+  profile?: LintProfile;
+};
+
+/** Lints the current GRACE 4 .grace document state and file-local semantic markup. */
+export function lintGraceProject(root: string, options: LintOptions = {}): LintResult {
+  const kind = detectGraceProjectKind(root);
+  if (kind === "grace3") {
+    return lintResultWithSingleError(root, "project.grace3-detected", formatGrace3MigrationGuidance(root), options);
+  }
+  if (kind === "none") {
+    return lintResultWithSingleError(root, "project.missing-grace", "No .grace directory found.", options);
+  }
+
+  const validation = validateGrace4Project(root);
+  return lintResultFromGrace4Validation(root, validation, options);
+}
+
+/** Converts GRACE 4 validation diagnostics into the public grace-lint result shape. */
+export function lintResultFromGrace4Validation(root: string, validation: Grace4ValidationResult, options: LintOptions): LintResult;
+]]></snippet>
+        <acceptance>
+          <criterion>`grace lint` fails with migration guidance when only GRACE 3 docs are present.</criterion>
+          <criterion>`grace lint` fails with missing `.grace` guidance when neither `.grace` nor GRACE 3 docs are present.</criterion>
+          <criterion>The CLI no longer exposes or documents `--allow-missing-docs`.</criterion>
+          <criterion>Lint JSON output keeps `tool`, `schemaVersion`, `generatedAt`, `root`, issue list, and summary counts.</criterion>
+          <criterion>Diagnostics catalog includes GRACE 4 artifact, projection, lifecycle, assertion, and scope issue prefixes.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun test src/grace-lint.test.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-008</id>
+        <title>Rewrite status command for durable and operational GRACE 4 health</title>
+        <file>src/grace-status.ts; src/grace-status.test.ts</file>
+        <status>pending</status>
+        <description>Update `grace status` to summarize `.grace` context, graph, verification, active/archive changes, derived overlaps, stale plans, drift indications, and migration guidance without mutating XML statuses.</description>
+        <depends_on>
+          <task_id>T-005</task_id>
+          <task_id>T-006</task_id>
+          <task_id>T-007</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+/** Current state of one GRACE 4 change bundle. */
+export type ChangeBundleStatus = {
+  changeId: string;
+  location: "active" | "archive";
+  specStatus?: string;
+  planStatus?: string;
+  derivedStates: string[];
+  path: string;
+};
+
+/** GRACE 4 status result for text or JSON output. */
+export type StatusResult = {
+  schemaVersion: string;
+  tool: "grace-status";
+  generatedAt: string;
+  root: string;
+  summary: {
+    graceVersion?: string;
+    contextArtifacts: number;
+    graphModules: number;
+    verificationEntries: number;
+    activeChanges: number;
+    archivedChanges: number;
+    integrityErrors: number;
+    integrityWarnings: number;
+  };
+  changes: ChangeBundleStatus[];
+  derivedStates: string[];
+  integrity: {
+    errors: number;
+    warnings: number;
+    topIssues: string[];
+  };
+  nextAction: string;
+};
+
+/** Collects status without mutating any .grace artifact. */
+export function collectProjectStatus(root: string, options?: StatusOptions): StatusResult;
+]]></snippet>
+        <acceptance>
+          <criterion>Status JSON lists active and archived change bundles with spec and plan statuses.</criterion>
+          <criterion>Status text surfaces overlapping approved changes as derived state, not XML status.</criterion>
+          <criterion>Status reports GRACE 3 projects as migration candidates and does not load GRACE 3 docs as healthy GRACE 4 state.</criterion>
+          <criterion>Status reports invalid active or archive statuses from lint diagnostics.</criterion>
+          <criterion>Status next action recommends `grace lint`, `grace-migrate`, replan, or execute based on current state.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun test src/grace-status.test.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-009</id>
+        <title>Rewrite module, verification, and file CLI commands</title>
+        <file>src/grace-module.ts; src/grace-verification.ts; src/grace-file.ts; src/grace-query.test.ts</file>
+        <status>pending</status>
+        <description>Update navigation commands to use the GRACE 4 query layer and migration guidance. Preserve command names and JSON/text output modes where compatible.</description>
+        <depends_on>
+          <task_id>T-006</task_id>
+          <task_id>T-007</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+/** Loads projection-backed index or throws a user-facing command error. */
+function loadGrace4IndexOrThrow(root: string): GraceArtifactIndex;
+
+/** Handles `grace module find` by querying Graph Projection records. */
+async function runModuleFind(root: string, query: string, options: ModuleFindCommandOptions): Promise<void>;
+
+/** Handles `grace module show` by resolving M-* or observed file path to graph plus verification context. */
+async function runModuleShow(root: string, value: string, options: ModuleShowCommandOptions): Promise<void>;
+
+/** Handles `grace verification find` by querying Verification Projection records. */
+async function runVerificationFind(root: string, query: string, options: VerificationFindCommandOptions): Promise<void>;
+
+/** Handles `grace file show` for file-local/private semantic markup without requiring GRACE 3 shared docs. */
+async function runFileShow(root: string, filePath: string, options: FileShowCommandOptions): Promise<void>;
+]]></snippet>
+        <acceptance>
+          <criterion>`grace module find` and `grace module show` resolve modules from `.grace/graph/index.xml` and graph documents.</criterion>
+          <criterion>`grace module show --with verification` includes the deterministic `V-` plus module id verification entry when present.</criterion>
+          <criterion>`grace verification find` and `grace verification show` resolve `V-M-*` from `.grace/verification/index.xml` and verification documents.</criterion>
+          <criterion>`grace file show` still reads file-local semantic markup and linked modules, but it does not require GRACE 3 shared docs.</criterion>
+          <criterion>Each command emits migration guidance for GRACE 3 roots rather than silently falling back.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun test src/grace-query.test.ts</command>
+        </verification>
+      </task>
+    </wave>
+
+    <wave>
+      <num>3</num>
+      <goal>Replace tests and fixtures with the approved GRACE 4 coverage matrix.</goal>
+      <task>
+        <id>T-010</id>
+        <title>Create GRACE 4 fixture builders and grammar fixture tests</title>
+        <file>src/grace4/test-fixtures.ts; src/grace4/grammar.test.ts; src/grace4/xml.test.ts</file>
+        <status>pending</status>
+        <description>Create reusable temporary `.grace` fixture builders and cover root tags, `graceVersion`, semantic anchor attributes, context applicability, status location, and parser behavior.</description>
+        <depends_on>
+          <task_id>T-002</task_id>
+          <task_id>T-003</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+/** Writes a minimal valid GRACE 4 project to a temporary directory. */
+export function writeMinimalGrace4Project(root: string): void;
+
+/** Writes a GRACE 4 project with segmented graph and verification documents. */
+export function writeSegmentedGrace4Project(root: string): void;
+
+/** Writes one active or archived change bundle fixture. */
+export function writeChangeBundleFixture(root: string, options: {
+  changeId: string;
+  location: "active" | "archive";
+  specStatus: string;
+  planStatus?: string;
+  planBody?: string;
+}): void;
+
+/** Writes a legacy GRACE 3 docs fixture used only for migration guidance tests. */
+export function writeLegacyGrace3Project(root: string): void;
+]]></snippet>
+        <acceptance>
+          <criterion>Fixture builder creates all five context artifacts, graph index/document, verification index/document, and change directories.</criterion>
+          <criterion>Tests cover missing `graceVersion`, unsupported version, invalid root, and malformed XML.</criterion>
+          <criterion>Tests cover forbidden semantic-anchor attributes while allowing root `graceVersion` and operational root `status`.</criterion>
+          <criterion>Tests cover invalid open statuses in archive and invalid closed statuses in active.</criterion>
+          <criterion>Tests cover `not-applicable` deployment or UX without reason as an error.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun test src/grace4/xml.test.ts src/grace4/grammar.test.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-011</id>
+        <title>Add projection, assertion, scope, and command coverage</title>
+        <file>src/grace4/projections.test.ts; src/grace4/assertions.test.ts; src/grace4/scope.test.ts; src/grace-lint.test.ts; src/grace-status.test.ts; src/grace-query.test.ts</file>
+        <status>pending</status>
+        <description>Implement the spec's required coverage matrix for graph and verification projections, assertion evaluator, scope detector, command behavior, and GRACE 3 guidance.</description>
+        <depends_on>
+          <task_id>T-004</task_id>
+          <task_id>T-005</task_id>
+          <task_id>T-007</task_id>
+          <task_id>T-008</task_id>
+          <task_id>T-009</task_id>
+          <task_id>T-010</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+describe("GRACE 4 projection validation", () => {
+  test("monolithic and segmented graph fixtures produce equivalent module ids", () => {
+    // Build both fixtures, call buildGraphProjection(), compare sorted module ids.
+  });
+
+  test("every M-* requires deterministic V-M-* coverage", () => {
+    // Remove one V-M-* fixture entry and assert verification coverage error.
+  });
+});
+
+describe("GRACE 4 assertions and scope", () => {
+  test("stale BaselineAssertions fail after durable state changes", () => {
+    // Write a plan expecting an anchor, remove it from projection, assert failure.
+  });
+
+  test("overlapping approved plans are warnings but unsafe parallel writes are blockers", () => {
+    // Two active approved fixtures share DurableScope and ObservedWriteScope.
+  });
+});
+]]></snippet>
+        <acceptance>
+          <criterion>Projection tests cover missing route, unlisted anchor, duplicate anchor, wrapper mismatch, dangling link, and module verification coverage.</criterion>
+          <criterion>Assertion tests cover all eight approved assertion kinds.</criterion>
+          <criterion>Scope tests prove overlapping approved plans can coexist and unsafe parallel write overlap is blocking.</criterion>
+          <criterion>Lint, status, module, verification, and file command tests all use `.grace` fixtures.</criterion>
+          <criterion>Legacy GRACE 3 fixture tests assert guidance-only behavior and no dual-mode validation.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun test src/grace4/projections.test.ts src/grace4/assertions.test.ts src/grace4/scope.test.ts src/grace-lint.test.ts src/grace-status.test.ts src/grace-query.test.ts</command>
+        </verification>
+      </task>
+    </wave>
+
+    <wave>
+      <num>4</num>
+      <goal>Rewrite canonical GRACE skills and packaged mirrors for GRACE 4 `.grace` workflows.</goal>
+      <task>
+        <id>T-012</id>
+        <title>Rewrite grace-init assets and bootstrap skill for `.grace`</title>
+        <file>skills/grace/grace-init/SKILL.md; skills/grace/grace-init/assets/AGENTS.md.template; skills/grace/grace-init/assets/.grace/context/requirements.xml.template; skills/grace/grace-init/assets/.grace/context/technology.xml.template; skills/grace/grace-init/assets/.grace/context/principles.xml.template; skills/grace/grace-init/assets/.grace/context/deployment.xml.template; skills/grace/grace-init/assets/.grace/context/ux-guidelines.xml.template; skills/grace/grace-init/assets/.grace/graph/index.xml.template; skills/grace/grace-init/assets/.grace/graph/main.xml.template; skills/grace/grace-init/assets/.grace/verification/index.xml.template; skills/grace/grace-init/assets/.grace/verification/main.xml.template; plugins/grace/skills/grace/grace-init/SKILL.md; plugins/grace/skills/grace/grace-init/assets/AGENTS.md.template; plugins/grace/skills/grace/grace-init/assets/.grace/context/requirements.xml.template; plugins/grace/skills/grace/grace-init/assets/.grace/context/technology.xml.template; plugins/grace/skills/grace/grace-init/assets/.grace/context/principles.xml.template; plugins/grace/skills/grace/grace-init/assets/.grace/context/deployment.xml.template; plugins/grace/skills/grace/grace-init/assets/.grace/context/ux-guidelines.xml.template; plugins/grace/skills/grace/grace-init/assets/.grace/graph/index.xml.template; plugins/grace/skills/grace/grace-init/assets/.grace/graph/main.xml.template; plugins/grace/skills/grace/grace-init/assets/.grace/verification/index.xml.template; plugins/grace/skills/grace/grace-init/assets/.grace/verification/main.xml.template</file>
+        <status>pending</status>
+        <description>Replace GRACE 3 docs templates with GRACE 4 `.grace` skeleton templates and update `grace-init` instructions to create context, graph, verification, and empty change directories.</description>
+        <depends_on>
+          <task_id>T-003</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+---
+name: grace-init
+description: Bootstrap a Full GRACE 4 project by creating the canonical .grace context, graph, verification, and changes skeleton.
+---
+
+<skill>
+<task>
+Create the canonical .grace layout:
+- .grace/context/requirements.xml
+- .grace/context/technology.xml
+- .grace/context/principles.xml
+- .grace/context/deployment.xml
+- .grace/context/ux-guidelines.xml
+- .grace/graph/index.xml
+- .grace/graph/main.xml
+- .grace/verification/index.xml
+- .grace/verification/main.xml
+- .grace/changes/active/
+- .grace/changes/archive/
+
+Every XML artifact uses graceVersion="4.0". Semantic anchors are XML tags, never attributes. Do not create dummy C-* change bundles. Do not overwrite existing .grace artifacts without explicit confirmation.
+</task>
+</skill>
+]]></snippet>
+        <acceptance>
+          <criterion>`skills/grace/grace-init/assets/docs/*.xml.template` no longer defines the canonical bootstrap surface.</criterion>
+          <criterion>New init templates contain the approved root tags and `graceVersion="4.0"`.</criterion>
+          <criterion>Graph and verification templates use `GD-MAIN` and `VD-MAIN` wrappers and matching indexes.</criterion>
+          <criterion>AGENTS template points agents to `.grace` entrypoints and GRACE 4 workflows.</criterion>
+          <criterion>Packaged mirror for `grace-init` matches canonical files.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun run ./scripts/validate-marketplace.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-013</id>
+        <title>Add grace-spec and rewrite grace-plan for ChangeSpec, design context, and ChangePlan</title>
+        <file>skills/grace/grace-spec/SKILL.md; skills/grace/grace-spec/agents/openai.yaml; skills/grace/grace-spec/references/change-spec-template.xml; skills/grace/grace-spec/references/design-context-template.xml; skills/grace/grace-plan/SKILL.md; skills/grace/grace-plan/references/change-plan-template.xml; plugins/grace/skills/grace/grace-spec/SKILL.md; plugins/grace/skills/grace/grace-spec/agents/openai.yaml; plugins/grace/skills/grace/grace-spec/references/change-spec-template.xml; plugins/grace/skills/grace/grace-spec/references/design-context-template.xml; plugins/grace/skills/grace/grace-plan/SKILL.md; plugins/grace/skills/grace/grace-plan/references/change-plan-template.xml</file>
+        <status>pending</status>
+        <description>Create the new `grace-spec` skill and rewrite `grace-plan` to consume approved `GraceChangeSpec` plus optional design context and produce draft or approved `GraceChangePlan` with assertions, scopes, and `T-*` tasks.</description>
+        <depends_on>
+          <task_id>T-005</task_id>
+          <task_id>T-012</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+---
+name: grace-spec
+description: Interview the user and create an approved GRACE 4 GraceChangeSpec plus optional design-context.xml inside .grace/changes/active/C-*/.
+---
+
+<skill>
+<change_bundle_contract>
+.grace/changes/active/C-CHANGE-ID/
+  spec.xml              # GraceChangeSpec, normative
+  design-context.xml    # optional, explanatory only
+  plan.xml              # created later by grace-plan
+</change_bundle_contract>
+<status_rules>
+Create spec.xml as status="draft". Set status="approved" only after explicit user approval. Rejected or cancelled specs move to archive with terminal status.
+</status_rules>
+</skill>
+
+---
+name: grace-plan
+description: Read an approved GRACE 4 GraceChangeSpec and optional design context, then create a GraceChangePlan with assertions, scopes, tasks, and verification gates.
+---
+
+<skill>
+<must_do>
+Read spec.xml as the normative source. Read design-context.xml only as explanatory context. Produce BaselineAssertions, TargetAssertions, DurableScope, ObservedWriteScope, and ImplementationPlan with T-* tasks. Surface overlap warnings but do not block approval.
+</must_do>
+</skill>
+]]></snippet>
+        <acceptance>
+          <criterion>`grace-spec` exists in canonical and packaged skill trees with matching content.</criterion>
+          <criterion>`grace-spec` creates or describes `GraceChangeSpec` with root `status` and exactly one `C-*` wrapper.</criterion>
+          <criterion>`grace-spec` creates optional `design-context.xml` as non-normative curated memory when warranted.</criterion>
+          <criterion>`grace-plan` refuses draft, rejected, cancelled, applied, superseded, or missing specs.</criterion>
+          <criterion>`grace-plan` explicitly treats design context as non-normative and spec as source of truth.</criterion>
+          <criterion>`grace-plan` requires BaselineAssertions, TargetAssertions, DurableScope, ObservedWriteScope, and `T-*` implementation tasks.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun run ./scripts/validate-marketplace.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-014</id>
+        <title>Rewrite execution, migration, refresh, and support skills</title>
+        <file>skills/grace/grace-execute/SKILL.md; skills/grace/grace-migrate/SKILL.md; skills/grace/grace-migrate/agents/openai.yaml; skills/grace/grace-migrate/references/migration-report-template.xml; skills/grace/grace-migrate/references/migration-checklist.md; skills/grace/grace-refresh/SKILL.md; skills/grace/grace-status/SKILL.md; skills/grace/grace-ask/SKILL.md; skills/grace/grace-fix/SKILL.md; skills/grace/grace-refactor/SKILL.md; skills/grace/grace-verification/SKILL.md; skills/grace/grace-reviewer/SKILL.md; skills/grace/grace-cli/SKILL.md; skills/grace/grace-explainer/SKILL.md; skills/grace/grace-setup-subagents/SKILL.md; plugins/grace/skills/grace/grace-execute/SKILL.md; plugins/grace/skills/grace/grace-migrate/SKILL.md; plugins/grace/skills/grace/grace-migrate/agents/openai.yaml; plugins/grace/skills/grace/grace-migrate/references/migration-report-template.xml; plugins/grace/skills/grace/grace-migrate/references/migration-checklist.md; plugins/grace/skills/grace/grace-refresh/SKILL.md; plugins/grace/skills/grace/grace-status/SKILL.md; plugins/grace/skills/grace/grace-ask/SKILL.md; plugins/grace/skills/grace/grace-fix/SKILL.md; plugins/grace/skills/grace/grace-refactor/SKILL.md; plugins/grace/skills/grace/grace-verification/SKILL.md; plugins/grace/skills/grace/grace-reviewer/SKILL.md; plugins/grace/skills/grace/grace-cli/SKILL.md; plugins/grace/skills/grace/grace-explainer/SKILL.md; plugins/grace/skills/grace/grace-setup-subagents/SKILL.md</file>
+        <status>pending</status>
+        <description>Rewrite remaining skills for `.grace` only workflows, add `grace-migrate`, remove separate multiagent execution semantics, and align support skills with current-state validation and agent-applied migration.</description>
+        <depends_on>
+          <task_id>T-013</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+---
+name: grace-execute
+description: Execute an approved GRACE 4 GraceChangePlan in sequential or parallel-safe mode with recovery-aware preflight and centralized durable apply.
+---
+
+<skill>
+<preflight>
+Require active bundle with spec.status approved and plan.status approved. Check matching C-*, BaselineAssertions, scope overlap, execution mode choice, and recovery state. Never edit approved plans silently.
+</preflight>
+<recovery_states>
+clean-to-start, partial-observed-writes, durable-state-changed, target-already-satisfied, unsafe-unknown-drift
+</recovery_states>
+</skill>
+
+---
+name: grace-migrate
+description: Agent-applied GRACE 3 to GRACE 4 migration workflow. CLI validates the result but does not convert or delete files.
+---
+
+<skill>
+<migration_safety>
+Read legacy docs, present migration draft/report, wait for approval, write .grace artifacts, run validation, and delete legacy docs only after valid .grace plus explicit cleanup confirmation. Do not create retroactive C-* bundles.
+</migration_safety>
+</skill>
+]]></snippet>
+        <acceptance>
+          <criterion>`grace-execute` includes sequential and parallel-safe mode selection in one skill.</criterion>
+          <criterion>`grace-execute` describes all five recovery states and hard-stop behavior for unknown drift or stale approved plans.</criterion>
+          <criterion>`grace-migrate` exists in canonical and packaged trees and clearly states agent-applied migration with CLI validation only.</criterion>
+          <criterion>`grace-migrate` includes a migration report template and checklist covering generated `.grace` layout, ambiguities, unsupported structures, proposed cleanup, validation, and explicit cleanup confirmation.</criterion>
+          <criterion>Support skills reference `.grace/context`, `.grace/graph`, `.grace/verification`, and `.grace/changes` instead of GRACE 3 shared docs.</criterion>
+          <criterion>No published skill instructs users to run `grace-multiagent-execute`.</criterion>
+          <criterion>All packaged mirrors match canonical skill files.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun run ./scripts/validate-marketplace.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-015</id>
+        <title>Remove grace-multiagent-execute from published GRACE 4 surface</title>
+        <file>skills/grace/grace-multiagent-execute; plugins/grace/skills/grace/grace-multiagent-execute; .claude-plugin/marketplace.json; README.md</file>
+        <status>pending</status>
+        <description>Delete the canonical and packaged `grace-multiagent-execute` skill directories and remove all published manifest and README references to it as a separate GRACE 4 skill.</description>
+        <depends_on>
+          <task_id>T-014</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+// .claude-plugin/marketplace.json skills array contract for execution skills:
+"skills": [
+  "./skills/grace/grace-init",
+  "./skills/grace/grace-spec",
+  "./skills/grace/grace-plan",
+  "./skills/grace/grace-execute",
+  "./skills/grace/grace-refactor",
+  "./skills/grace/grace-setup-subagents",
+  "./skills/grace/grace-fix",
+  "./skills/grace/grace-refresh",
+  "./skills/grace/grace-status",
+  "./skills/grace/grace-ask",
+  "./skills/grace/grace-cli",
+  "./skills/grace/grace-explainer",
+  "./skills/grace/grace-verification",
+  "./skills/grace/grace-reviewer",
+  "./skills/grace/grace-migrate"
+]
+]]></snippet>
+        <acceptance>
+          <criterion>Canonical `skills/grace/grace-multiagent-execute` directory is removed.</criterion>
+          <criterion>Packaged `plugins/grace/skills/grace/grace-multiagent-execute` directory is removed.</criterion>
+          <criterion>Marketplace skills array contains `grace-spec` and `grace-migrate` and does not contain `grace-multiagent-execute`.</criterion>
+          <criterion>README describes parallel-safe execution as a mode of `grace-execute`.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun run ./scripts/validate-marketplace.ts</command>
+        </verification>
+      </task>
+    </wave>
+
+    <wave>
+      <num>5</num>
+      <goal>Update release metadata, documentation, packaging validation, and run the full release gate.</goal>
+      <task>
+        <id>T-016</id>
+        <title>Update versions, manifests, README, changelog, and release docs for GRACE 4</title>
+        <file>package.json; src/grace.ts; openpackage.yml; .claude-plugin/marketplace.json; plugins/grace/.claude-plugin/plugin.json; README.md; CHANGELOG.md; RELEASING.md</file>
+        <status>pending</status>
+        <description>Bump synchronized version metadata to `4.0.0`, document the GRACE 4 `.grace` model, update CLI and skills overview, add release notes, and update release checklist expectations.</description>
+        <depends_on>
+          <task_id>T-007</task_id>
+          <task_id>T-008</task_id>
+          <task_id>T-009</task_id>
+          <task_id>T-015</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+// Version sync contract:
+// package.json: "version": "4.0.0"
+// openpackage.yml: version: 4.0.0
+// .claude-plugin/marketplace.json metadata.version: "4.0.0"
+// .claude-plugin/marketplace.json plugins[0].version: "4.0.0"
+// plugins/grace/.claude-plugin/plugin.json version: "4.0.0"
+// src/grace.ts meta.version: "4.0.0"
+// README.md: Current packaged version: `4.0.0`
+// CHANGELOG.md: ## [4.0.0] - 2026-06-20
+
+// README GRACE 4 quick start contract:
+// 1. Run $grace-init to create .grace
+// 2. Fill .grace/context artifacts
+// 3. Run $grace-spec for a change
+// 4. Run $grace-plan after spec approval
+// 5. Run grace lint --path /path/to/project
+// 6. Run grace status --path /path/to/project
+// 7. Run $grace-execute and choose sequential or parallel-safe mode
+// Existing GRACE 3 projects use $grace-migrate.
+]]></snippet>
+        <acceptance>
+          <criterion>All version locations use `4.0.0` and marketplace validation reports no version mismatch.</criterion>
+          <criterion>`src/grace.ts` reports CLI version `4.0.0`.</criterion>
+          <criterion>README no longer describes `docs/development-plan.xml`, `docs/knowledge-graph.xml`, `docs/verification-plan.xml`, or `docs/operational-packets.xml` as the GRACE 4 core model.</criterion>
+          <criterion>README quick start uses `.grace`, `grace-spec`, `grace-plan`, and unified `grace-execute`.</criterion>
+          <criterion>README skills table includes `grace-spec` and `grace-migrate` and excludes `grace-multiagent-execute`.</criterion>
+          <criterion>CHANGELOG contains a `4.0.0` entry that calls out `.grace`, no dual mode, parser-backed validation, new skills, removed multiagent skill, and migration boundary.</criterion>
+          <criterion>RELEASING checklist includes GRACE 4 CLI validation and marketplace mirror sync.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun run ./scripts/validate-marketplace.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-017</id>
+        <title>Strengthen marketplace validation for GRACE 4 skill surface</title>
+        <file>scripts/validate-marketplace.ts</file>
+        <status>pending</status>
+        <description>Add explicit release-surface checks so validation fails if GRACE 4 required skills are missing, `grace-multiagent-execute` is still published, canonical and packaged mirrors drift, or `fast-xml-parser` is missing.</description>
+        <depends_on>
+          <task_id>T-015</task_id>
+          <task_id>T-016</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+/** Required published GRACE 4 skill directory names. */
+const REQUIRED_GRACE4_SKILLS = new Set([
+  "grace-init",
+  "grace-spec",
+  "grace-plan",
+  "grace-execute",
+  "grace-refactor",
+  "grace-setup-subagents",
+  "grace-fix",
+  "grace-refresh",
+  "grace-status",
+  "grace-ask",
+  "grace-cli",
+  "grace-explainer",
+  "grace-verification",
+  "grace-reviewer",
+  "grace-migrate",
+]);
+
+/** Skill names that must not be published in the GRACE 4 marketplace manifest. */
+const FORBIDDEN_GRACE4_SKILLS = new Set(["grace-multiagent-execute"]);
+
+/** Validates that the marketplace skills array matches the GRACE 4 release surface. */
+function validateGrace4SkillSurface(entry: JsonObject, errors: string[]): void;
+
+/** Validates that package.json declares fast-xml-parser as a runtime dependency. */
+function validateGrace4Dependencies(errors: string[]): void;
+]]></snippet>
+        <acceptance>
+          <criterion>Marketplace validation fails if `grace-spec` or `grace-migrate` is missing from the published skills array.</criterion>
+          <criterion>Marketplace validation fails if `grace-multiagent-execute` appears in the published skills array.</criterion>
+          <criterion>Marketplace validation fails if `fast-xml-parser` is not present in package dependencies.</criterion>
+          <criterion>Existing mirror sync and version consistency checks continue to run.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun run ./scripts/validate-marketplace.ts</command>
+        </verification>
+      </task>
+      <task>
+        <id>T-018</id>
+        <title>Run full GRACE 4 release verification gate</title>
+        <file>package.json; src/grace.ts; src/grace-lint.ts; src/grace-status.ts; src/grace-module.ts; src/grace-verification.ts; src/grace-file.ts; src/lint/core.ts; src/lint/types.ts; src/lint/catalog.ts; src/query/core.ts; src/query/types.ts; src/query/health.ts; src/query/render.ts; src/grace4/types.ts; src/grace4/project.ts; src/grace4/xml.ts; src/grace4/grammar.ts; src/grace4/projections.ts; src/grace4/assertions.ts; src/grace4/scope.ts; README.md; CHANGELOG.md; openpackage.yml; .claude-plugin/marketplace.json; plugins/grace/.claude-plugin/plugin.json; scripts/validate-marketplace.ts</file>
+        <status>pending</status>
+        <description>Run the complete release validation gate and fix only issues caused by this GRACE 4 implementation plan. Do not migrate this repository's own GRACE 3 `docs/` artifacts in this task.</description>
+        <depends_on>
+          <task_id>T-011</task_id>
+          <task_id>T-012</task_id>
+          <task_id>T-013</task_id>
+          <task_id>T-014</task_id>
+          <task_id>T-015</task_id>
+          <task_id>T-016</task_id>
+          <task_id>T-017</task_id>
+        </depends_on>
+        <snippet><![CDATA[
+/** Final verification commands for the GRACE 4 release implementation. */
+export const GRACE4_RELEASE_VERIFICATION = [
+  "bun test",
+  "bun run ./src/grace.ts lint --path /tmp/grace4-valid-fixture",
+  "bun run ./src/grace.ts status --path /tmp/grace4-valid-fixture --json --fail-on never",
+  "bun run ./scripts/validate-marketplace.ts",
+  "bun run validate:release",
+] as const;
+
+/** This implementation must not migrate repository-local GRACE 3 docs. */
+export const REPO_SELF_MIGRATION_FORBIDDEN = true;
+]]></snippet>
+        <acceptance>
+          <criterion>`bun test` passes.</criterion>
+          <criterion>`grace lint` passes on a valid GRACE 4 fixture and fails with guidance on a GRACE 3 fixture.</criterion>
+          <criterion>`grace status --json --fail-on never` works on a valid GRACE 4 fixture.</criterion>
+          <criterion>`bun run ./scripts/validate-marketplace.ts` passes.</criterion>
+          <criterion>`bun run validate:release` passes or any failure is documented with exact cause and next remediation.</criterion>
+          <criterion>The repository's current operational GRACE 3 `docs/` files remain unmigrated.</criterion>
+        </acceptance>
+        <verification>
+          <command>bun test</command>
+          <command>bun run ./scripts/validate-marketplace.ts</command>
+          <command>bun run validate:release</command>
+        </verification>
+      </task>
+    </wave>
+  </tasks>
+</plan>

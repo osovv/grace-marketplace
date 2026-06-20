@@ -1,0 +1,625 @@
+<spec>
+  <status>approved</status>
+  <goal><![CDATA[
+Define a plan-ready GRACE 4 core/release contract for the grace-marketplace repository.
+
+GRACE 4 replaces the GRACE 3.11 convention bundle with a versioned agent-context platform built around a strict artifact model, a `.grace` project directory, custom XML artifact grammar, deterministic validation, and controlled change lifecycle artifacts.
+
+This spec covers the full GRACE 4 product surface for this repository:
+- the `.grace` artifact model and canonical layout;
+- the Artifact Grammar and validation rules required for `vv-plan` to plan without inventing core semantics;
+- the Bun/TypeScript CLI validation/navigation/status layer;
+- canonical skills under `skills/grace/*`;
+- packaged skill mirrors under `plugins/grace/skills/grace/*`;
+- marketplace/plugin/package metadata and README/release documentation;
+- addition of `grace-spec` and `grace-migrate` skills;
+- removal of published `grace-multiagent-execute`; parallel-safe execution becomes a mode of `grace-execute`.
+
+Compatibility boundary:
+- all new GRACE 4 skills and CLI commands work only with the `.grace` model;
+- there is no dual-mode GRACE 3/GRACE 4 support in core skills or CLI;
+- GRACE 3 projects enter GRACE 4 only through the `grace-migrate` skill workflow;
+- this repository's current operational GRACE 3 `docs/` artifacts are not migrated as part of this GRACE 4 product implementation. The repository remains operationally GRACE 3 until the GRACE 4 release exists, then it can be migrated through the new migration workflow.
+
+Primary outcomes:
+- every GRACE 4 XML artifact has a self-describing root tag and `graceVersion` root attribute;
+- all semantic anchors remain grep-first XML tags, never attributes;
+- durable source-of-truth artifacts are separated from operational change artifacts;
+- logical graph and verification projections remain identical regardless of monolithic or segmented physical storage;
+- `grace-lint` validates current document state, not lifecycle history;
+- skills enforce lifecycle transitions at operation time;
+- `grace-execute` is idempotent/recovery-aware without introducing a mandatory persistent run artifact.
+  ]]></goal>
+  <architecture><![CDATA[
+1. Core compatibility model
+
+GRACE 4 is a clean `.grace` model. New GRACE 4 skills and CLI commands do not validate, navigate, execute, or plan directly against GRACE 3 `docs/*.xml` artifacts. When a GRACE 3 project is detected, tooling may report guidance to use `grace-migrate`, but it must not enter dual-mode behavior.
+
+2. Canonical `.grace` layout
+
+.grace/
+  context/
+    requirements.xml
+    technology.xml
+    principles.xml
+    deployment.xml
+    ux-guidelines.xml
+
+  graph/
+    index.xml
+    main.xml
+    # optional segmented graph documents live here too
+
+  verification/
+    index.xml
+    main.xml
+    # optional segmented verification documents live here too
+
+  changes/
+    active/
+      C-CHANGE-ID/
+        spec.xml
+        design-context.xml   # optional curated rationale/context
+        plan.xml
+
+    archive/
+      C-CHANGE-ID/
+        spec.xml
+        design-context.xml   # archived when present
+        plan.xml
+
+`context`, `graph`, and `verification` are durable current-state layers. `changes` is the temporal operational layer.
+
+3. Standard artifact root tags
+
+GRACE 4 standard XML artifacts use these root tags:
+
+- GraceRequirements
+- GraceTechnology
+- GracePrinciples
+- GraceDeployment
+- GraceUXGuidelines
+- GraceGraphIndex
+- GraceGraphDocument
+- GraceVerificationIndex
+- GraceVerificationDocument
+- GraceChangeSpec
+- GraceChangePlan
+
+The logical Current Graph is the projection of `graph/index.xml` plus graph documents. The logical Current Verification is the projection of `verification/index.xml` plus verification documents. They are not separate files.
+
+4. Metadata and semantic anchors
+
+Every GRACE 4 XML artifact root has mandatory `graceVersion="4.0"`.
+
+Only root tags may carry artifact-level metadata attributes:
+- every root: `graceVersion`;
+- `GraceChangeSpec` and `GraceChangePlan`: `status`.
+
+Semantic anchors are always XML tags and never attributes. This includes:
+- `GD-*`
+- `VD-*`
+- `C-*`
+- `M-*`
+- `V-M-*`
+- `DF-*`
+- `T-*`
+
+Examples:
+
+<GraceGraphDocument graceVersion="4.0">
+  <GD-AUTH>
+    <M-AUTH-SESSION>
+      ...
+    </M-AUTH-SESSION>
+  </GD-AUTH>
+</GraceGraphDocument>
+
+<GraceChangeSpec graceVersion="4.0" status="approved">
+  <C-AUTH-SESSION-REFACTOR>
+    ...
+  </C-AUTH-SESSION-REFACTOR>
+</GraceChangeSpec>
+
+`status` is an artifact lifecycle attribute for `GraceChangeSpec` and `GraceChangePlan`, not a semantic anchor. `C-*` remains a clean tag with no attributes.
+
+5. Change status model
+
+Allowed operational statuses:
+- draft
+- approved
+- applied
+- rejected
+- cancelled
+- superseded
+
+Current-state invariants:
+- `.grace/changes/active/` may contain only `draft` or `approved` bundles;
+- `.grace/changes/archive/` may contain only `applied`, `rejected`, `cancelled`, or `superseded` bundles;
+- an executable bundle requires `spec.status = approved` and `plan.status = approved`;
+- an applied bundle requires both spec and plan to be `applied` and archived;
+- `superseded` bundles must reference a replacement `C-*`.
+
+`grace-lint` validates current document state. Skills enforce transitions when operations occur.
+
+6. Graph storage and routing
+
+`graph/index.xml` routes graph anchors to graph documents:
+
+<GraceGraphIndex graceVersion="4.0">
+  <GraphDocuments>
+    <GD-MAIN>
+      <Path>graph/main.xml</Path>
+      <Owns>
+        <M-AUTH-SESSION />
+        <DF-AUTH-TOKEN-FLOW />
+      </Owns>
+    </GD-MAIN>
+  </GraphDocuments>
+</GraceGraphIndex>
+
+The owning document must contain the matching wrapper tag and the actual definitions:
+
+<GraceGraphDocument graceVersion="4.0">
+  <GD-MAIN>
+    <M-AUTH-SESSION>
+      ...
+    </M-AUTH-SESSION>
+
+    <DF-AUTH-TOKEN-FLOW>
+      ...
+    </DF-AUTH-TOKEN-FLOW>
+  </GD-MAIN>
+</GraceGraphDocument>
+
+Graph invariants:
+- every `GD-*` in the graph index maps to exactly one path;
+- every graph document contains exactly one matching `GD-*` wrapper;
+- every `M-*` and `DF-*` listed in the index exists exactly once inside the owning `GD-*`;
+- every `M-*` and `DF-*` found in graph documents is listed in the index;
+- cross-document links are allowed but must reference existing anchors;
+- physical segmentation is reversible: monolithic and segmented layouts with the same content produce the same logical projection.
+
+7. Verification storage and routing
+
+`verification/index.xml` routes verification anchors to verification documents:
+
+<GraceVerificationIndex graceVersion="4.0">
+  <VerificationDocuments>
+    <VD-MAIN>
+      <Path>verification/main.xml</Path>
+      <Owns>
+        <V-M-AUTH-SESSION />
+      </Owns>
+    </VD-MAIN>
+  </VerificationDocuments>
+</GraceVerificationIndex>
+
+The owning document contains the matching wrapper and aggregate verification contracts:
+
+<GraceVerificationDocument graceVersion="4.0">
+  <VD-MAIN>
+    <V-M-AUTH-SESSION>
+      ...
+    </V-M-AUTH-SESSION>
+  </VD-MAIN>
+</GraceVerificationDocument>
+
+Verification invariants:
+- every `VD-*` in the verification index maps to exactly one path;
+- every verification document contains exactly one matching `VD-*` wrapper;
+- every `V-M-*` listed in the index exists exactly once inside the owning `VD-*`;
+- every `V-M-*` found in verification documents is listed in the index;
+- every `M-*` in the graph projection has exactly one corresponding `V-M-*`;
+- the correspondence is deterministic: `V-` + `M-*`;
+- each `V-M-*` is an aggregate verification contract and may contain multiple scenarios, commands, log markers, trace assertions, and gates.
+
+8. Project context semantics
+
+All five context artifacts are mandatory. `requirements`, `technology`, and `principles` are always applicable. `deployment` and `ux-guidelines` may be explicitly marked `not-applicable`, but only with a real reason; "not a web app" is not sufficient.
+
+Context meanings:
+- `requirements.xml`: what the project must accomplish, user/business/product requirements, acceptance constraints, and scope;
+- `technology.xml`: runtime, languages, package managers, frameworks, tooling, compatibility targets, and technical constraints;
+- `principles.xml`: project-specific engineering principles, methodology rules, architecture preferences, safety rules, and agent behavior constraints;
+- `deployment.xml`: delivery, publishing, runtime, installation, release, hosting, distribution, and documentation-delivery surfaces;
+- `ux-guidelines.xml`: user/developer/operator/agent interaction guidelines, including visual UI when relevant, CLI UX, API ergonomics, docs examples, error messages, approval flows, and terminology.
+
+9. Change bundle artifacts
+
+Each change bundle lives under `.grace/changes/active/C-*/` until it is closed and archived. It may contain:
+- `spec.xml` with `GraceChangeSpec` (normative intent/source of requirements);
+- optional `design-context.xml` (explanatory curated rationale, alternatives, assumptions, deferred decisions, scenarios; non-normative);
+- `plan.xml` with `GraceChangePlan` (normative execution plan).
+
+`GraceChangeSpec` stays concise and intent-focused. `design-context.xml` preserves rationale without expanding requirements. `GraceChangePlan` contains the executable contract: intent summary, assertions, scopes, tasks, dependencies, and per-task acceptance criteria.
+
+10. Baseline/target assertions
+
+`GraceChangePlan` must contain machine-checkable `BaselineAssertions` and `TargetAssertions` using a limited core vocabulary:
+- `MustExist`
+- `MustNotExist`
+- `MustOwn`
+- `MustLink`
+- `MustVerify`
+- `MustPassCommand`
+- `MustContain`
+- `MustNotContain`
+
+Assertions are validation contracts, not a mutation DSL. Agents apply changes through normal read/edit workflows; CLI validates the resulting state.
+
+11. Scope and conflict model
+
+`GraceChangePlan` must contain:
+- `DurableScope`: planned writes to `.grace` durable truth, such as graph anchors, verification anchors, context artifacts, and optionally whole `GD-*`/`VD-*` documents for split/merge/rehome operations;
+- `ObservedWriteScope`: planned writes outside durable `.grace`, such as source files, tests, package manifests, README/release docs, generated files, and packaged mirrors.
+
+No mandatory `ObservedReadScope` exists in core. Read context belongs in task packets and planning context, not in the artifact model.
+
+Multiple approved active plans may overlap in `DurableScope` and may coexist. Overlap at planning/approval time is a strong warning, not a hard block. Overlap blocks only unsafe concurrent/parallel execution. Sequential execution is allowed after fresh preflight. If another change made the plan stale, `BaselineAssertions` fail and the plan must be superseded/replanned through normal flow.
+
+12. Execution idempotency and recovery
+
+GRACE 4 does not introduce a mandatory persistent execution/run artifact. `grace-execute` must be idempotent and recovery-aware by inspecting:
+- active/archived change artifacts;
+- current durable `.grace` state;
+- observed filesystem/code state;
+- git/worktree state when available;
+- assertions and validation diagnostics.
+
+On rerun against an active approved change, `grace-execute` performs recovery preflight and derives one of these states:
+- clean-to-start;
+- partial-observed-writes;
+- durable-state-changed;
+- target-already-satisfied;
+- unsafe-unknown-drift.
+
+Safe states may continue/retry after explicit user confirmation. Unknown drift, failed baseline, or ambiguous partial writes hard-stop and require rollback, superseding change, or reconciliation through normal GRACE workflows. `grace-execute` must never silently mark a change applied and must never silently rewrite an approved plan.
+  ]]></architecture>
+  <tech-stack><![CDATA[
+Runtime: Bun/TypeScript, preserving the current `@osovv/grace-cli` package model.
+
+XML parsing and validation:
+- use `fast-xml-parser` as the structural XML parser;
+- use a custom GRACE Artifact Grammar validator over parsed XML nodes;
+- do not use XSD as the source of truth because GRACE requires dynamic semantic tag names;
+- do not use regex as a structural parser;
+- regex may be used only for local anchor-name pattern recognition, diagnostics, or grep-oriented hints.
+
+Validation responsibilities:
+- XML parser: well-formedness, nesting, attributes, CDATA boundaries;
+- Artifact Grammar: supported root tags, required sections, allowed root attributes, semantic anchor formats, ownership consistency, status/location invariants, assertions, scopes, cross-links, and projection consistency;
+- logical projection builders: combine segmented graph/verification documents into deterministic current-state views.
+
+CLI runtime and compatibility:
+- GRACE 4 CLI remains Bun-first;
+- Node compatibility is not part of this spec;
+- `fast-xml-parser` is added as a runtime dependency;
+- CLI commands are `.grace` only, with no dual-mode GRACE 3 validation or navigation.
+
+CLI command surface:
+- keep and rewrite for `.grace`: `grace lint`, `grace status`, `grace module`, `grace verification`, `grace file`;
+- do not add `grace migrate` as a core CLI command;
+- migration is agent-applied through the `grace-migrate` skill;
+- CLI may detect a GRACE 3 project only to emit guidance to use `grace-migrate`, not to validate or convert it.
+  ]]></tech-stack>
+  <components>
+    <component>
+      <name>Artifact Grammar</name>
+      <responsibility>Defines the GRACE 4 XML grammar: standard root tags, mandatory `graceVersion`, allowed operational `status` attribute, semantic-anchor tag rules, required sections, current-state invariants, assertion vocabulary, scope structure, ownership consistency, and extension policy. It is custom grammar enforced over parsed XML, not XSD and not regex parsing.</responsibility>
+      <depends-on>fast-xml-parser parsed XML tree</depends-on>
+    </component>
+    <component>
+      <name>XML Parser Adapter</name>
+      <responsibility>Wraps `fast-xml-parser` to parse GRACE artifacts consistently, preserve dynamic tag names, preserve CDATA boundaries, report parse errors with file locations where possible, and provide normalized nodes to Artifact Grammar validators.</responsibility>
+      <depends-on>fast-xml-parser</depends-on>
+    </component>
+    <component>
+      <name>Project Context Store</name>
+      <responsibility>Owns mandatory context artifacts under `.grace/context`: requirements, technology, principles, deployment, and ux-guidelines. It validates applicability semantics and provides stable domain, stack, delivery, interaction, and agent-behavior context to skills.</responsibility>
+      <depends-on>Artifact Grammar</depends-on>
+    </component>
+    <component>
+      <name>Current Graph</name>
+      <responsibility>Stores accepted durable graph truth through `GraceGraphIndex` and `GraceGraphDocument` artifacts. Routes `M-*` and `DF-*` anchors through `GD-*` ownership entries and preserves explicit cross-document semantic connectivity.</responsibility>
+      <depends-on>Artifact Grammar</depends-on>
+    </component>
+    <component>
+      <name>Current Verification</name>
+      <responsibility>Stores accepted durable verification truth through `GraceVerificationIndex` and `GraceVerificationDocument` artifacts. Routes aggregate `V-M-*` verification contracts through `VD-*` ownership entries and maintains deterministic `M-*` to `V-M-*` coverage.</responsibility>
+      <depends-on>Artifact Grammar, Current Graph</depends-on>
+    </component>
+    <component>
+      <name>Graph Logical Projection</name>
+      <responsibility>Builds a deterministic unified current graph view from monolithic or segmented graph storage. Validates duplicate anchors, missing index routes, ownership mismatch, dangling links, and lossless segmentation/merge equivalence.</responsibility>
+      <depends-on>Current Graph</depends-on>
+    </component>
+    <component>
+      <name>Verification Logical Projection</name>
+      <responsibility>Builds a deterministic unified current verification view from monolithic or segmented verification storage. Validates duplicate `V-M-*`, missing routes, ownership mismatch, module-to-verification coverage, and lossless segmentation/merge equivalence.</responsibility>
+      <depends-on>Current Verification, Graph Logical Projection</depends-on>
+    </component>
+    <component>
+      <name>ChangeSpec Artifact</name>
+      <responsibility>Defines `GraceChangeSpec`: concise normative change intent, user-visible outcome, scope expectations, non-goals, constraints, acceptance direction, and exactly one `C-*` semantic anchor. It is created as draft by `grace-spec` and may become approved, rejected, cancelled, applied, or superseded according to lifecycle rules.</responsibility>
+      <depends-on>Artifact Grammar, Project Context Store</depends-on>
+    </component>
+    <component>
+      <name>Change Design Context Artifact</name>
+      <responsibility>Defines optional `design-context.xml` inside a change bundle. It stores curated non-normative rationale, rejected alternatives, assumptions, deferred decisions, scenarios, and external constraints. It is read by `grace-plan` as context only; `spec.xml` wins on conflict.</responsibility>
+      <depends-on>ChangeSpec Artifact</depends-on>
+    </component>
+    <component>
+      <name>ChangePlan Artifact</name>
+      <responsibility>Defines `GraceChangePlan`: intent summary, BaselineAssertions, TargetAssertions, DurableScope, ObservedWriteScope, implementation tasks with `T-*` anchors, dependencies, acceptance criteria, and verification gates. Approved plans are immutable; replacement requires a new `C-*` bundle.</responsibility>
+      <depends-on>Artifact Grammar, ChangeSpec Artifact, Assertion Evaluator, Scope and Conflict Detector</depends-on>
+    </component>
+    <component>
+      <name>Assertion Evaluator</name>
+      <responsibility>Evaluates the core assertion vocabulary for baseline preflight and target validation: `MustExist`, `MustNotExist`, `MustOwn`, `MustLink`, `MustVerify`, `MustPassCommand`, `MustContain`, and `MustNotContain`.</responsibility>
+      <depends-on>Graph Logical Projection, Verification Logical Projection, Project filesystem</depends-on>
+    </component>
+    <component>
+      <name>Scope and Conflict Detector</name>
+      <responsibility>Reads DurableScope and ObservedWriteScope across active changes, surfaces overlap as derived operational state, warns during planning/approval, and blocks only unsafe concurrent or parallel execution. It does not prevent overlapping approved plans from coexisting.</responsibility>
+      <depends-on>ChangePlan Artifact, Assertion Evaluator</depends-on>
+    </component>
+    <component>
+      <name>grace-init Skill / CLI Support</name>
+      <responsibility>Creates a complete `.grace` skeleton for a new GRACE 4 project: context artifacts, graph index/document, verification index/document, and empty change active/archive directories. It does not create dummy change bundles and does not overwrite existing artifacts without confirmation.</responsibility>
+      <depends-on>Artifact Grammar, Project Context Store</depends-on>
+    </component>
+    <component>
+      <name>grace-spec Skill</name>
+      <responsibility>Interviews the user, creates a `C-*` change bundle with draft `GraceChangeSpec`, creates/updates optional change design context when warranted, presents the spec for approval, and transitions the spec to approved/rejected/cancelled through explicit user choice.</responsibility>
+      <depends-on>ChangeSpec Artifact, Change Design Context Artifact, Project Context Store</depends-on>
+    </component>
+    <component>
+      <name>grace-plan Skill</name>
+      <responsibility>Reads approved `GraceChangeSpec` plus optional design context and current durable state, then creates draft `GraceChangePlan` with assertions, scopes, tasks, and verification gates. It surfaces scope overlaps as strong warnings, refuses spec-plan mismatch, and requires explicit user approval before `status="approved"`.</responsibility>
+      <depends-on>ChangeSpec Artifact, ChangePlan Artifact, Current Graph, Current Verification, Assertion Evaluator, Scope and Conflict Detector</depends-on>
+    </component>
+    <component>
+      <name>grace-execute Skill</name>
+      <responsibility>Executes active approved change bundles. It performs preflight, recommends sequential or parallel-safe mode, waits for explicit user choice, applies observed changes, verifies, centrally updates durable `.grace` state, validates targets, marks spec/plan applied, and archives the bundle. It is idempotent and recovery-aware without a mandatory persistent run artifact.</responsibility>
+      <depends-on>ChangePlan Artifact, Assertion Evaluator, Scope and Conflict Detector, grace-lint</depends-on>
+    </component>
+    <component>
+      <name>grace-migrate Skill</name>
+      <responsibility>Provides the only GRACE 3 to GRACE 4 bridge. It reads legacy GRACE 3 artifacts, produces a migration draft/report, asks for explicit approval, agent-applies `.grace` artifacts, validates the result, and deletes legacy docs only after successful validation plus explicit confirmation. It does not create retroactive `C-*` bundles.</responsibility>
+      <depends-on>Artifact Grammar, grace-lint, Project Context Store, Current Graph, Current Verification</depends-on>
+    </component>
+    <component>
+      <name>grace-refresh Skill</name>
+      <responsibility>Detects drift between durable `.grace` current state and observed repository state. It does not silently mutate durable state; it helps create reconciliation changes through the normal `GraceChangeSpec`/`GraceChangePlan` lifecycle.</responsibility>
+      <depends-on>Current Graph, Current Verification, ChangeSpec Artifact, ChangePlan Artifact</depends-on>
+    </component>
+    <component>
+      <name>grace-status Skill / CLI Command</name>
+      <responsibility>Reports durable health, validation summaries, active/archive change activity, derived overlap/block states, stale plans, explained change contexts, and unexplained observed drift. It reports current document state and derived states without modifying XML statuses.</responsibility>
+      <depends-on>grace-lint, Scope and Conflict Detector, Graph Logical Projection, Verification Logical Projection</depends-on>
+    </component>
+    <component>
+      <name>grace-lint Validator</name>
+      <responsibility>Authoritative current-state validation for `.grace`: artifact grammar, version consistency, root attributes, semantic-anchor discipline, graph/verification ownership, projections, assertions, lifecycle location invariants, package-specific release checks, and autonomy readiness where applicable.</responsibility>
+      <depends-on>XML Parser Adapter, Artifact Grammar, Graph Logical Projection, Verification Logical Projection</depends-on>
+    </component>
+    <component>
+      <name>CLI Navigation Commands</name>
+      <responsibility>Rewrite `grace module`, `grace verification`, and `grace file` to resolve `.grace` graph/verification/file-local anchors. They are navigation/reporting commands only and must not implement dual-mode v3 behavior.</responsibility>
+      <depends-on>Graph Logical Projection, Verification Logical Projection, Artifact Grammar</depends-on>
+    </component>
+    <component>
+      <name>GRACE 4 Skill Surface</name>
+      <responsibility>Publishes GRACE 4 skills: `grace-init`, `grace-spec`, `grace-plan`, `grace-execute`, `grace-refresh`, `grace-status`, `grace-ask`, `grace-fix`, `grace-refactor`, `grace-verification`, `grace-reviewer`, `grace-cli`, `grace-explainer`, `grace-migrate`, and `grace-setup-subagents`. `grace-multiagent-execute` is removed from the published GRACE 4 surface.</responsibility>
+      <depends-on>Marketplace Packaging Surface</depends-on>
+    </component>
+    <component>
+      <name>Marketplace Packaging Surface</name>
+      <responsibility>Keeps canonical skills, packaged mirrors, marketplace/plugin manifests, package metadata, openpackage metadata, README, release notes, and validation scripts synchronized for the GRACE 4 release.</responsibility>
+      <depends-on>GRACE 4 Skill Surface, grace-lint Validator</depends-on>
+    </component>
+  </components>
+  <data-flow><![CDATA[
+1. Project bootstrap
+
+`grace-init` creates the canonical `.grace` skeleton:
+- all five context artifacts;
+- `graph/index.xml` and `graph/main.xml`;
+- `verification/index.xml` and `verification/main.xml`;
+- empty `.grace/changes/active/` and `.grace/changes/archive/` directories.
+
+The project fills context artifacts. `AGENTS.md` becomes the stable bootstrap entrypoint pointing agents to `.grace`, grep-first anchor conventions, skill workflows, CLI availability, and stop/replan rules.
+
+2. Change specification
+
+`grace-spec` interviews the user and creates:
+
+.grace/changes/active/C-.../spec.xml
+.grace/changes/active/C-.../design-context.xml   # optional
+
+The spec starts as `GraceChangeSpec status="draft"`. The user explicitly approves, rejects, or cancels it. Approval sets `status="approved"`; rejection/cancellation closes and archives the bundle.
+
+3. Change planning
+
+`grace-plan` accepts only approved `GraceChangeSpec`. It reads current durable context/graph/verification plus optional design context and creates sibling `plan.xml` as `GraceChangePlan status="draft"` with:
+- IntentSummary;
+- BaselineAssertions;
+- TargetAssertions;
+- DurableScope;
+- ObservedWriteScope;
+- ImplementationPlan with `T-*` tasks, dependencies, acceptance criteria, and verification gates.
+
+`grace-plan` surfaces overlap with other active approved plans as strong warnings, not hard blocks. The user explicitly approves, rejects, cancels, or supersedes the plan. Approval sets `status="approved"`.
+
+4. Change execution
+
+`grace-execute` accepts only active bundles where spec and plan are both approved. It performs preflight:
+- bundle consistency and matching `C-*`;
+- status/location invariants;
+- BaselineAssertions against current durable state;
+- scope overlap and concurrency safety;
+- staleness checks;
+- recovery/idempotency classification.
+
+It assesses execution complexity, recommends sequential or parallel-safe mode, and waits for explicit user choice. During implementation, workers may edit only within their allowed ObservedWriteScope. Durable `.grace` updates are applied centrally by the controller after observed work and verification are accepted.
+
+On success:
+- implementation is complete;
+- fresh verification passes;
+- durable graph/verification/context updates are applied;
+- TargetAssertions pass;
+- full `grace lint` passes;
+- spec and plan are marked `status="applied"`;
+- the whole bundle is moved to `.grace/changes/archive/C-.../`.
+
+5. Supersede and replan
+
+Approved plans are immutable. If an approved plan proves stale or incorrect during execution, `grace-execute` hard-stops. Replacement of an approved plan requires a new `C-*` bundle. The old bundle is marked `superseded`, references the replacement `C-*`, and is archived.
+
+6. Migration from GRACE 3
+
+`grace-migrate` reads legacy GRACE 3 artifacts such as `docs/requirements.xml`, `docs/technology.xml`, `docs/development-plan.xml`, `docs/knowledge-graph.xml`, `docs/verification-plan.xml`, and `docs/operational-packets.xml` when present. It produces a migration draft/report describing the target `.grace` layout, generated graph/verification ownership, ambiguities, unsupported structures, files to create, and legacy files proposed for removal.
+
+After explicit user approval, the agent writes `.grace` artifacts and validates them. Legacy docs are removed only after valid `.grace` state and explicit cleanup confirmation. Failed migration leaves legacy artifacts untouched. No retroactive `C-*` bundles are created.
+
+7. Validation and status
+
+`grace-lint` parses `.grace` XML through `fast-xml-parser`, applies Artifact Grammar validation, builds graph and verification projections, validates current-state lifecycle/location invariants, evaluates static assertion consistency where applicable, and reports structured diagnostics.
+
+`grace-status` summarizes durable health, operational activity, derived conflicts, stale plans, and drift. It distinguishes explained active-change contexts from unexplained observed drift.
+  ]]></data-flow>
+  <error-handling><![CDATA[
+General validation errors:
+- unknown root tag, missing `graceVersion`, unsupported `graceVersion`, malformed XML, forbidden semantic-anchor attributes, duplicate anchors, dangling references, missing ownership routes, ownership mismatch, invalid status, invalid status location, or missing required sections produce explicit diagnostic codes and file-localized messages where possible.
+
+Change lifecycle:
+- `grace-plan` refuses draft, rejected, cancelled, applied, superseded, or missing specs;
+- `grace-execute` refuses missing plans, non-approved specs/plans, already closed bundles, mismatched `C-*`, invalid status/location, failed BaselineAssertions, unsafe concurrent overlap, or missing explicit execution mode choice;
+- rejected/cancelled/superseded bundles must be archived and must not remain active;
+- superseded bundles require a replacement `C-*` reference.
+
+Approved plan immutability:
+- `grace-execute` must hard-stop if an approved plan is incorrect, stale, contradictory, or missing necessary dependency/scope/verification data;
+- it must not silently edit an approved plan;
+- replacing an approved plan requires a new `C-*` bundle.
+
+Execution recovery:
+- `clean-to-start` may proceed after normal confirmation;
+- `partial-observed-writes` may continue only if the observed state is explainable, within ObservedWriteScope, and compatible with TargetAssertions;
+- `durable-state-changed` requires baseline re-evaluation and may hard-stop as stale;
+- `target-already-satisfied` may proceed to durable apply only after fresh verification and TargetAssertions pass;
+- `unsafe-unknown-drift` hard-stops and requires rollback, reconciliation, cancellation, or superseding change.
+
+Parallel-safe execution:
+- hard-stop if two workers would write overlapping ObservedWriteScope files/globs;
+- hard-stop if concurrent execution would overlap durable scope unsafely;
+- hard-stop if a worker writes outside its bounded ObservedWriteScope;
+- only the controller may apply durable `.grace` updates.
+
+Migration safety:
+- `grace-migrate` must present a migration draft/report before writing;
+- destructive cleanup requires valid `.grace` state and explicit confirmation;
+- if git is unavailable or worktree state is not clean, migration requires explicit acknowledgement before destructive cleanup;
+- failure leaves legacy GRACE 3 artifacts untouched;
+- no CLI command may silently convert or delete legacy docs.
+
+Project context applicability:
+- missing mandatory context artifacts are validation errors;
+- `deployment` and `ux-guidelines` may be `not-applicable` only with a real reason;
+- lack of a web UI is not sufficient to mark UX not applicable.
+  ]]></error-handling>
+  <testing>
+    <strategy><![CDATA[
+Build deterministic tests around parsed XML fixtures, Artifact Grammar validation, logical projection construction, lifecycle state validation, assertion evaluation, execution recovery classification, migration safety, and marketplace packaging integrity. Tests should prefer fixture projects that model complete `.grace` states and invalid variants. GRACE 4 release validation must include Bun tests, CLI validation, and marketplace/package drift checks.
+    ]]></strategy>
+    <coverage><![CDATA[
+Artifact Grammar fixtures:
+- minimal valid `.grace` project;
+- missing `graceVersion`;
+- unsupported `graceVersion`;
+- invalid root tag;
+- forbidden semantic-anchor attribute usage;
+- duplicate `M-*`;
+- duplicate `V-M-*`;
+- unlisted graph anchor in document;
+- listed but missing graph anchor;
+- `GD-*` index mismatch with document wrapper;
+- same mismatch coverage for `VD-*`.
+
+Graph/verification projection fixtures:
+- monolithic graph projection;
+- segmented graph projection equivalent to monolithic;
+- lossless merge equivalence;
+- cross-document link validity;
+- dangling graph and verification references;
+- deterministic `M-*` to `V-M-*` coverage.
+
+Change lifecycle fixtures:
+- draft spec only;
+- approved spec with missing plan;
+- approved spec with draft plan;
+- approved spec and approved plan executable;
+- rejected/cancelled/superseded bundles archived;
+- invalid closed status in active;
+- invalid open status in archive;
+- superseded without replacement reference;
+- overlapping approved plans allowed but surfaced;
+- parallel-safe overlap blocks unsafe execution.
+
+Assertion fixtures:
+- `MustExist`;
+- `MustNotExist`;
+- `MustOwn`;
+- `MustLink`;
+- `MustVerify`;
+- `MustPassCommand`;
+- `MustContain`;
+- `MustNotContain`;
+- stale BaselineAssertions after durable state changes.
+
+Recovery fixtures:
+- clean-to-start;
+- partial observed writes;
+- durable-state-changed;
+- target-already-satisfied;
+- unsafe-unknown-drift.
+
+Migration fixtures:
+- valid GRACE 3 project converted to valid `.grace` by agent-applied workflow;
+- missing optional v3 docs handled in migration draft/report;
+- invalid or ambiguous v3 docs produce report and hard-stop;
+- legacy docs are not deleted before valid `.grace`;
+- no retroactive `C-*` bundles are created.
+
+CLI fixtures:
+- `grace lint` validates `.grace` and rejects invalid current state;
+- `grace status` reports derived overlap/stale/drift states without mutating XML;
+- `grace module` resolves `M-*` through graph index/projection;
+- `grace verification` resolves `V-M-*` through verification index/projection;
+- `grace file` reports file-local/private semantic markup and artifact-local anchors;
+- CLI detects GRACE 3 only to emit migration guidance, not to enter dual mode.
+
+Repository packaging fixtures:
+- canonical skills and packaged mirrors are synchronized;
+- marketplace manifest includes GRACE 4 skill surface;
+- `grace-multiagent-execute` is absent from published manifest;
+- `grace-spec` and `grace-migrate` are present in published manifest;
+- versions are synchronized across package metadata, marketplace metadata, plugin metadata, README, and openpackage metadata;
+- `fast-xml-parser` dependency is present;
+- release validation runs `bun test`, GRACE 4 CLI validation, and marketplace validation scripts.
+    ]]></coverage>
+  </testing>
+  <non-goals>
+    <non-goal>No dual-mode GRACE 3/GRACE 4 support in core skills or CLI. GRACE 4 works only with `.grace`.</non-goal>
+    <non-goal>Do not migrate this repository's own operational GRACE 3 `docs/` artifacts as part of this spec. The repository remains operationally GRACE 3 until GRACE 4 exists and can migrate through `grace-migrate`.</non-goal>
+    <non-goal>No CLI-applied migration. Migration is agent-applied through the `grace-migrate` skill; CLI validates and reports only.</non-goal>
+    <non-goal>No executable graph delta DSL. Assertions are validation contracts, not mutation operations.</non-goal>
+    <non-goal>No mandatory persistent execution/run artifact. `grace-execute` must be idempotent and recovery-aware through current state, scopes, assertions, observed files, git/worktree state when available, and validation.</non-goal>
+    <non-goal>No published `grace-multiagent-execute` in GRACE 4. Parallel-safe execution is a mode of `grace-execute`.</non-goal>
+    <non-goal>No XSD as the source of truth for Artifact Grammar. Use `fast-xml-parser` plus custom grammar validation.</non-goal>
+    <non-goal>No adoption profiles or GRACE-lite mode in core. GRACE 4 core is Full GRACE.</non-goal>
+    <non-goal>No automatic destructive cleanup during migration. Legacy docs deletion requires valid `.grace` and explicit confirmation.</non-goal>
+    <non-goal>No hard global segmentation thresholds. Segmentation is planner-owned; tooling may provide warnings and heuristics.</non-goal>
+  </non-goals>
+</spec>

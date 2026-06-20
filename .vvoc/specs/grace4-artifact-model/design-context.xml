@@ -1,0 +1,317 @@
+<design-context>
+  <decisions>
+    <decision>
+      <topic>Spec maturity and scope</topic>
+      <choice>Make this a plan-ready GRACE 4 core/release contract for the whole grace-marketplace product surface.</choice>
+      <rationale>The downstream `vv-plan` must not invent core artifact semantics, validation rules, lifecycle states, migration boundaries, or release-surface behavior. The spec therefore covers CLI, canonical skills, packaged mirrors, marketplace metadata, README/release documentation, and GRACE 4 migration workflow.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Concept-only architecture spec</name>
+          <reason_rejected>Would leave Artifact Grammar, assertions, lifecycle, and migration safety to implementation planning, which is exactly where divergence risk is highest.</reason_rejected>
+        </alternative>
+        <alternative>
+          <name>Artifact-model-only spec</name>
+          <reason_rejected>The repository's real release surface includes skills, CLI, packaged mirrors, and manifests. A model-only change would leave those surfaces contradictory.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>GRACE 3 compatibility</topic>
+      <choice>No dual mode. GRACE 4 skills and CLI work only with `.grace`; GRACE 3 enters only through `grace-migrate`.</choice>
+      <rationale>Dual-mode skills and validators would duplicate every navigation, validation, status, execution, and migration rule. The user explicitly rejected dual mode. A clean `.grace` model plus dedicated migration bridge is safer and clearer.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Dual-mode GRACE 3/4 CLI and skills</name>
+          <reason_rejected>Would spread compatibility branches through all core workflows and create ambiguity about the active source of truth.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Current repository operational docs</topic>
+      <choice>Do not migrate this repository's own GRACE 3 `docs/` during the GRACE 4 product implementation.</choice>
+      <rationale>The repository stays operationally GRACE 3 until the GRACE 4 release exists. Afterwards, it can be migrated by the new `grace-migrate` workflow. This avoids mixing product implementation with self-migration.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Migrate this repo's current `docs/` during the same change</name>
+          <reason_rejected>Would conflate building the migration machinery with consuming it and would expand the implementation scope unnecessarily.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Canonical `.grace` layout</topic>
+      <choice>Use top-level `.grace/context`, `.grace/graph`, `.grace/verification`, and `.grace/changes/{active,archive}`.</choice>
+      <rationale>`changes` is clearer than `operations` or `operational` because the operational layer is centered on `C-*` change bundles. Top-level durable directories minimize navigation hops for agents.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>`operations/active` and `operations/archive`</name>
+          <reason_rejected>Less semantically direct and conflicted with earlier `operational` wording.</reason_rejected>
+        </alternative>
+        <alternative>
+          <name>Wrap durable artifacts under `.grace/durable`</name>
+          <reason_rejected>Adds an extra navigation hop without improving semantics.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Root tags and semantic identity</topic>
+      <choice>Root tags declare artifact role; semantic identity anchors such as `GD-*`, `VD-*`, `C-*`, `M-*`, `V-M-*`, `DF-*`, and `T-*` are always XML tags, never attributes.</choice>
+      <rationale>`GD-*`, `VD-*`, and `C-*` are semantic anchors, not incidental metadata. Keeping them as tags preserves grep-first navigation and attention anchors while root tags remain self-describing artifact roles.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Use `documentId` or `changeId` attributes</name>
+          <reason_rejected>Would hide semantic anchors in attributes and contradict the core unique-tag discipline.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Artifact metadata attributes</topic>
+      <choice>Require `graceVersion` on every root; allow `status` only on `GraceChangeSpec` and `GraceChangePlan` roots.</choice>
+      <rationale>`graceVersion` makes each artifact self-describing and especially helps archived change artifacts remain historically readable. `status` is lifecycle metadata of the change artifact, not a semantic anchor, so it belongs on the operational root rather than on the `C-*` tag.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Version only on indexes or a global manifest</name>
+          <reason_rejected>Context artifacts and archived changes do not have a reliable index context; files would stop being self-describing when read or moved alone.</reason_rejected>
+        </alternative>
+        <alternative>
+          <name>Status as child element inside `C-*`</name>
+          <reason_rejected>Valid, but less direct for artifact lifecycle and less grep-friendly than a root status attribute.</reason_rejected>
+        </alternative>
+        <alternative>
+          <name>Status attribute on `C-*`</name>
+          <reason_rejected>Would introduce attributes on semantic anchors and weaken the no-anchor-attributes rule.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Graph and verification routing</topic>
+      <choice>Use index-owned `GD-*` and `VD-*` route entries with self-closing owned anchor references and matching document wrapper tags.</choice>
+      <rationale>This preserves grep-first ownership lookup while allowing monolithic and segmented physical storage to produce the same logical projection. The model makes routing, duplicate detection, missing-anchor detection, and split/merge validation deterministic.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Infer ownership by scanning graph/verification documents only</name>
+          <reason_rejected>Would make navigation slower, conflict detection weaker, and split/merge behavior less explicit.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Project context semantics</topic>
+      <choice>Keep five mandatory context artifacts and define deployment/UX broadly.</choice>
+      <rationale>Delivery and interaction surfaces exist for libraries, CLIs, packages, docs, agents, and APIs, not only web apps. `deployment` means delivery/publishing/runtime/installation/release/distribution/docs delivery. `ux-guidelines` includes CLI UX, API ergonomics, docs examples, error messages, approval flows, and terminology.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Make deployment and UX optional for non-web projects</name>
+          <reason_rejected>Would encode a web-app-centric interpretation and lose important package/CLI/agent-facing context.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Change lifecycle statuses</topic>
+      <choice>Use expanded statuses: draft, approved, applied, rejected, cancelled, superseded.</choice>
+      <rationale>Operational artifacts are first-class in GRACE 4, so rejected, cancelled, and superseded are real outcomes that should be self-describing in archive and status reports.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Only draft/approved/applied</name>
+          <reason_rejected>Would make abandoned, rejected, or superseded changes ambiguous and leave `.grace/changes` cleanup semantics underspecified.</reason_rejected>
+        </alternative>
+        <alternative>
+          <name>Closed status plus close reason</name>
+          <reason_rejected>More complex to validate and grep than explicit terminal statuses.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Validator responsibility</topic>
+      <choice>`grace-lint` validates current document state; skills enforce lifecycle transitions at operation time.</choice>
+      <rationale>Without a persistent event log, the validator should not attempt to prove transition history. It should answer whether the current `.grace` document state is valid. Skills are responsible for legal transitions during spec, plan, execute, cancel, reject, and supersede operations.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Validator reconstructs lifecycle history</name>
+          <reason_rejected>Would require event sourcing or heuristics, neither of which is part of the desired core model.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Execution recovery</topic>
+      <choice>Make `grace-execute` idempotent/recovery-aware without a mandatory persistent run artifact.</choice>
+      <rationale>Most executions should remain session-local, but interrupted runs need a safety story. Recovery can be derived from approved change artifacts, current durable state, observed files, git/worktree state when available, and assertions.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Mandatory persistent run artifact</name>
+          <reason_rejected>Adds durable operational state that agents historically underuse and that the model explicitly wants to avoid in core.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Assertion model</topic>
+      <choice>Use a limited machine-checkable assertion vocabulary rather than a general mutation DSL.</choice>
+      <rationale>BaselineAssertions and TargetAssertions must be concrete enough for stale-plan and target validation, but they should remain validation contracts. Agents still apply changes through read/edit workflows.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Executable graph delta DSL</name>
+          <reason_rejected>Creates a new mutation language and merge/rollback semantics that duplicate git and are unlikely to be used reliably by agents.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Scope and conflicts</topic>
+      <choice>Require DurableScope and ObservedWriteScope; allow overlapping approved plans to coexist; block only unsafe concurrent execution.</choice>
+      <rationale>The planning model should support several approved plans that may touch the same semantic anchors, as long as execution is serialized or freshly preflighted. DurableScope detects overlapping intent; ObservedWriteScope protects parallel-safe file writes and recovery. Mandatory ObservedReadScope would be noisy because agents read broadly.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Hard-block overlapping approved plans</name>
+          <reason_rejected>Would prevent useful parallel planning. The user explicitly wants overlapping plans to coexist and execute sequentially when needed.</reason_rejected>
+        </alternative>
+        <alternative>
+          <name>Mandatory ObservedReadScope</name>
+          <reason_rejected>Too broad and noisy for agent workflows; read context belongs in task packets rather than core artifacts.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Validation implementation</topic>
+      <choice>Use `fast-xml-parser` plus custom Artifact Grammar; regex is not structural parsing.</choice>
+      <rationale>GRACE 4 XML includes dynamic tag names, CDATA snippets, examples, self-closing anchor references, and nested structures. Regex parsing would produce false positives and fragile validation. `fast-xml-parser` works in the Bun/TypeScript environment and adds one dependency.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Regex-based structural validation</name>
+          <reason_rejected>Too fragile for XML structure, CDATA boundaries, examples, and dynamic semantic tags.</reason_rejected>
+        </alternative>
+        <alternative>
+          <name>XSD as source of truth</name>
+          <reason_rejected>XSD does not fit GRACE's dynamic unique semantic tag model and would push toward generic tags.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>CLI surface</topic>
+      <choice>Keep `.grace` validation/navigation/status commands; do not add `grace migrate` CLI command.</choice>
+      <rationale>Migration requires semantic decisions and should be agent-applied through `grace-migrate`. CLI remains deterministic tooling for lint/status/module/verification/file navigation and may only detect v3 to emit guidance.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>CLI-applied `grace migrate`</name>
+          <reason_rejected>Conflicts with the agent-applied, CLI-validated principle and risks destructive automated rewrites.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>GRACE 4 skill surface</topic>
+      <choice>Add `grace-spec` and `grace-migrate`; remove published `grace-multiagent-execute`; make parallel-safe execution a mode of `grace-execute`.</choice>
+      <rationale>A single execution entrypoint reduces product-surface complexity and matches the plan/execute mode-selection pattern. Keeping a separate multiagent skill would retain GRACE 3 mental model.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Keep `grace-multiagent-execute` as deprecated wrapper</name>
+          <reason_rejected>Would continue exposing a split execution model in the GRACE 4 marketplace surface.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Change design context</topic>
+      <choice>Add optional `design-context.xml` to GRACE 4 change bundles, mirroring the latest vv-spec pattern.</choice>
+      <rationale>`GraceChangeSpec` should remain concise and normative, while complex rationale, alternatives, assumptions, scenarios, and deferred decisions are useful to `grace-plan` and reviewers. The user pointed to the latest vv-spec design-context behavior as reference.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Put all rationale inside `GraceChangeSpec`</name>
+          <reason_rejected>Would bloat the normative spec and make requirements harder to distinguish from context.</reason_rejected>
+        </alternative>
+        <alternative>
+          <name>Do not preserve design rationale</name>
+          <reason_rejected>Would force planners to rediscover decisions and tradeoffs.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+    <decision>
+      <topic>Approved plan replacement</topic>
+      <choice>Approved plans are immutable; replacing one requires a new `C-*` bundle and superseding the old bundle.</choice>
+      <rationale>This preserves auditability and avoids multiple mutable plan versions inside one change directory. If a plan is stale or wrong, `grace-execute` hard-stops and the user chooses rollback, supersede, or cancel.</rationale>
+      <alternatives_considered>
+        <alternative>
+          <name>Edit approved plan in place</name>
+          <reason_rejected>Would silently change the approved execution contract and weaken planning safety.</reason_rejected>
+        </alternative>
+        <alternative>
+          <name>Multiple plan versions inside one bundle</name>
+          <reason_rejected>More complex layout and lifecycle without clear benefit over a new `C-*` bundle.</reason_rejected>
+        </alternative>
+      </alternatives_considered>
+    </decision>
+  </decisions>
+  <assumptions>
+    <assumption>
+      <statement>Agents will continue to use grep/read/edit as the primary interface for understanding and changing artifacts; CLI is the deterministic enforcement and navigation layer.</statement>
+      <confidence>high</confidence>
+      <fragile_if>Future agents become reliably trained on GRACE-specific CLI workflows as their primary interface. The design still supports CLI strengthening because artifacts remain self-describing.</fragile_if>
+    </assumption>
+    <assumption>
+      <statement>`fast-xml-parser` works reliably under the repository's Bun runtime and can preserve enough structure for dynamic tag validation and CDATA-aware diagnostics.</statement>
+      <confidence>high</confidence>
+      <fragile_if>The parser cannot represent dynamic tag names or CDATA boundaries in a way suitable for Artifact Grammar validation; then the parser adapter must compensate or choose a different XML parser.</fragile_if>
+    </assumption>
+    <assumption>
+      <statement>Most executions can remain session-local, so idempotent recovery is sufficient without a mandatory persistent run artifact.</statement>
+      <confidence>medium</confidence>
+      <fragile_if>Multi-day autonomous runs become common and require durable progress checkpoints. That would be a future extension, not part of core GRACE 4.</fragile_if>
+    </assumption>
+    <assumption>
+      <statement>The current grace-marketplace repo can stay operationally GRACE 3 while implementing the GRACE 4 product surface.</statement>
+      <confidence>high</confidence>
+      <fragile_if>Implementation tooling assumes the repository itself is already `.grace`-based. The spec explicitly forbids that assumption.</fragile_if>
+    </assumption>
+  </assumptions>
+  <deferred>
+    <item>
+      <decision>Exact field-level schema inside every context artifact and every `GraceChangeSpec` section.</decision>
+      <why_deferred>The plan-ready spec defines root tags, lifecycle, responsibilities, and validation boundaries. Detailed section templates can be designed during Artifact Grammar implementation as long as they preserve the specified semantics.</why_deferred>
+      <revisit_trigger>Artifact Grammar implementation tasks in `vv-plan`.</revisit_trigger>
+    </item>
+    <item>
+      <decision>Exact segmentation warning heuristics for graph and verification documents.</decision>
+      <why_deferred>The core requirement is lossless segmentation and no hard global thresholds. Practical heuristics should be tuned after initial GRACE 4 fixtures and real migrations.</why_deferred>
+      <revisit_trigger>First segmented graph/verification migration or fixture suite.</revisit_trigger>
+    </item>
+    <item>
+      <decision>Exact CLI output formats and diagnostic code names.</decision>
+      <why_deferred>The spec requires structured, localized diagnostics and current-state validation. Exact code naming belongs to implementation planning and test fixture design.</why_deferred>
+      <revisit_trigger>CLI validator implementation planning.</revisit_trigger>
+    </item>
+  </deferred>
+  <scenarios>
+    <scenario>
+      <name>Two approved changes overlap on the same `M-*`</name>
+      <context>`C-AUTH-REFACTOR` and `C-TOKEN-ROTATION` both include `M-AUTH-SESSION` in DurableScope and are both approved.</context>
+      <implications>Both may coexist in `.grace/changes/active`. `grace-status` surfaces overlap as a derived state. Concurrent execution is blocked, but sequential execution is allowed after fresh preflight. If the first apply makes the second baseline stale, the second must be superseded or replanned.</implications>
+    </scenario>
+    <scenario>
+      <name>Interrupted execution after observed writes</name>
+      <context>An approved change edited files inside ObservedWriteScope but the session ended before durable `.grace` updates and archive.</context>
+      <implications>Rerunning `grace-execute` performs recovery preflight, classifies `partial-observed-writes`, validates whether writes are explainable and target-compatible, then either continues with explicit confirmation or hard-stops for rollback/supersede/reconciliation.</implications>
+    </scenario>
+    <scenario>
+      <name>GRACE 3 project migration</name>
+      <context>A project has legacy `docs/development-plan.xml`, `docs/knowledge-graph.xml`, `docs/verification-plan.xml`, and optional context/packet docs.</context>
+      <implications>`grace-migrate` reads the legacy files, presents a migration draft/report, writes `.grace` only after approval, validates the result, and deletes legacy docs only after valid state and explicit cleanup confirmation. No retroactive `C-*` bundles are created.</implications>
+    </scenario>
+    <scenario>
+      <name>CLI/package repository without visual UI</name>
+      <context>A GRACE 4 project is a CLI or package rather than a web application.</context>
+      <implications>`deployment.xml` is still usually applicable because publishing, installation, executable entrypoints, package exports, and docs delivery are delivery surfaces. `ux-guidelines.xml` is still usually applicable because command names, flags, help output, errors, JSON/text output, API ergonomics, and approval flows are UX.</implications>
+    </scenario>
+  </scenarios>
+  <external_constraints>
+    <constraint>
+      <source>grace-marketplace repository packaging model</source>
+      <impact>GRACE 4 changes must keep canonical skills, packaged mirrors, marketplace manifest, plugin manifest, openpackage metadata, package metadata, README, and validation scripts synchronized.</impact>
+    </constraint>
+    <constraint>
+      <source>Existing CLI package `@osovv/grace-cli`</source>
+      <impact>The CLI remains Bun/TypeScript-first. `fast-xml-parser` is added as a runtime dependency; Node compatibility is not a requirement.</impact>
+    </constraint>
+    <constraint>
+      <source>Latest vv-spec package pattern</source>
+      <impact>GRACE 4 adopts an optional non-normative `design-context.xml` companion for change bundles, analogous to `.vvoc/specs/&lt;id&gt;/design-context.xml`.</impact>
+    </constraint>
+    <constraint>
+      <source>No dual mode user decision</source>
+      <impact>Implementation planning must not preserve v3 validation/navigation paths inside GRACE 4 core skills or CLI. v3 handling is limited to migration guidance and `grace-migrate` skill workflow.</impact>
+    </constraint>
+  </external_constraints>
+</design-context>
