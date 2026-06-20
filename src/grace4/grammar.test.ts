@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "bun:test";
@@ -11,6 +11,7 @@ import {
   validateGrace4Project,
   validateSemanticAnchorDiscipline,
 } from "./grammar";
+import { writeChangeBundleFixture, writeLegacyGrace3Project, writeMinimalGrace4Project, writeSegmentedGrace4Project } from "./test-fixtures";
 import { parseGraceXmlArtifact } from "./xml";
 
 function createProject() {
@@ -25,41 +26,44 @@ function writeProjectFile(root: string, relativePath: string, contents: string) 
   writeFileSync(filePath, contents);
 }
 
-function writeMinimalGrace4Project(root: string) {
-  writeProjectFile(root, ".grace/context/requirements.xml", `<GraceRequirements graceVersion="4.0"><Summary>Required.</Summary></GraceRequirements>`);
-  writeProjectFile(root, ".grace/context/technology.xml", `<GraceTechnology graceVersion="4.0"><Runtime>Bun</Runtime></GraceTechnology>`);
-  writeProjectFile(root, ".grace/context/principles.xml", `<GracePrinciples graceVersion="4.0"><Principle>Safe.</Principle></GracePrinciples>`);
-  writeProjectFile(root, ".grace/context/deployment.xml", `<GraceDeployment graceVersion="4.0"><Applicability>applicable</Applicability></GraceDeployment>`);
-  writeProjectFile(root, ".grace/context/ux-guidelines.xml", `<GraceUXGuidelines graceVersion="4.0"><Applicability>applicable</Applicability></GraceUXGuidelines>`);
-  writeProjectFile(
-    root,
-    ".grace/graph/index.xml",
-    `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns><M-EXAMPLE /></Owns></GD-MAIN></GraphDocuments></GraceGraphIndex>`,
-  );
-  writeProjectFile(
-    root,
-    ".grace/graph/main.xml",
-    `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-EXAMPLE><Summary>Example.</Summary></M-EXAMPLE></GD-MAIN></GraceGraphDocument>`,
-  );
-  writeProjectFile(
-    root,
-    ".grace/verification/index.xml",
-    `<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-EXAMPLE /></Owns></VD-MAIN></VerificationDocuments></GraceVerificationIndex>`,
-  );
-  writeProjectFile(
-    root,
-    ".grace/verification/main.xml",
-    `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><Command>bun test</Command></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>`,
-  );
-  mkdirSync(path.join(root, ".grace", "changes", "active"), { recursive: true });
-  mkdirSync(path.join(root, ".grace", "changes", "archive"), { recursive: true });
-}
-
 function codes(result: { issues: { code: string }[] }) {
   return result.issues.map((issue) => issue.code);
 }
 
 describe("GRACE 4 Artifact Grammar", () => {
+  it("fixture builders create required GRACE 4 and legacy project shapes", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeChangeBundleFixture(root, { changeId: "C-FIXTURE", location: "active", specStatus: "approved", planStatus: "approved" });
+
+    for (const relativePath of [
+      ".grace/context/requirements.xml",
+      ".grace/context/technology.xml",
+      ".grace/context/principles.xml",
+      ".grace/context/deployment.xml",
+      ".grace/context/ux-guidelines.xml",
+      ".grace/graph/index.xml",
+      ".grace/graph/main.xml",
+      ".grace/verification/index.xml",
+      ".grace/verification/main.xml",
+      ".grace/changes/active/C-FIXTURE/spec.xml",
+      ".grace/changes/active/C-FIXTURE/plan.xml",
+    ]) {
+      expect(existsSync(path.join(root, relativePath))).toBe(true);
+    }
+    expect(validateGrace4Project(root).issues).toHaveLength(0);
+
+    const segmentedRoot = createProject();
+    writeSegmentedGrace4Project(segmentedRoot);
+    expect(validateGrace4Project(segmentedRoot).issues).toHaveLength(0);
+    expect(existsSync(path.join(segmentedRoot, ".grace/graph/core.xml"))).toBe(true);
+    expect(existsSync(path.join(segmentedRoot, ".grace/verification/second.xml"))).toBe(true);
+
+    const legacyRoot = createProject();
+    writeLegacyGrace3Project(legacyRoot);
+    expect(codes(validateGrace4Project(legacyRoot))).toContain("project.grace3-detected");
+  });
+
   it("validates a minimal current .grace project", () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
@@ -80,12 +84,16 @@ describe("GRACE 4 Artifact Grammar", () => {
     ]);
   });
 
-  it("reports missing and unsupported graceVersion values", () => {
+  it("reports missing graceVersion, unsupported versions, invalid roots, and malformed XML", () => {
     const missing = validateArtifactRoot(parseGraceXmlArtifact("requirements.xml", `<GraceRequirements />`));
     const unsupported = validateArtifactRoot(parseGraceXmlArtifact("requirements.xml", `<GraceRequirements graceVersion="3.11" />`));
+    const invalidRoot = validateArtifactRoot(parseGraceXmlArtifact("unknown.xml", `<NotGrace graceVersion="4.0" />`));
+    const malformed = validateArtifactRoot(parseGraceXmlArtifact("broken.xml", `<GraceRequirements graceVersion="4.0"><Open></GraceRequirements>`));
 
     expect(codes(missing)).toContain("artifact.missing-grace-version");
     expect(codes(unsupported)).toContain("artifact.unsupported-grace-version");
+    expect(codes(invalidRoot)).toContain("artifact.invalid-root-tag");
+    expect(codes(malformed)).toContain("xml.parse");
   });
 
   it("allows status only on change artifact roots", () => {
