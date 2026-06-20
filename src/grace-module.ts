@@ -3,6 +3,12 @@ import { defineCommand } from "citty";
 import { findModules, loadGraceArtifactIndex, resolveModule } from "./query/core";
 import { buildModuleHealth, resolveModuleHealth } from "./query/health";
 import { formatModuleFindTable, formatModuleHealthText, formatModuleText } from "./query/render";
+import type { GraceArtifactIndex } from "./query/types";
+
+/** Loads projection-backed index or throws a user-facing command error. */
+function loadGrace4IndexOrThrow(root: string): GraceArtifactIndex {
+  return loadGraceArtifactIndex(root);
+}
 
 function resolveFormat(format: unknown, json: unknown, allowed: string[], defaultFormat: string) {
   const resolved = Boolean(json) ? "json" : String(format ?? defaultFormat);
@@ -58,7 +64,7 @@ export const moduleCommand = defineCommand({
       },
       async run(context) {
         const format = resolveFormat(context.args.format, context.args.json, ["table", "json"], "table");
-        const index = loadGraceArtifactIndex(String(context.args.path ?? "."));
+        const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
         const matches = findModules(index, {
           query: context.args.query ? String(context.args.query) : undefined,
           type: context.args.type ? String(context.args.type) : undefined,
@@ -108,7 +114,7 @@ export const moduleCommand = defineCommand({
       },
       async run(context) {
         const format = resolveFormat(context.args.format, context.args.json, ["text", "json"], "text");
-        const index = loadGraceArtifactIndex(String(context.args.path ?? "."));
+        const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
         const moduleRecord = resolveModule(index, String(context.args.target));
         const withValues = String(context.args.with ?? "")
           .split(",")
@@ -156,7 +162,7 @@ export const moduleCommand = defineCommand({
       },
       async run(context) {
         const format = resolveFormat(context.args.format, context.args.json, ["text", "json"], "text");
-        const index = loadGraceArtifactIndex(String(context.args.path ?? "."));
+        const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
         const health = resolveModuleHealth(index, String(context.args.target));
 
         if (format === "json") {

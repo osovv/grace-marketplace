@@ -2,6 +2,12 @@ import { defineCommand } from "citty";
 
 import { loadGraceArtifactIndex, resolveGovernedFile } from "./query/core";
 import { formatFileText } from "./query/render";
+import type { GraceArtifactIndex } from "./query/types";
+
+/** Loads projection-backed index or throws a user-facing command error. */
+function loadGrace4IndexOrThrow(root: string): GraceArtifactIndex {
+  return loadGraceArtifactIndex(root);
+}
 
 function resolveFormat(format: unknown, json: unknown) {
   const resolved = Boolean(json) ? "json" : String(format ?? "text");
@@ -58,7 +64,7 @@ export const fileCommand = defineCommand({
       },
       async run(context) {
         const format = resolveFormat(context.args.format, context.args.json);
-        const index = loadGraceArtifactIndex(String(context.args.path ?? "."));
+        const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
         const fileRecord = resolveGovernedFile(index, String(context.args.target));
 
         if (format === "json") {

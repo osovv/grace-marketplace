@@ -214,6 +214,28 @@ describe("grace query core", () => {
     expect(moduleResult.exitCode).toBe(0);
     expect(Buffer.from(moduleResult.stdout).toString("utf8")).toContain("M-PROVIDER-PERSIST");
 
+    const moduleShowResult = Bun.spawnSync({
+      cmd: [process.execPath, "run", "./src/grace.ts", "module", "show", "M-PROVIDER-PERSIST", "--with", "verification", "--path", root],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(moduleShowResult.exitCode).toBe(0);
+    const moduleShowOutput = Buffer.from(moduleShowResult.stdout).toString("utf8");
+    expect(moduleShowOutput).toContain("Verification V-M-PROVIDER-PERSIST");
+    expect(moduleShowOutput).toContain("bun test src/provider/config-repo.test.ts");
+
+    const moduleShowJsonResult = Bun.spawnSync({
+      cmd: [process.execPath, "run", "./src/grace.ts", "module", "show", "src/provider/config-repo.ts", "--path", root, "--json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(moduleShowJsonResult.exitCode).toBe(0);
+    const moduleShowJson = JSON.parse(Buffer.from(moduleShowJsonResult.stdout).toString("utf8"));
+    expect(moduleShowJson.id).toBe("M-PROVIDER-PERSIST");
+    expect(moduleShowJson.verifications[0].id).toBe("V-M-PROVIDER-PERSIST");
+
     const fileResult = Bun.spawnSync({
       cmd: [process.execPath, "run", "./src/grace.ts", "file", "show", "src/provider/config-repo.ts", "--path", root, "--contracts"],
       cwd: repoRoot,
@@ -222,6 +244,26 @@ describe("grace query core", () => {
     });
     expect(fileResult.exitCode).toBe(0);
     expect(Buffer.from(fileResult.stdout).toString("utf8")).toContain("Contract getProviderConfig");
+
+    const fileJsonResult = Bun.spawnSync({
+      cmd: [process.execPath, "run", "./src/grace.ts", "file", "show", "src/provider/config-repo.ts", "--path", root, "--json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(fileJsonResult.exitCode).toBe(0);
+    const fileJson = JSON.parse(Buffer.from(fileJsonResult.stdout).toString("utf8"));
+    expect(fileJson.linkedModuleIds).toEqual(["M-PROVIDER-PERSIST", "M-DB"]);
+
+    const verificationFindResult = Bun.spawnSync({
+      cmd: [process.execPath, "run", "./src/grace.ts", "verification", "find", "provider", "--path", root, "--json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(verificationFindResult.exitCode).toBe(0);
+    const verificationFindJson = JSON.parse(Buffer.from(verificationFindResult.stdout).toString("utf8"));
+    expect(verificationFindJson[0].verification.id).toBe("V-M-PROVIDER-PERSIST");
 
     const verificationResult = Bun.spawnSync({
       cmd: [process.execPath, "run", "./src/grace.ts", "verification", "show", "V-M-PROVIDER-PERSIST", "--path", root],
@@ -232,6 +274,16 @@ describe("grace query core", () => {
     expect(verificationResult.exitCode).toBe(0);
     expect(Buffer.from(verificationResult.stdout).toString("utf8")).toContain("GRACE Verification");
 
+    const verificationShowByModuleResult = Bun.spawnSync({
+      cmd: [process.execPath, "run", "./src/grace.ts", "verification", "show", "M-PROVIDER-PERSIST", "--path", root, "--json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(verificationShowByModuleResult.exitCode).toBe(0);
+    const verificationShowByModuleJson = JSON.parse(Buffer.from(verificationShowByModuleResult.stdout).toString("utf8"));
+    expect(verificationShowByModuleJson.verification.id).toBe("V-M-PROVIDER-PERSIST");
+
     const healthResult = Bun.spawnSync({
       cmd: [process.execPath, "run", "./src/grace.ts", "module", "health", "M-PROVIDER-PERSIST", "--path", root],
       cwd: repoRoot,
@@ -240,5 +292,23 @@ describe("grace query core", () => {
     });
     expect(healthResult.exitCode).toBe(0);
     expect(Buffer.from(healthResult.stdout).toString("utf8")).toContain("State: ready");
+  });
+
+  it("emits migration guidance for GRACE 3 roots instead of falling back to legacy docs", () => {
+    const root = createProject();
+    writeProjectFile(root, "docs/development-plan.xml", `<DevelopmentPlan />`);
+    const repoRoot = path.resolve(import.meta.dir, "..");
+
+    const result = Bun.spawnSync({
+      cmd: [process.execPath, "run", "./src/grace.ts", "module", "find", "provider", "--path", root],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    const combinedOutput = `${Buffer.from(result.stdout).toString("utf8")}\n${Buffer.from(result.stderr).toString("utf8")}`;
+    expect(combinedOutput).toContain("Legacy GRACE 3 artifacts");
+    expect(combinedOutput).toContain(".grace artifact model");
   });
 });

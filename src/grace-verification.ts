@@ -2,6 +2,12 @@ import { defineCommand } from "citty";
 
 import { findVerifications, loadGraceArtifactIndex, resolveVerification } from "./query/core";
 import { formatVerificationFindTable, formatVerificationText } from "./query/render";
+import type { GraceArtifactIndex } from "./query/types";
+
+/** Loads projection-backed index or throws a user-facing command error. */
+function loadGrace4IndexOrThrow(root: string): GraceArtifactIndex {
+  return loadGraceArtifactIndex(root);
+}
 
 function resolveFormat(format: unknown, json: unknown, allowed: string[], defaultFormat: string) {
   const resolved = Boolean(json) ? "json" : String(format ?? defaultFormat);
@@ -57,7 +63,7 @@ export const verificationCommand = defineCommand({
       },
       async run(context) {
         const format = resolveFormat(context.args.format, context.args.json, ["table", "json"], "table");
-        const index = loadGraceArtifactIndex(String(context.args.path ?? "."));
+        const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
         const matches = findVerifications(index, {
           query: context.args.query ? String(context.args.query) : undefined,
           module: context.args.module ? String(context.args.module) : undefined,
@@ -102,7 +108,7 @@ export const verificationCommand = defineCommand({
       },
       async run(context) {
         const format = resolveFormat(context.args.format, context.args.json, ["text", "json"], "text");
-        const index = loadGraceArtifactIndex(String(context.args.path ?? "."));
+        const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
         const match = resolveVerification(index, String(context.args.target));
 
         if (format === "json") {
