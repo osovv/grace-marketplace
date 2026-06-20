@@ -1,4 +1,4 @@
-# GRACE Framework - Project Engineering Protocol
+# GRACE 4 Project Engineering Protocol
 
 ## Keywords
 $KEYWORDS
@@ -6,207 +6,67 @@ $KEYWORDS
 ## Annotation
 $ANNOTATION
 
-## Core Principles
+## GRACE 4 Source of Truth
 
-### 1. Never Write Code Without a Contract
-Before generating or editing any module, create or update its MODULE_CONTRACT with PURPOSE, SCOPE, INPUTS, and OUTPUTS. The contract is the source of truth. Code implements the contract, not the other way around.
+This project uses the GRACE 4 `.grace` artifact model.
 
-### 2. Semantic Markup Is Load-Bearing Structure
-Markers like `// START_BLOCK_<NAME>` and `// END_BLOCK_<NAME>` are navigation anchors, not documentation. They must be:
-- uniquely named
-- paired
-- proportionally sized so one block fits inside an LLM working window
+- Product and technical context: `.grace/context/*.xml`
+- Current graph projection source: `.grace/graph/index.xml` plus routed graph documents such as `.grace/graph/main.xml`
+- Current verification projection source: `.grace/verification/index.xml` plus routed verification documents such as `.grace/verification/main.xml`
+- Active work: `.grace/changes/active/C-*/spec.xml` and `.grace/changes/active/C-*/plan.xml`
+- Completed or terminal work: `.grace/changes/archive/C-*/*`
 
-### 3. Knowledge Graph Is Always Current
-`docs/knowledge-graph.xml` is the project map. When you add a module, move a module, rename exports, or add dependencies, update the graph so future agents can navigate deterministically.
+Legacy `docs/*.xml` files are not GRACE 4 state. If legacy GRACE 3 docs appear, use `grace-migrate`; do not silently validate, convert, or delete them.
 
-### 4. Verification Is a First-Class Artifact
-Testing, traces, and log anchors are designed before large execution waves. `docs/verification-plan.xml` is part of the architecture, not an afterthought. Logs are evidence. Tests are executable contracts.
+## Workflow Rules
 
-### 5. Top-Down Synthesis
-Code generation follows:
-`RequirementsAnalysis -> TechnologyStack -> DevelopmentPlan -> VerificationPlan -> Code + Tests`
+1. Do not implement source behavior before an approved active `GraceChangeSpec` and `GraceChangePlan` exist, unless the user explicitly requests a small direct fix.
+2. Treat `spec.xml` as normative. Treat `design-context.xml` as explanatory memory only.
+3. Before execution, check `BaselineAssertions`, `TargetAssertions`, `DurableScope`, and `ObservedWriteScope` in the plan.
+4. Update durable `.grace` graph and verification state only as part of the approved change lifecycle.
+5. Never store transient run state by mutating approved XML statuses. Runtime states are derived from current files, assertions, and scopes.
 
-Never jump straight to code when requirements, architecture, or verification intent are still unclear.
+## Semantic Anchor Rules
 
-### 6. Governed Autonomy
-Agents have freedom in HOW to implement, but not in WHAT to build. Contracts, plans, graph references, and verification requirements define the allowed space.
+- GRACE semantic anchors are XML tags, never attributes: use `<M-EXAMPLE />`, not `<Module ref="M-EXAMPLE" />`.
+- Module IDs use `M-*`; data-flow IDs use `DF-*`; graph document wrappers use `GD-*`; verification entries use deterministic `V-M-*`; verification document wrappers use `VD-*`; change bundles use `C-*`.
+- Code-level semantic markup remains grep-stable: `START_MODULE_CONTRACT`, `START_MODULE_MAP`, `START_CONTRACT:`, `START_BLOCK_`, and `START_CHANGE_SUMMARY`.
 
 ## Grep-First Navigation
 
-Use shared docs and semantic anchors as the primary navigation surface. Prefer grep and exact-text lookup before broad prose reading.
+1. Locate module ownership through `.grace/graph/index.xml`, then open the routed graph document.
+2. Locate verification through `.grace/verification/index.xml`, then open the routed verification document.
+3. Locate active work through `.grace/changes/active/C-*`.
+4. Use file-local `LINKS:` fields and `START_BLOCK_` anchors to narrow code reads before loading whole files.
 
-Navigation order:
+## CLI Checks
 
-1. Shared/public truth: `docs/knowledge-graph.xml`, `docs/development-plan.xml`, `docs/verification-plan.xml`
-2. File-local/private truth: `MODULE_CONTRACT`, `MODULE_MAP`, `CHANGE_SUMMARY`, function contracts, semantic blocks
-3. Full file reads only after the target module, file, or block is narrowed
+- `grace lint --path .` validates `.grace` grammar, projections, assertions, lifecycle locations, and scope overlaps.
+- `grace status --path .` summarizes durable and operational GRACE 4 health.
+- `grace module`, `grace verification`, and `grace file` navigate graph, verification, and file-local anchors.
 
-Canonical search anchors:
+## File-Local Markup Reference
 
-- `START_MODULE_CONTRACT` / `END_MODULE_CONTRACT`
-- `START_MODULE_MAP` / `END_MODULE_MAP`
-- `START_CONTRACT:` / `END_CONTRACT:`
-- `START_BLOCK_` / `END_BLOCK_`
-- `START_CHANGE_SUMMARY` / `END_CHANGE_SUMMARY`
-- `LINKS:` for graph-linked references
-- `M-` for module IDs
-- `V-M-` for verification IDs
-- `CrossLink` for graph edges
-
-Canonical grep-stable naming rules:
-
-- Module IDs use exact uppercase kebab form: `M-<TOKEN>` or `M-<TOKEN>-<TOKEN>` (`M-AUTH`, `M-USER-STORE`)
-- Verification IDs use exact derived form: `V-M-<MODULE-SUFFIX>` (`V-M-AUTH`, `V-M-USER-STORE`)
-- Module contract field names stay exact: `PURPOSE`, `SCOPE`, `DEPENDS`, `LINKS`, `ROLE`, `MAP_MODE`
-- Function contract field names stay exact: `PURPOSE`, `INPUTS`, `OUTPUTS`, `SIDE_EFFECTS`, `LINKS`
-- Semantic block names use uppercase snake form after the prefix: `START_BLOCK_VALIDATE_INPUT`
-- `LINKS:` values should prefer exact IDs or canonical annotation tags instead of prose references: `M-*`, `V-M-*`, `fn-*`, `type-*`, `class-*`, `export-*`, `const-*`
-- Graph edges use the exact `CrossLink from="..." to="..." relation="..."` shape; do not invent alternate attribute names
-
-Canonical search recipes:
-
-- Find the target module record: search `M-<ID>` in `docs/development-plan.xml` and `docs/knowledge-graph.xml`
-- Find verification for a module: search `V-M-<ID>` or the module ID in `docs/verification-plan.xml`
-- Find implementation files tied to graph context: search `LINKS:` plus the module ID in `src/` and `tests/`
-- Find file-local contracts quickly: search `START_MODULE_CONTRACT` or `START_CONTRACT:`
-- Find important logic slices: search `START_BLOCK_`
-- Find recent local rationale: search `START_CHANGE_SUMMARY`
-
-AI-friendly documentation rule:
-
-- do not restate code in prose when exact anchors already exist
-- record only non-obvious intent, invariants, hazards, and search hints
-- if a fact can be maintained as code, XML, contract markup, or a stable anchor, keep it there instead of duplicating it in Markdown
-
-## Semantic Markup Reference
-
-### Module Level
-```
-// FILE: path/to/file.ext
-// VERSION: 1.0.0
+```ts
 // START_MODULE_CONTRACT
-//   PURPOSE: [What this module does - one sentence]
-//   SCOPE: [What operations are included]
-//   DEPENDS: [List of module dependencies]
-//   LINKS: [Knowledge graph references]
-//   ROLE: [Optional: RUNTIME | TEST | BARREL | CONFIG | TYPES | SCRIPT]
-//   MAP_MODE: [Optional: EXPORTS | LOCALS | SUMMARY | NONE]
+//   PURPOSE: [What this module does]
+//   SCOPE: [Bounded responsibility]
+//   DEPENDS: [M-* dependencies or none]
+//   LINKS: [Related M-* and V-M-* anchors]
 // END_MODULE_CONTRACT
 //
 // START_MODULE_MAP
-//   exportedSymbol - one-line description
+//   exportedSymbol - one-line responsibility
 // END_MODULE_MAP
-```
-
-### Function or Component Level
-Place START_CONTRACT/END_CONTRACT above function signature and docstrings/comments.
-```
+//
 // START_CONTRACT: functionName
 //   PURPOSE: [What it does]
 //   INPUTS: { paramName: Type - description }
 //   OUTPUTS: { ReturnType - description }
-//   SIDE_EFFECTS: [External state changes or "none"]
-//   LINKS: [Related modules/functions]
+//   SIDE_EFFECTS: [External state changes or none]
 // END_CONTRACT: functionName
+//
+// START_BLOCK_EXAMPLE
+// ... implementation slice ...
+// END_BLOCK_EXAMPLE
 ```
-
-### Code Block Level
-```
-// START_BLOCK_VALIDATE_INPUT
-// ... code ...
-// END_BLOCK_VALIDATE_INPUT
-```
-
-### Change Tracking
-```
-// START_CHANGE_SUMMARY
-//   LAST_CHANGE: [v1.2.0 - What changed and why]
-// END_CHANGE_SUMMARY
-```
-
-### Optional Lint Semantics
-
-Use `ROLE` and `MAP_MODE` only when the file should be linted differently from a normal runtime module.
-
-- `RUNTIME` + `EXPORTS`: normal source files with public APIs
-- `TEST` + `LOCALS`: tests where the map should describe helpers, fixtures, and assertion surfaces
-- `BARREL` + `SUMMARY`: re-export aggregators and grouped entry points
-- `CONFIG` + `NONE`: build or tool configuration files
-- `TYPES` + `EXPORTS`: pure type/interface modules
-- `SCRIPT` + `LOCALS`: CLI/bootstrap/smoke scripts
-
-## Logging and Trace Convention
-
-All important logs must point back to semantic blocks:
-```
-logger.info(`[ModuleName][functionName][BLOCK_NAME] message`, {
-  correlationId,
-  stableField: value,
-});
-```
-
-Rules:
-- prefer structured fields over prose-heavy log lines
-- redact secrets and high-risk payloads
-- treat missing log anchors on critical branches as a verification defect
-- update tests when log markers change intentionally
-
-## Verification Conventions
-
-`docs/verification-plan.xml` is the project-wide verification contract. Keep it current when module scope, test files, commands, critical log markers, or gate expectations change. Use `docs/operational-packets.xml` as the canonical schema for execution packets, graph deltas, verification deltas, and failure handoff packets.
-
-Testing rules:
-- deterministic assertions first
-- trace or log assertions when trajectory matters
-- test files may also carry MODULE_CONTRACT, MODULE_MAP, semantic blocks, and CHANGE_SUMMARY when they are substantial
-- module-local tests should stay close to the module they verify
-- wave-level and phase-level checks should be explicit in the verification plan
-
-## File Structure
-```
-docs/
-  requirements.xml       - Product requirements and use cases
-  technology.xml         - Stack decisions, tooling, observability, testing
-  development-plan.xml   - Modules, phases, data flows, ownership, write scopes
-  verification-plan.xml  - Test strategy, trace expectations, module and phase gates
-  knowledge-graph.xml    - Project-wide navigation graph
-  operational-packets.xml - Canonical packet, delta, and failure handoff templates
-src/
-  ... code with GRACE markup ...
-tests/
-  ... tests with GRACE-aware evidence where appropriate ...
-```
-
-## Documentation Artifacts - Unique Tag Convention
-
-In `docs/*.xml`, repeated entities must use their unique ID as the XML tag name instead of a generic tag with an `ID` attribute. This reduces closing-tag ambiguity and gives LLMs stronger anchors.
-
-### Tag naming conventions
-
-| Entity type | Anti-pattern | Correct (unique tags) |
-|---|---|---|
-| Module | `<Module ID="M-CONFIG">...</Module>` | `<M-CONFIG NAME="Config" TYPE="UTILITY">...</M-CONFIG>` |
-| Verification module | `<Verification ID="V-M-AUTH">...</Verification>` | `<V-M-AUTH MODULE="M-AUTH">...</V-M-AUTH>` |
-| Phase | `<Phase number="1">...</Phase>` | `<Phase-1 name="Foundation">...</Phase-1>` |
-| Flow | `<Flow ID="DF-SEARCH">...</Flow>` | `<DF-SEARCH NAME="...">...</DF-SEARCH>` |
-| Use case | `<UseCase ID="UC-001">...</UseCase>` | `<UC-001>...</UC-001>` |
-| Step | `<step order="1">...</step>` | `<step-1>...</step-1>` |
-| Export | `<export name="config" .../>` | `<export-config .../>` |
-| Function | `<function name="search" .../>` | `<fn-search .../>` |
-| Type | `<type name="SearchResult" .../>` | `<type-SearchResult .../>` |
-| Class | `<class name="Error" .../>` | `<class-Error .../>` |
-
-### What NOT to change
-- `CrossLink` tags stay self-closing
-- single-use structural wrappers like `<contract>`, `<inputs>`, `<outputs>`, `<annotations>`, `<test-files>`, `<module-checks>`, and `<phase-gates>` stay generic
-- code-level markup already uses unique names and stays as-is
-
-## Rules for Modifications
-
-1. Read the MODULE_CONTRACT before editing any file.
-2. After editing source or test files, update MODULE_MAP in a way that matches the file's role and map mode.
-3. After adding or removing modules, update `docs/knowledge-graph.xml`.
-4. After changing test files, commands, critical scenarios, or log markers, update `docs/verification-plan.xml`.
-5. After fixing bugs, add a CHANGE_SUMMARY entry and strengthen nearby verification if the old evidence was weak.
-6. Never remove semantic markup anchors unless the structure is intentionally replaced with better anchors.

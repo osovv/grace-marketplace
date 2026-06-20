@@ -1,0 +1,8 @@
+<GraceVerificationIndex graceVersion="4.0">
+  <VerificationDocuments>
+    <VD-MAIN>
+      <Path>verification/main.xml</Path>
+      <Owns></Owns>
+    </VD-MAIN>
+  </VerificationDocuments>
+</GraceVerificationIndex>

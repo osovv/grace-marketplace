@@ -1,0 +1,14 @@
+<GraceRequirements graceVersion="4.0">
+  <ProjectName>$PROJECT_NAME</ProjectName>
+  <Annotation>$ANNOTATION</Annotation>
+  <Keywords>$KEYWORDS</Keywords>
+  <Goals>
+    <Goal>$PRIMARY_GOAL</Goal>
+  </Goals>
+  <Users>
+    <User>$PRIMARY_USERS</User>
+  </Users>
+  <Constraints>
+    <Constraint>Replace with known product, safety, data, or compliance constraints.</Constraint>
+  </Constraints>
+</GraceRequirements>

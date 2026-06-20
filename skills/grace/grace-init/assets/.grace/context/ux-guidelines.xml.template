@@ -1,0 +1,5 @@
+<GraceUXGuidelines graceVersion="4.0">
+  <Applicability>applicable</Applicability>
+  <Audience>$PRIMARY_USERS</Audience>
+  <Guideline>Replace with accessibility, interaction, content, or brand constraints; mark not-applicable with a Reason when there is no user-facing surface.</Guideline>
+</GraceUXGuidelines>

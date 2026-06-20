@@ -1,0 +1,8 @@
+<GraceGraphIndex graceVersion="4.0">
+  <GraphDocuments>
+    <GD-MAIN>
+      <Path>graph/main.xml</Path>
+      <Owns></Owns>
+    </GD-MAIN>
+  </GraphDocuments>
+</GraceGraphIndex>

@@ -1,0 +1,5 @@
+<GracePrinciples graceVersion="4.0">
+  <Principle>Contract-first changes: clarify scope and verification before implementation.</Principle>
+  <Principle>Keep semantic anchors stable and grep-friendly.</Principle>
+  <Principle>Use assertions, scopes, and tests as fresh completion evidence.</Principle>
+</GracePrinciples>
