@@ -183,7 +183,10 @@ export function validateChangeArtifact(
   if (status === "superseded" && wrappers.length === 1) {
     const wrapper = wrappers[0];
     const hasReplacement = wrapper.children.some(
-      (child) => ANCHOR_PATTERNS.change.test(child.tag) || child.tag === "Replacement" || child.tag === "ReplacementChange",
+      (child) =>
+        ANCHOR_PATTERNS.change.test(child.tag) ||
+        ((child.tag === "Replacement" || child.tag === "ReplacementChange") &&
+          ANCHOR_PATTERNS.change.test(child.text.trim())),
     );
     if (!hasReplacement) {
       result.issues.push(

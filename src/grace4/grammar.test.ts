@@ -178,4 +178,30 @@ describe("GRACE 4 Artifact Grammar", () => {
     );
     expect(codes(withReplacementTag)).not.toContain("change.superseded-missing-replacement");
   });
+
+  it("rejects empty or arbitrary Replacement text and accepts ReplacementChange", () => {
+    const emptyReplacement = validateChangeArtifact(
+      parseGraceXmlArtifact(
+        "archive/spec.xml",
+        `<GraceChangeSpec graceVersion="4.0" status="superseded"><C-SUPERSEDED><Replacement></Replacement><Summary>Old change.</Summary></C-SUPERSEDED></GraceChangeSpec>`),
+      "archive",
+    );
+    expect(codes(emptyReplacement)).toContain("change.superseded-missing-replacement");
+
+    const arbitraryReplacement = validateChangeArtifact(
+      parseGraceXmlArtifact(
+        "archive/spec.xml",
+        `<GraceChangeSpec graceVersion="4.0" status="superseded"><C-SUPERSEDED><Replacement>not-a-change</Replacement><Summary>Old change.</Summary></C-SUPERSEDED></GraceChangeSpec>`),
+      "archive",
+    );
+    expect(codes(arbitraryReplacement)).toContain("change.superseded-missing-replacement");
+
+    const replacementChange = validateChangeArtifact(
+      parseGraceXmlArtifact(
+        "archive/spec.xml",
+        `<GraceChangeSpec graceVersion="4.0" status="superseded"><C-SUPERSEDED><ReplacementChange>C-REPLACEMENT</ReplacementChange><Summary>Old change.</Summary></C-SUPERSEDED></GraceChangeSpec>`),
+      "archive",
+    );
+    expect(codes(replacementChange)).not.toContain("change.superseded-missing-replacement");
+  });
 });

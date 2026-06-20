@@ -24,6 +24,7 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 
 - Removed `grace-multiagent-execute` as a separate published skill; parallel-safe execution is now a mode of `grace-execute`.
 - Removed CLI dual-mode behavior for legacy GRACE 3 docs. Legacy projects now receive migration guidance and use `grace-migrate`.
+- Removed `grace lint --profile autonomous` / autonomy gate. GRACE 4 uses `.grace` current-state validation, status, assertions, and scopes instead.
 
 ## [3.11.0] - 2026-04-19
 

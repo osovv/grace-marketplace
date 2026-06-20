@@ -23,100 +23,25 @@ const EXACT_GUIDES: Record<string, Omit<LintIssueGuide, "code">> = {
     explanation: ".grace-lint.json contains a key the CLI does not understand.",
     remediation: ["Remove unsupported keys from .grace-lint.json.", "Use only documented keys such as ignoredDirs."],
   },
-  "docs.missing-required-artifact": {
-    title: "Missing Required GRACE Artifact",
-    explanation: "A current GRACE project needs the required shared XML artifacts before the CLI can reason over architecture and verification.",
-    remediation: ["Create the missing artifact via $grace-init, $grace-plan, or $grace-verification.", "Only partial .grace projects may lack required artifacts before full initialization."],
-  },
-  "packets.missing-template-section": {
-    title: "Incomplete Change Plan Assertions",
-    explanation: "A plan.xml in .grace/changes is missing required BaselineAssertions or TargetAssertions sections.",
-    remediation: ["Add complete BaselineAssertions and TargetAssertions to the GraceChangePlan.", "Use the spec and plan workflow to generate valid templates."],
-  },
   "analysis.adapter-failed": {
     title: "Language Adapter Failed",
     explanation: "The file-level export analysis adapter threw an error, so lint fell back to structural checks only.",
     remediation: ["Inspect the file for unusual syntax or unsupported language features.", "Simplify the export surface or improve the adapter if this language pattern should be supported."],
   },
-  "autonomy.missing-operational-packets": {
-    title: "Missing Change Plan Scope Definitions",
-    explanation: "Long autonomous execution requires explicit DurableScope and ObservedWriteScope in the approved GraceChangePlan.",
-    remediation: ["Add DurableScope and ObservedWriteScope sections to the GraceChangePlan.", "Define execution scope before asking agents to run long trajectories."],
+  "scope.durable-overlap": {
+    title: "Durable Scope Overlap",
+    explanation: "Two or more active change scopes claim overlapping durable regions, which creates a data-contention risk if executed in parallel.",
+    remediation: ["Review the overlapping durable scopes and decide whether they must be sequential or whether the overlap is acceptable.", "Treat durable overlap as a planning warning, not a blocker."],
   },
-  "autonomy.missing-technology-artifact": {
-    title: "Missing Technology Context",
-    explanation: "Autonomous execution should be anchored to an explicit project stack defined in .grace/context/technology.xml.",
-    remediation: ["Add .grace/context/technology.xml with runtime, tooling, and project constraints.", "Name the preferred stack before asking agents to execute long trajectories."],
+  "scope.observed-write-overlap": {
+    title: "Observed Write Overlap",
+    explanation: "Two or more active change scopes write to overlapping regions, which can cause unsafe concurrent execution.",
+    remediation: ["Do not run overlapping observed writes in parallel-safe mode.", "Sequence the changes or split scopes to eliminate the overlap."],
   },
-  "autonomy.packets-missing-checkpoint-template": {
-    title: "Missing Evidence Capture Section",
-    explanation: "Autonomous runs should capture verification results and evidence so failures remain observable.",
-    remediation: ["Add EvidenceCapture or FailureSection to the GraceChangePlan target scenario.", "Ensure each V-M entry names its required log markers and expected outcomes."],
-  },
-  "autonomy.module-missing-verification": {
-    title: "Module Missing Verification Entry",
-    explanation: "Each shared module needs a matching V-M entry in .grace/verification before autonomous execution can treat it as governed.",
-    remediation: ["Add a V-M entry for the module in .grace/verification.", "Run $grace-verification for the affected module or phase."],
-  },
-  "autonomy.module-missing-implementation-files": {
-    title: "Module Missing Implementation Files",
-    explanation: "A module cannot be autonomy-ready if it has no linked non-test governed runtime files.",
-    remediation: ["Implement the module via $grace-execute.", "Link the runtime file to the module through LINKS in MODULE_CONTRACT."],
-  },
-  "autonomy.step-missing-verification": {
-    title: "Plan Step Missing Verification Ref",
-    explanation: "Execution steps should name the verification gate they depend on so agents do not improvise success criteria.",
-    remediation: ["Add a Verification/VerificationRef to the change scope definition.", "Make sure the referenced V-M entry exists in .grace/verification."],
-  },
-  "autonomy.verification-missing-test-files": {
-    title: "Verification Missing Test Files",
-    explanation: "A verification entry without test files is not actionable for worker loops or CI.",
-    remediation: ["Add one or more test-files entries to the V-M record.", "Point them at real module-local or module-owned tests."],
-  },
-  "autonomy.verification-missing-module-checks": {
-    title: "Verification Missing Module Checks",
-    explanation: "A V-M entry needs executable commands so workers and CI can run the intended checks directly.",
-    remediation: ["Add module-checks commands to the V-M entry.", "Prefer narrow module-local commands over whole-repo commands for worker loops."],
-  },
-  "autonomy.verification-missing-scenarios": {
-    title: "Verification Missing Scenarios",
-    explanation: "Autonomous execution needs named success and failure behavior, not only file paths or commands.",
-    remediation: ["Add success and failure scenarios to the V-M entry.", "Describe what observable behavior proves the module is correct."],
-  },
-  "autonomy.verification-missing-observable-evidence": {
-    title: "Verification Missing Observable Evidence",
-    explanation: "A V-M entry should require log markers or trace assertions so failures can be debugged without hidden reasoning.",
-    remediation: ["Add required-log-markers or required-trace-assertions to the V-M entry.", "Keep markers stable and map them back to semantic blocks."],
-  },
-  "autonomy.verification-test-file-missing-on-disk": {
-    title: "Verification References Missing Test File",
-    explanation: "The verification plan references a test file that does not currently exist on disk.",
-    remediation: ["Create the test file or update the V-M entry to the real path.", "Keep .grace/verification synchronized with the codebase."],
-  },
-  "autonomy.verification-test-file-unlinked-module": {
-    title: "Verification Test File Not Linked To Module",
-    explanation: "A governed test file should belong to the same module it verifies so agents can navigate ownership precisely.",
-    remediation: ["Add the module ID to LINKS in the test file MODULE_CONTRACT.", "Or update the V-M entry to point at a test file that belongs to the module."],
-  },
-  "autonomy.verification-module-check-does-not-reference-test-file": {
-    title: "Module Check Does Not Reference Test File",
-    explanation: "The verification commands do not clearly mention the declared test file or its containing directory.",
-    remediation: ["Make at least one module-check reference the test file path or its directory.", "Keep the commands and declared test-files aligned."],
-  },
-  "autonomy.required-log-marker-not-found": {
-    title: "Required Log Marker Not Found",
-    explanation: "The verification plan requires a runtime marker that does not appear in linked implementation code.",
-    remediation: ["Emit the marker from the runtime implementation.", "Or update the V-M entry so the required marker matches the real runtime evidence."],
-  },
-  "autonomy.required-log-marker-block-not-found": {
-    title: "Required Marker Does Not Map To Semantic Block",
-    explanation: "The required log marker names a BLOCK_* suffix that does not exist in the linked runtime files.",
-    remediation: ["Add the matching BLOCK_* anchor to the implementation.", "Or update the marker in .grace/verification to the correct block name."],
-  },
-  "autonomy.failed-to-index-project": {
-    title: "Autonomy Gate Could Not Index Project",
-    explanation: "The autonomy profile could not build a coherent GRACE artifact index from the project.",
-    remediation: ["Fix malformed or missing GRACE artifacts first.", "Run grace lint without the autonomous profile to resolve structural issues before retrying."],
+  "change.superseded-missing-replacement": {
+    title: "Superseded Change Missing Replacement Reference",
+    explanation: "A GraceChangeSpec or GraceChangePlan with status='superseded' should name the replacement C-* anchor via a <Replacement> or <ReplacementChange> child tag.",
+    remediation: ["Add a <Replacement>C-REPLACEMENT-ID</Replacement> child to the superseded wrapper.", "Or add a direct <C-REPLACEMENT-ID /> child tag as the replacement reference."],
   },
 };
 
@@ -192,12 +117,6 @@ const PREFIX_GUIDES: Array<{ prefix: string; title: string; explanation: string;
     title: "Export Surface Analysis Warning",
     explanation: "The language adapter could not prove the exact export surface or detected a shape that weakens precise linting.",
     remediation: ["Prefer clearer export declarations or explicit ROLE/MAP_MODE overrides when necessary.", "Treat heuristic or wildcard-export warnings as cues to simplify or document the file surface."],
-  },
-  {
-    prefix: "autonomy.",
-    title: "Autonomy Readiness Gate Failure",
-    explanation: "The project is missing one of the scope, verification, or evidence guarantees needed for long autonomous execution.",
-    remediation: ["Strengthen .grace/verification entries, .grace/context/technology.xml, or the GraceChangePlan scope sections.", "Re-run grace lint after making the project observable and scope-driven."],
   },
 ];
 

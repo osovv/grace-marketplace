@@ -160,4 +160,32 @@ describe("lintGraceProject", () => {
     const after = lintGraceProject(root);
     expect(after.issues.filter((issue) => issue.code === "assertion.MustExist")).toHaveLength(0);
   });
+  it("emits assertion.MustExist for active plans with stale BaselineAssertions but not for archived plans", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+
+    // Create an active plan with a MustExist reference to a module that does not exist
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-REFACTOR/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="draft"><C-REFACTOR><BaselineAssertions><MustExist><Value>M-NONEXISTENT</Value></MustExist></BaselineAssertions></C-REFACTOR></GraceChangePlan>`,
+    );
+
+    // Active plan should emit assertion.MustExist for nonexistent module
+    const activeResult = lintGraceProject(root);
+    expect(activeResult.issues.filter((issue) => issue.code === "assertion.MustExist")).toHaveLength(1);
+
+    // Now also add an archived plan with the same stale baseline
+    writeProjectFile(
+      root,
+      ".grace/changes/archive/C-DONE/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="applied"><C-DONE><BaselineAssertions><MustExist><Value>M-NONEXISTENT</Value></MustExist></BaselineAssertions></C-DONE></GraceChangePlan>`,
+    );
+
+    // Archived plan should NOT emit additional assertion.MustExist
+    const bothResult = lintGraceProject(root);
+    const assertionIssues = bothResult.issues.filter((issue) => issue.code === "assertion.MustExist");
+    // Only the active plan's assertion should fire
+    expect(assertionIssues).toHaveLength(1);
+  });
 });

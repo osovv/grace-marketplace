@@ -8,7 +8,6 @@ import { lintGraceProject } from "./lint/core";
 import type { LintIssue } from "./lint/types";
 import { detectGraceProjectKind, formatGrace3MigrationGuidance, resolveGrace4Paths } from "./grace4/project";
 import { collectActiveChangeScopes, detectScopeOverlaps, detectUnsafeConcurrentExecution } from "./grace4/scope";
-import { collectActiveChangeScopes, detectScopeOverlaps, detectUnsafeConcurrentExecution } from "./grace4/scope";
 import { readGraceXmlArtifact } from "./grace4/xml";
 import { collectModuleHealth } from "./query/health";
 import { loadGraceArtifactIndex } from "./query/core";
@@ -160,7 +159,7 @@ export function collectProjectStatus(projectRoot: string, options: { includeModu
   const lint = lintGraceProject(root, { profile: "standard" });
   const integrityErrors = lint.issues.filter((issue) => issue.severity === "error");
   const integrityWarnings = lint.issues.filter((issue) => issue.severity === "warning");
-  // Reuse index-based projections to avoid redundant graph/verification rebuilds
+  // Load index once — reused by module health and status fields
   const index = loadGraceArtifactIndex(root);
   const { graph, verification } = index;
   const activeScopes = collectActiveChangeScopes(paths);
@@ -181,7 +180,7 @@ export function collectProjectStatus(projectRoot: string, options: { includeModu
   let moduleHealthLoadError: string | undefined;
   if (options.includeModules) {
     try {
-      modules = collectModuleHealth(loadGraceArtifactIndex(root));
+      modules = collectModuleHealth(index);
     } catch (error) {
       moduleHealthLoadError = error instanceof Error ? error.message : String(error);
     }

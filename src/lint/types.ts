@@ -1,6 +1,6 @@
 export type LintSeverity = "error" | "warning";
 
-export type LintProfile = "standard" | "autonomous";
+export type LintProfile = "standard";
 
 export type ModuleRole = "RUNTIME" | "TEST" | "BARREL" | "CONFIG" | "TYPES" | "SCRIPT";
 export type MapMode = "EXPORTS" | "LOCALS" | "SUMMARY" | "NONE";

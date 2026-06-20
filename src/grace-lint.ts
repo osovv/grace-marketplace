@@ -4,7 +4,7 @@ import { defineCommand, type CommandDef, runMain } from "citty";
 
 import { formatLintExplanation, getLintIssueGuide } from "./lint/catalog";
 import { formatTextReport, isValidTextFormat, lintGraceProject } from "./lint/core";
-import type { LintOptions, LintResult } from "./lint/types";
+import type { LintOptions, LintProfile, LintResult } from "./lint/types";
 
 export type {
   GraceLintConfig,
@@ -30,13 +30,13 @@ function writeResult(format: string, result: LintResult) {
   process.stdout.write(`${formatTextReport(result)}\n`);
 }
 
-function resolveProfile(value: unknown) {
+function resolveProfile(value: unknown): LintProfile {
   const profile = String(value ?? "standard");
-  if (profile !== "standard" && profile !== "autonomous") {
-    throw new Error(`Unsupported profile \`${profile}\`. Use \`standard\` or \`autonomous\`.`);
+  if (profile !== "standard") {
+    throw new Error(`Unsupported profile \`${profile}\`. Use \`standard\`.`);
   }
 
-  return profile;
+  return "standard";
 }
 
 function resolveFailOn(value: unknown) {
@@ -63,7 +63,7 @@ function shouldFail(result: LintResult, failOn: string) {
 export const lintCommand = defineCommand({
   meta: {
     name: "lint",
-    description: "Lint GRACE artifacts, XML tag conventions, semantic markup, role-aware module maps, and optional autonomy readiness.",
+    description: "Lint GRACE artifacts, XML tag conventions, semantic markup, and role-aware module maps.",
   },
   args: {
     path: {
@@ -80,7 +80,7 @@ export const lintCommand = defineCommand({
     },
     profile: {
       type: "string",
-      description: "Lint profile: standard or autonomous",
+      description: "Lint profile (currently only \`standard\` is supported)",
       default: "standard",
     },
     explain: {

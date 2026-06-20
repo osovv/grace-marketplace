@@ -6,7 +6,7 @@
   </assumptions-kept>
   <commands-run>
     <command-1>bun test src/auth/session.test.ts</command-1>
-    <command-2>bun run ./src/grace.ts lint --profile autonomous --path .</command-2>
+    <command-2>bun run ./src/grace.ts lint --path .</command-2>
   </commands-run>
   <evidence-captured>
     <item-1>[AuthDomain][createSession][BLOCK_CREATE_SESSION] emitted once.</item-1>
