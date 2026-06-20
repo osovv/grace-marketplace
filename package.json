@@ -59,6 +59,7 @@
   },
   "dependencies": {
     "citty": "^0.2.2",
+    "fast-xml-parser": "^5.2.5",
     "typescript": "^6.0.2"
   }
 }
