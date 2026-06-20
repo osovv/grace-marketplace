@@ -104,12 +104,12 @@ grace lint --path /path/to/grace-project
 For a new GRACE project:
 
 1. Run `$grace-init`
-2. Design `docs/requirements.xml` and `docs/technology.xml` together with your agent
-3. Run `$grace-plan`
-4. Run `$grace-verification`
-5. Run `grace lint --profile autonomous --path /path/to/project`
+2. Fill `.grace/context` artifacts with your agent
+3. Run `$grace-spec` for the next change
+4. Run `$grace-plan` after spec approval
+5. Run `grace lint --path /path/to/project`
 6. Run `grace status --path /path/to/project`
-7. Run `$grace-execute` or `$grace-multiagent-execute`
+7. Run `$grace-execute` and choose sequential or parallel-safe mode
 
 For an existing GRACE project, the CLI is often the fastest way to orient yourself:
 
@@ -138,11 +138,11 @@ grace file show src/auth/index.ts --path /path/to/project --contracts --blocks
 
 | Skill | Purpose |
 | --- | --- |
-| `grace-init` | Bootstrap the GRACE docs, templates, and agent guidance |
-| `grace-plan` | Design modules, phases, flows, dependencies, and contracts |
-| `grace-verification` | Build and maintain `verification-plan.xml`, tests, traces, and log evidence |
-| `grace-execute` | Execute the plan sequentially with scoped review and commits |
-| `grace-multiagent-execute` | Execute parallel-safe waves with controller-managed synchronization |
+| `grace-init` | Bootstrap the `.grace` skeleton, templates, and agent guidance |
+| `grace-spec` | Create an approved GRACE 4 change spec and optional design context |
+| `grace-plan` | Design assertions, scopes, tasks, and verification gates from an approved spec |
+| `grace-verification` | Build and maintain `.grace/verification` entries, tests, traces, and log evidence |
+| `grace-execute` | Execute the approved plan in sequential or parallel-safe mode |
 | `grace-refactor` | Rename, move, split, merge, and extract modules without shared-artifact drift |
 | `grace-fix` | Debug issues from graph, contracts, tests, traces, and semantic blocks |
 | `grace-refresh` | Refresh graph and verification artifacts against the real codebase |
@@ -152,6 +152,7 @@ grace file show src/auth/index.ts --path /path/to/project --contracts --blocks
 | `grace-cli` | Use the optional `grace` binary as a fast lint and artifact-query layer for GRACE projects |
 | `grace-explainer` | Explain the GRACE methodology itself |
 | `grace-setup-subagents` | Scaffold shell-specific GRACE worker and reviewer presets |
+| `grace-migrate` | Agent-applied GRACE 3 to GRACE 4 migration with CLI validation |
 
 ## CLI Overview
 
@@ -282,9 +283,9 @@ Normalization rules behind these patterns:
 ```text
 $grace-init
 design requirements.xml and technology.xml together with your agent
+$grace-spec
 $grace-plan
-$grace-verification
-$grace-execute or $grace-multiagent-execute
+$grace-execute  # choose sequential or parallel-safe mode
 ```
 
 ### Inspect One Module Quickly

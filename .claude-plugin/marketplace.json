@@ -36,9 +36,9 @@
       "agents": [],
       "skills": [
         "./skills/grace/grace-init",
+        "./skills/grace/grace-spec",
         "./skills/grace/grace-plan",
         "./skills/grace/grace-execute",
-        "./skills/grace/grace-multiagent-execute",
         "./skills/grace/grace-refactor",
         "./skills/grace/grace-setup-subagents",
         "./skills/grace/grace-fix",
@@ -48,7 +48,8 @@
         "./skills/grace/grace-cli",
         "./skills/grace/grace-explainer",
         "./skills/grace/grace-verification",
-        "./skills/grace/grace-reviewer"
+        "./skills/grace/grace-reviewer",
+        "./skills/grace/grace-migrate"
       ]
     }
   ]
