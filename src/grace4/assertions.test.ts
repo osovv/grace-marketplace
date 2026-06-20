@@ -103,4 +103,25 @@ describe("GRACE 4 assertions", () => {
     expect(evaluateAssertion(assertion("MustLink", ["M-AUTH-SESSION", "M-MISSING"]), ctx)[0]?.code).toBe("assertion.MustLink");
     expect(evaluateAssertion(assertion("MustVerify", ["M-MISSING"]), ctx)[0]?.code).toBe("assertion.MustVerify");
   });
+
+  it("fails stale BaselineAssertions after durable graph state changes", () => {
+    const root = createProject();
+    writeProjectionFixture(root);
+    const planFile = path.join(root, ".grace/changes/active/C-STALE/plan.xml");
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-STALE/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-STALE><BaselineAssertions><MustOwn><Owner>GD-MAIN</Owner><Anchor>M-AUTH-SESSION</Anchor></MustOwn></BaselineAssertions></C-STALE></GraceChangePlan>`,
+    );
+    const assertionToCheck = extractAssertionsWithIssues(planFile, "BaselineAssertions").assertions[0]!;
+    expect(evaluateAssertion(assertionToCheck, context(root))).toHaveLength(0);
+
+    writeProjectFile(
+      root,
+      ".grace/graph/main.xml",
+      `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-USER-PROFILE /></GD-MAIN></GraceGraphDocument>`,
+    );
+
+    expect(evaluateAssertion(assertionToCheck, context(root))[0]?.code).toBe("assertion.MustOwn");
+  });
 });

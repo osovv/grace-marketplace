@@ -139,6 +139,25 @@ describe("GRACE 4 graph and verification projections", () => {
     expect(issueCodes(graph.issues)).toContain("projection.graph.wrapper-mismatch");
   });
 
+  it("reports missing routes and dangling graph links", () => {
+    const root = createProject();
+    writeProjectFile(
+      root,
+      ".grace/graph/index.xml",
+      `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MISSING-PATH><Owns><M-IGNORED /></Owns></GD-MISSING-PATH><GD-MAIN><Path>graph/main.xml</Path><Owns><M-AUTH-SESSION /></Owns></GD-MAIN></GraphDocuments></GraceGraphIndex>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/graph/main.xml",
+      `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-AUTH-SESSION><M-MISSING /></M-AUTH-SESSION></GD-MAIN></GraceGraphDocument>`,
+    );
+
+    const graph = buildGraphProjection(resolveGrace4Paths(root));
+
+    expect(issueCodes(graph.issues)).toContain("projection.index.missing-path");
+    expect(issueCodes(graph.issues)).toContain("projection.graph.dangling-link");
+  });
+
   it("produces equivalent projections for monolithic and segmented storage", () => {
     const monolithicRoot = createProject();
     const segmentedRoot = createProject();

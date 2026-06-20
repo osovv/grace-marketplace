@@ -261,7 +261,7 @@ function routeFromOwnerNode(
 
   return {
     owner: node.tag,
-    file: resolveArtifactPath(graceDir, rawPath ?? ""),
+    file: rawPath ? resolveArtifactPath(graceDir, rawPath) : path.join(graceDir, "__missing-route__", `${node.tag}.xml`),
     owns,
   };
 }
