@@ -6,6 +6,25 @@ The format is inspired by Keep a Changelog, and this project follows Semantic Ve
 
 This changelog currently starts at `1.3.0`. Earlier history is available in the git log.
 
+## [4.0.0] - 2026-06-20
+
+### Added
+
+- Added the GRACE 4 `.grace` artifact model with parser-backed XML validation, artifact grammar checks, graph and verification projections, assertion evaluation, active-change scopes, and overlap detection.
+- Added `grace-spec` and `grace-migrate` skills for change specification and agent-applied GRACE 3 to GRACE 4 migration.
+- Added GRACE 4 init templates for `.grace/context`, `.grace/graph`, `.grace/verification`, and empty change directories.
+
+### Changed
+
+- Reworked `grace lint`, `grace status`, `grace module`, `grace verification`, and `grace file` around `.grace` current state instead of legacy shared-doc validation.
+- Updated skills and README to use `grace-spec`, `grace-plan`, and unified `grace-execute` with sequential or parallel-safe mode selection.
+- Synchronized canonical and packaged skill mirrors for the GRACE 4 skill surface.
+
+### Removed
+
+- Removed `grace-multiagent-execute` as a separate published skill; parallel-safe execution is now a mode of `grace-execute`.
+- Removed CLI dual-mode behavior for legacy GRACE 3 docs. Legacy projects now receive migration guidance and use `grace-migrate`.
+
 ## [3.11.0] - 2026-04-19
 
 ### Added
