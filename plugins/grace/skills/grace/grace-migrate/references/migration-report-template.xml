@@ -1,0 +1,23 @@
+<GraceMigrationReport graceVersion="4.0">
+  <Source>GRACE 3 legacy docs</Source>
+  <GeneratedGrace4Layout>
+    <Context>.grace/context</Context>
+    <Graph>.grace/graph</Graph>
+    <Verification>.grace/verification</Verification>
+    <Changes>.grace/changes</Changes>
+  </GeneratedGrace4Layout>
+  <Ambiguities>
+    <Ambiguity>$AMBIGUITY</Ambiguity>
+  </Ambiguities>
+  <UnsupportedStructures>
+    <Unsupported>$UNSUPPORTED_STRUCTURE</Unsupported>
+  </UnsupportedStructures>
+  <ProposedCleanup>
+    <Item>$LEGACY_FILE_OR_ACTION</Item>
+  </ProposedCleanup>
+  <Validation>
+    <Command>grace lint --path $PROJECT_ROOT</Command>
+    <Command>grace status --path $PROJECT_ROOT</Command>
+  </Validation>
+  <CleanupConfirmationRequired>true</CleanupConfirmationRequired>
+</GraceMigrationReport>

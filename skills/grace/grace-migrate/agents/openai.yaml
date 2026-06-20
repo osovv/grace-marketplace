@@ -1,0 +1,4 @@
+interface:
+  display_name: "GRACE Migrate"
+  short_description: "GRACE 3 to GRACE 4 migration"
+  brand_color: "#F97316"
