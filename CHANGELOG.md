@@ -1,3 +1,12 @@
+## <small>4.0.0-rc.1 (2026-06-21)</small>
+
+### Summary
+
+This release candidate stabilizes the release automation pipeline for the GRACE CLI package. The CLI metadata version (shown by `grace --version`) is now automatically kept in sync with the package version during releases, eliminating drift between the reported version and the actual release. Additionally, the npm publish workflow now correctly detects prerelease versions and publishes them with a matching dist-tag (for example, `rc`), so release candidates can be installed without affecting the stable `latest` tag. These changes make the release process more reliable and transparent for users who depend on the CLI or want to test release candidates.
+
+* fix(release): publish prereleases with dist-tag ([e7ab422](https://github.com/osovv/grace-marketplace/commit/e7ab422))
+* fix(release): sync cli metadata version ([1acafb8](https://github.com/osovv/grace-marketplace/commit/1acafb8))
+
 ## <small>4.0.0-rc.0 (2026-06-21)</small>
 
 ### Summary
