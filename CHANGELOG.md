@@ -1,3 +1,36 @@
+## <small>4.0.0-rc.0 (2026-06-21)</small>
+
+### Summary
+
+This release candidate introduces the GRACE 4 artifact model, replacing the legacy shared-doc approach with a `.grace` project structure that uses parser-backed XML validation, deterministic graph and verification projections, a machine-checkable assertion vocabulary, and controlled active/archive change lifecycle bundles with `GraceChangeSpec` and `GraceChangePlan` artifacts. The CLI has been rewritten to validate only the `.grace` current state, with new `grace-spec` and `grace-migrate` skills joining the published surface, while `grace-multiagent-execute` is removed in favor of a unified `grace-execute` that offers both sequential and parallel-safe modes. An automated release workflow with conventional commits, changelog generation, and CI publishing has been added, along with a language-registry module, a Dart language adapter, CWD-aware verification utilities, and comprehensive test coverage across grammar projections, assertions, scope conflicts, and marketplace packaging.
+
+* chore(release): add automated release workflow ([8b036e7](https://github.com/osovv/grace-marketplace/commit/8b036e7))
+* fix: address review findings — trailing slash guard, wire check-references utility, Dart adapter thr ([73f2b20](https://github.com/osovv/grace-marketplace/commit/73f2b20))
+* fix(grace4): finish release review cleanup ([fd72a91](https://github.com/osovv/grace-marketplace/commit/fd72a91))
+* fix(grace4): unblock release candidate validation ([d65388d](https://github.com/osovv/grace-marketplace/commit/d65388d))
+* fix(lint): resolve all vv-review findings - archived baseline, superseded ref, priority, packaging,  ([cade053](https://github.com/osovv/grace-marketplace/commit/cade053))
+* add specs for grace4 ([582b391](https://github.com/osovv/grace-marketplace/commit/582b391))
+* grace4-artifact-model chore(release): document 4.0 surface ([95e5cd2](https://github.com/osovv/grace-marketplace/commit/95e5cd2))
+* grace4-artifact-model chore(validation): enforce grace4 surface ([78e4556](https://github.com/osovv/grace-marketplace/commit/78e4556))
+* grace4-artifact-model feat(cli): wire grace4 navigation commands ([b8f1dbd](https://github.com/osovv/grace-marketplace/commit/b8f1dbd))
+* grace4-artifact-model feat(grace4): add assertions and scope checks ([d99d96a](https://github.com/osovv/grace-marketplace/commit/d99d96a))
+* grace4-artifact-model feat(grace4): add core types and project detection ([ee56275](https://github.com/osovv/grace-marketplace/commit/ee56275))
+* grace4-artifact-model feat(grace4): build graph and verification projections ([1903134](https://github.com/osovv/grace-marketplace/commit/1903134))
+* grace4-artifact-model feat(grace4): create XML parser adapter ([6dab7a3](https://github.com/osovv/grace-marketplace/commit/6dab7a3))
+* grace4-artifact-model feat(grace4): implement artifact grammar validation ([7be6cd4](https://github.com/osovv/grace-marketplace/commit/7be6cd4))
+* grace4-artifact-model feat(init): bootstrap .grace skeleton ([8483f74](https://github.com/osovv/grace-marketplace/commit/8483f74))
+* grace4-artifact-model feat(lint): validate grace4 artifacts ([64ef4f8](https://github.com/osovv/grace-marketplace/commit/64ef4f8))
+* grace4-artifact-model feat(query): use grace4 projections ([82bfa69](https://github.com/osovv/grace-marketplace/commit/82bfa69))
+* grace4-artifact-model feat(skills): add spec and plan workflows ([1dda7a7](https://github.com/osovv/grace-marketplace/commit/1dda7a7))
+* grace4-artifact-model feat(skills): align support workflows ([e26212b](https://github.com/osovv/grace-marketplace/commit/e26212b))
+* grace4-artifact-model feat(skills): remove multiagent surface ([e735d6c](https://github.com/osovv/grace-marketplace/commit/e735d6c))
+* grace4-artifact-model feat(status): report grace4 health ([dcfe326](https://github.com/osovv/grace-marketplace/commit/dcfe326))
+* grace4-artifact-model test(grace4): add fixture builders ([3208c8f](https://github.com/osovv/grace-marketplace/commit/3208c8f))
+* grace4-artifact-model test(grace4): expand coverage matrix ([64ae18a](https://github.com/osovv/grace-marketplace/commit/64ae18a))
+* feat: add CWD-aware module-check comparison and replace duplicated CODE_EXTENSIONS ([3efc51e](https://github.com/osovv/grace-marketplace/commit/3efc51e))
+* feat: add language-registry module, check-references utility, and CWD verification support ([bd3028e](https://github.com/osovv/grace-marketplace/commit/bd3028e))
+* feat: create Dart language adapter and wire through language-registry ([643ba63](https://github.com/osovv/grace-marketplace/commit/643ba63))
+
 ## <small>4.0.0 (2026-06-20)</small>
 
 ### Summary
