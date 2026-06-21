@@ -6,7 +6,7 @@ import type { GraceLintConfig, LintIssue } from "./types";
 const CONFIG_FILE_NAME = ".grace-lint.json";
 const SUPPORTED_KEYS = new Set(["ignoredDirs"]);
 
-export function loadGraceLintConfig(projectRoot: string) {
+export function loadGraceLintConfig(projectRoot: string): { config: GraceLintConfig | null; issues: LintIssue[] } {
   const configPath = path.join(projectRoot, CONFIG_FILE_NAME);
   if (!existsSync(configPath)) {
     return { config: null as GraceLintConfig | null, issues: [] as LintIssue[] };

@@ -89,6 +89,9 @@ export function writeChangeBundleFixture(root: string, options: {
   specStatus: string;
   planStatus?: string;
   planBody?: string;
+  planBaselineAssertions?: string;
+  planTargetAssertions?: string;
+  designContext?: string;
 }): void {
   const bundleRoot = `.grace/changes/${options.location}/${options.changeId}`;
   writeProjectFile(
@@ -96,16 +99,33 @@ export function writeChangeBundleFixture(root: string, options: {
     `${bundleRoot}/spec.xml`,
     `<GraceChangeSpec graceVersion="4.0" status="${options.specStatus}"><${options.changeId}><Summary>Fixture change.</Summary></${options.changeId}></GraceChangeSpec>`,
   );
-  if (!options.planStatus) {
-    return;
+
+  if (options.planStatus) {
+    let planBody = options.planBody ?? `<DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>src/example.ts</File></ObservedWriteScope>`;
+    let extraSections = "";
+    if (options.planBaselineAssertions) {
+      extraSections += `<BaselineAssertions>${options.planBaselineAssertions}</BaselineAssertions>`;
+    }
+    if (options.planTargetAssertions) {
+      extraSections += `<TargetAssertions>${options.planTargetAssertions}</TargetAssertions>`;
+    }
+    if (extraSections) {
+      planBody = planBody + extraSections;
+    }
+    writeProjectFile(
+      root,
+      `${bundleRoot}/plan.xml`,
+      `<GraceChangePlan graceVersion="4.0" status="${options.planStatus}"><${options.changeId}>${planBody}</${options.changeId}></GraceChangePlan>`,
+    );
   }
 
-  const planBody = options.planBody ?? `<DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>src/example.ts</File></ObservedWriteScope>`;
-  writeProjectFile(
-    root,
-    `${bundleRoot}/plan.xml`,
-    `<GraceChangePlan graceVersion="4.0" status="${options.planStatus}"><${options.changeId}>${planBody}</${options.changeId}></GraceChangePlan>`,
-  );
+  if (options.designContext) {
+    writeProjectFile(
+      root,
+      `${bundleRoot}/design-context.xml`,
+      options.designContext,
+    );
+  }
 }
 
 /** Writes a legacy GRACE 3 docs fixture used only for migration guidance tests. */

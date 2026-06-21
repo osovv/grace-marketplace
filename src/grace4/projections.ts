@@ -270,7 +270,7 @@ function routeFromOwnerNode(
 
 function graphAnchorsInWrapper(wrapper: GraceXmlNode): Array<{ node: GraceXmlNode; kind: GraphAnchorRecord["kind"] }> {
   return wrapper.children
-    .flatMap((node) => {
+    .flatMap((node): Array<{ node: GraceXmlNode; kind: GraphAnchorRecord["kind"] }> => {
       if (ANCHOR_PATTERNS.module.test(node.tag)) {
         return [{ node, kind: "module" as const }];
       }

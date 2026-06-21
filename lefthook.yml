@@ -1,5 +1,8 @@
 pre-commit:
   commands:
+    typecheck:
+      tags: typecheck
+      run: bun run typecheck
     validate-marketplace:
       tags: marketplace
-      run: npx tsx@4.22.1 scripts/validate-marketplace.ts
+      run: bun run validate:marketplace

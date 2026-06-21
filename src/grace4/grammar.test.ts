@@ -7,6 +7,7 @@ import { resolveGrace4Paths } from "./project";
 import {
   validateArtifactRoot,
   validateChangeArtifact,
+  validateChangeDesignContextArtifact,
   validateContextArtifacts,
   validateGrace4Project,
   validateSemanticAnchorDiscipline,
@@ -153,7 +154,7 @@ describe("GRACE 4 Artifact Grammar", () => {
     expect(allCodes.filter((code) => code === "context.not-applicable-reason-missing")).toHaveLength(2);
   });
 
-  it("warns when superseded change does not reference a replacement C-*", () => {
+  it("errors when superseded change does not reference a replacement C-*", () => {
     const noReplacement = validateChangeArtifact(
       parseGraceXmlArtifact(
         "archive/spec.xml",
@@ -161,6 +162,7 @@ describe("GRACE 4 Artifact Grammar", () => {
       "archive",
     );
     expect(codes(noReplacement)).toContain("change.superseded-missing-replacement");
+    expect(noReplacement.issues.find(i => i.code === "change.superseded-missing-replacement")?.severity).toBe("error");
 
     const withChildTag = validateChangeArtifact(
       parseGraceXmlArtifact(
@@ -203,5 +205,41 @@ describe("GRACE 4 Artifact Grammar", () => {
       "archive",
     );
     expect(codes(replacementChange)).not.toContain("change.superseded-missing-replacement");
+  });
+
+  it("validates GraceChangeDesignContext inside change bundles", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeChangeBundleFixture(root, { changeId: "C-DESIGN", location: "active", specStatus: "approved", planStatus: "approved", designContext: "<GraceChangeDesignContext graceVersion=\"4.0\"><Change>C-DESIGN</Change><Rationale>Test.</Rationale></GraceChangeDesignContext>" });
+    expect(validateGrace4Project(root).issues).toHaveLength(0);
+  });
+
+  it("rejects invalid GraceChangeDesignContext root, missing graceVersion, status attribute", () => {
+    const valid = validateChangeDesignContextArtifact(
+      parseGraceXmlArtifact("design-context.xml", `<GraceChangeDesignContext graceVersion="4.0" />`),
+    );
+    expect(valid.issues).toHaveLength(0);
+
+    const wrongRoot = validateChangeDesignContextArtifact(
+      parseGraceXmlArtifact("design-context.xml", `<DesignContext graceVersion="4.0" />`),
+    );
+    expect(codes(wrongRoot)).toContain("design-context.invalid-root-tag");
+
+    const noVersion = validateChangeDesignContextArtifact(
+      parseGraceXmlArtifact("design-context.xml", `<GraceChangeDesignContext />`),
+    );
+    expect(codes(noVersion)).toContain("design-context.missing-grace-version");
+
+    const withStatus = validateChangeDesignContextArtifact(
+      parseGraceXmlArtifact("design-context.xml", `<GraceChangeDesignContext graceVersion="4.0" status="approved" />`),
+    );
+    expect(codes(withStatus)).toContain("design-context.forbidden-status");
+  });
+
+  it("accepts GraceChangeDesignContext with semantic anchor in child tag", () => {
+    const result = validateChangeDesignContextArtifact(
+      parseGraceXmlArtifact("design-context.xml", `<GraceChangeDesignContext graceVersion="4.0"><C-DESIGN><Rationale>Test.</Rationale></C-DESIGN></GraceChangeDesignContext>`),
+    );
+    expect(result.issues).toHaveLength(0);
   });
 });

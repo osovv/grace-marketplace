@@ -168,7 +168,7 @@ describe("lintGraceProject", () => {
     writeProjectFile(
       root,
       ".grace/changes/active/C-REFACTOR/plan.xml",
-      `<GraceChangePlan graceVersion="4.0" status="draft"><C-REFACTOR><BaselineAssertions><MustExist><Value>M-NONEXISTENT</Value></MustExist></BaselineAssertions></C-REFACTOR></GraceChangePlan>`,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-REFACTOR><BaselineAssertions><MustExist><Value>M-NONEXISTENT</Value></MustExist></BaselineAssertions></C-REFACTOR></GraceChangePlan>`,
     );
 
     // Active plan should emit assertion.MustExist for nonexistent module
@@ -187,5 +187,65 @@ describe("lintGraceProject", () => {
     const assertionIssues = bothResult.issues.filter((issue) => issue.code === "assertion.MustExist");
     // Only the active plan's assertion should fire
     expect(assertionIssues).toHaveLength(1);
+  });
+
+  it("does not evaluate TargetAssertions for active approved plans in general lint", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-TARGET/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-TARGET><BaselineAssertions><MustExist><Value>M-EXAMPLE</Value></MustExist></BaselineAssertions><TargetAssertions><MustVerify><Module>M-MISSING</Module></MustVerify></TargetAssertions></C-TARGET></GraceChangePlan>`,
+    );
+    const result = lintGraceProject(root);
+    // TargetAssertion MustVerify for M-MISSING should NOT fire
+    expect(result.issues.filter((issue) => issue.code === "assertion.MustVerify")).toHaveLength(0);
+  });
+
+  it("does not evaluate BaselineAssertions for active draft plans", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-DRAFT/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="draft"><C-DRAFT><BaselineAssertions><MustExist><Value>M-NONEXISTENT</Value></MustExist></BaselineAssertions></C-DRAFT></GraceChangePlan>`,
+    );
+    // Draft active plan should NOT fire assertion.MustExist
+    const result = lintGraceProject(root);
+    expect(result.issues.filter((issue) => issue.code === "assertion.MustExist")).toHaveLength(0);
+  });
+
+  it("fails active approved plans with failing BaselineAssertions", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-STALE/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-STALE><BaselineAssertions><MustExist><Value>M-NONEXISTENT</Value></MustExist></BaselineAssertions></C-STALE></GraceChangePlan>`,
+    );
+    const result = lintGraceProject(root);
+    expect(result.issues.filter((issue) => issue.code === "assertion.MustExist")).toHaveLength(1);
+  });
+
+  it("accepts a bundle with design-context.xml", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-DESIGN/design-context.xml",
+      `<GraceChangeDesignContext graceVersion="4.0"><Change>C-DESIGN</Change><Rationale>Test.</Rationale></GraceChangeDesignContext>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-DESIGN/spec.xml",
+      `<GraceChangeSpec graceVersion="4.0" status="approved"><C-DESIGN><Summary>Change with design context.</Summary></C-DESIGN></GraceChangeSpec>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-DESIGN/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-DESIGN><DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope></C-DESIGN></GraceChangePlan>`,
+    );
+    const result = lintGraceProject(root);
+    expect(result.issues.filter((issue) => issue.code.startsWith("design-context.") || issue.code === "artifact.invalid-root-tag" || issue.code === "change.invalid-root-tag")).toHaveLength(0);
   });
 });

@@ -124,4 +124,42 @@ describe("GRACE 4 assertions", () => {
 
     expect(evaluateAssertion(assertionToCheck, context(root))[0]?.code).toBe("assertion.MustOwn");
   });
+
+  it("extracts TargetAssertions from a plan", () => {
+    const root = createProject();
+    writeProjectionFixture(root);
+    const planFile = path.join(root, "target-plan.xml");
+    writeFileSync(
+      planFile,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><TargetAssertions><MustVerify><Module>M-AUTH-SESSION</Module></MustVerify></TargetAssertions></C-EXAMPLE></GraceChangePlan>`,
+    );
+    const result = extractAssertionsWithIssues(planFile, "TargetAssertions");
+    expect(result.assertions).toHaveLength(1);
+    expect(result.assertions[0]!.kind).toBe("MustVerify");
+    expect(result.assertions[0]!.values).toContain("M-AUTH-SESSION");
+  });
+
+  it("evaluates TargetAssertions correctly when called directly", () => {
+    // TargetAssertion MustVerify for existing module passes
+    const root = createProject();
+    writeProjectionFixture(root);
+    const ctx = context(root);
+    const passFile = path.join(root, "pass-plan.xml");
+    writeFileSync(passFile, `<GraceChangePlan graceVersion="4.0" status="approved"><C-EX><TargetAssertions><MustVerify><Module>M-AUTH-SESSION</Module></MustVerify></TargetAssertions></C-EX></GraceChangePlan>`);
+    const pass = extractAssertionsWithIssues(passFile, "TargetAssertions").assertions;
+    if (pass.length > 0) {
+      expect(evaluateAssertion(pass[0]!, ctx)).toHaveLength(0);
+    }
+
+    // TargetAssertion MustVerify for missing module fails
+    const failRoot = createProject();
+    writeProjectionFixture(failRoot);
+    const failCtx = context(failRoot);
+    const failFile = path.join(failRoot, "fail-plan.xml");
+    writeFileSync(failFile, `<GraceChangePlan graceVersion="4.0" status="approved"><C-EX><TargetAssertions><MustVerify><Module>M-MISSING</Module></MustVerify></TargetAssertions></C-EX></GraceChangePlan>`);
+    const failAssertions = extractAssertionsWithIssues(failFile, "TargetAssertions").assertions;
+    if (failAssertions.length > 0) {
+      expect(evaluateAssertion(failAssertions[0]!, failCtx)[0]?.code).toBe("assertion.MustVerify");
+    }
+  });
 });

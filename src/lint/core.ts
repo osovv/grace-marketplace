@@ -4,7 +4,7 @@ import path from "node:path";
 import { evaluateAssertion, extractAssertionsWithIssues } from "../grace4/assertions";
 import { validateGrace4Project } from "../grace4/grammar";
 import { detectGraceProjectKind, formatGrace3MigrationGuidance, resolveGrace4Paths } from "../grace4/project";
-import { buildGraphProjection, buildVerificationProjection } from "../grace4/projections";
+import { buildGraphProjection, buildVerificationProjection, type GraphProjection, type VerificationProjection } from "../grace4/projections";
 import { collectActiveChangeScopes, detectScopeOverlaps, detectUnsafeConcurrentExecution } from "../grace4/scope";
 import type { Grace4Issue } from "../grace4/types";
 import { collectCodeFiles, hasGraceMarkers } from "../project-utils";
@@ -85,29 +85,44 @@ function listPlanFiles(directory: string): string[] {
   });
 }
 
-function validateAssertions(result: LintResult, planFilesActive: string[], planFilesArchived: string[], graph: GraphProjection, verification: VerificationProjection, root: string) {
-  const context = { root, graph, verification };
-
-  // Active plans: evaluate both BaselineAssertions and TargetAssertions
-  for (const planFile of planFilesActive) {
-    evaluateSection(result, planFile, "BaselineAssertions", context);
-    evaluateSection(result, planFile, "TargetAssertions", context);
-  }
-
-  // Archived plans: evaluate only TargetAssertions (BaselineAssertions are execution preconditions that may legitimately fail after application)
-  for (const planFile of planFilesArchived) {
-    evaluateSection(result, planFile, "TargetAssertions", context);
+function readPlanStatus(planFile: string): string | null {
+  try {
+    const text = readFileSync(planFile, "utf8");
+    const match = text.match(/<GraceChangePlan[^>]*\sstatus="([^"]+)"/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
   }
 }
 
-function evaluateSection(result: LintResult, planFile: string, section: "BaselineAssertions" | "TargetAssertions", context: { root: string; graph: GraphProjection; verification: VerificationProjection }) {
+function validateAssertions(result: LintResult, planFilesActive: string[], planFilesArchived: string[], graph: GraphProjection, verification: VerificationProjection, root: string) {
+  const context = { root, graph, verification };
+
+  for (const planFile of planFilesActive) {
+    const status = readPlanStatus(planFile);
+    // BaselineAssertions: syntax always, semantic only for active approved
+    evaluateSection(result, planFile, "BaselineAssertions", context, status === "approved");
+    // TargetAssertions: syntax always, never semantic in general lint
+    evaluateSection(result, planFile, "TargetAssertions", context, false);
+  }
+
+  for (const planFile of planFilesArchived) {
+    // Archived plans: syntax only, never semantic (baseline may be stale, target may be superseded by later changes)
+    evaluateSection(result, planFile, "BaselineAssertions", context, false);
+    evaluateSection(result, planFile, "TargetAssertions", context, false);
+  }
+}
+
+function evaluateSection(result: LintResult, planFile: string, section: "BaselineAssertions" | "TargetAssertions", context: { root: string; graph: GraphProjection; verification: VerificationProjection }, evaluateSemantically: boolean) {
   const extraction = extractAssertionsWithIssues(planFile, section);
   for (const issue of extraction.issues) {
     addGrace4Issue(result, issue);
   }
-  for (const assertion of extraction.assertions) {
-    for (const issue of evaluateAssertion(assertion, context)) {
-      addGrace4Issue(result, issue);
+  if (evaluateSemantically) {
+    for (const assertion of extraction.assertions) {
+      for (const issue of evaluateAssertion(assertion, context)) {
+        addGrace4Issue(result, issue);
+      }
     }
   }
 }

@@ -50,8 +50,9 @@
     "grace:lint": "bun run ./src/grace.ts lint",
     "lint": "bun run ./src/grace.ts lint",
     "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
     "validate:cli": "bun test src/grace-lint.test.ts src/grace-status.test.ts src/grace-query.test.ts",
-    "validate:ci": "bun test && bun run validate:cli && bun run ./scripts/validate-marketplace.ts",
+    "validate:ci": "bun run typecheck && bun test && bun run validate:cli && bun run ./scripts/validate-marketplace.ts",
     "validate:marketplace": "bun run ./scripts/validate-marketplace.ts",
     "validate:release": "bun run validate:ci && bun run ./scripts/release-checklist.ts",
     "release:checklist": "bun run ./scripts/release-checklist.ts",
@@ -64,5 +65,8 @@
     "citty": "^0.2.2",
     "fast-xml-parser": "^5.2.5",
     "typescript": "^6.0.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
   }
 }

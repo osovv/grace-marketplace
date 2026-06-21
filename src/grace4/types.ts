@@ -16,7 +16,13 @@ export const GRACE4_ROOT_TAGS = [
   "GraceChangePlan",
 ] as const;
 
+/** Change-bundle companion root tags (valid only inside change bundles). */
+export const GRACE4_CHANGE_COMPANION_TAGS = [
+  "GraceChangeDesignContext",
+] as const;
+
 export type Grace4RootTag = (typeof GRACE4_ROOT_TAGS)[number];
+export type Grace4ChangeCompanionTag = (typeof GRACE4_CHANGE_COMPANION_TAGS)[number];
 
 /** Lifecycle statuses allowed on GraceChangeSpec and GraceChangePlan roots. */
 export const CHANGE_STATUSES = ["draft", "approved", "applied", "rejected", "cancelled", "superseded"] as const;

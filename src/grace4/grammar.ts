@@ -7,6 +7,7 @@ import {
   ANCHOR_PATTERNS,
   ARCHIVED_CHANGE_STATUSES,
   CHANGE_STATUSES,
+  GRACE4_CHANGE_COMPANION_TAGS,
   GRACE4_CONTEXT_ARTIFACTS,
   GRACE4_ROOT_TAGS,
   GRACE4_VERSION,
@@ -17,6 +18,7 @@ import { childText, readGraceXmlArtifact, walkNodes, type GraceXmlNode, type Par
 
 const STANDARD_ROOT_TAGS = new Set<string>(GRACE4_ROOT_TAGS);
 const CHANGE_ROOT_TAGS = new Set(["GraceChangeSpec", "GraceChangePlan"]);
+const COMPANION_ROOT_TAGS = new Set<string>(GRACE4_CHANGE_COMPANION_TAGS);
 const VALID_CHANGE_STATUSES = new Set<string>(CHANGE_STATUSES);
 const ROOT_METADATA_ATTRIBUTE = new Set(["graceVersion"]);
 const CHANGE_ROOT_METADATA_ATTRIBUTES = new Set(["graceVersion", "status"]);
@@ -191,16 +193,51 @@ export function validateChangeArtifact(
     if (!hasReplacement) {
       result.issues.push(
         issue(
-          "warning",
+          "error",
           "change.superseded-missing-replacement",
           artifact.file,
-          "Superseded " + root.tag + " should reference a replacement C-* as a child tag or via <Replacement>/<ReplacementChange> text.",
+          "Superseded change must reference a replacement C-* as a child tag or via <Replacement>/<ReplacementChange> text.",
         ),
       );
     }
   }
 
   return result;
+}
+
+/** Validates a GraceChangeDesignContext artifact found inside a change bundle. */
+export function validateChangeDesignContextArtifact(
+  artifact: ParsedGraceXmlArtifact,
+): ArtifactValidationResult {
+  const root = artifact.root;
+  const issues: Grace4Issue[] = [...artifact.issues];
+
+  if (!root) {
+    return { file: artifact.file, issues };
+  }
+
+  if (!COMPANION_ROOT_TAGS.has(root.tag)) {
+    issues.push(issue("error", "design-context.invalid-root-tag", artifact.file, `Unsupported design context root tag '${root.tag}'. Expected GraceChangeDesignContext.`));
+    return { file: artifact.file, rootTag: root.tag, issues };
+  }
+
+  if (!root.attributes.graceVersion) {
+    issues.push(
+      issue("error", "design-context.missing-grace-version", artifact.file, `GraceChangeDesignContext must declare graceVersion="${GRACE4_VERSION}".`),
+    );
+  } else if (root.attributes.graceVersion !== GRACE4_VERSION) {
+    issues.push(
+      issue("error", "design-context.unsupported-grace-version", artifact.file, `GraceChangeDesignContext declares unsupported graceVersion '${root.attributes.graceVersion}'. Expected '${GRACE4_VERSION}'.`),
+    );
+  }
+
+  if (root.attributes.status) {
+    issues.push(issue("error", "design-context.forbidden-status", artifact.file, "GraceChangeDesignContext must not declare a status attribute."));
+  }
+
+  issues.push(...validateSemanticAnchorDiscipline(artifact.file, root));
+
+  return { file: artifact.file, rootTag: root.tag, graceVersion: root.attributes.graceVersion, issues };
 }
 
 /** Validates current-state .grace artifact grammar and lifecycle location invariants. */
@@ -276,7 +313,17 @@ function validateChangeArtifactsInDirectory(
     return [];
   }
 
-  return listXmlFiles(directory).map((file) => validateChangeArtifact(readGraceXmlArtifact(file), location));
+  const files = listXmlFiles(directory);
+  const results: ArtifactValidationResult[] = [];
+  for (const file of files) {
+    const filename = path.basename(file);
+    if (filename === "design-context.xml") {
+      results.push(validateChangeDesignContextArtifact(readGraceXmlArtifact(file)));
+    } else {
+      results.push(validateChangeArtifact(readGraceXmlArtifact(file), location));
+    }
+  }
+  return results;
 }
 
 function listXmlFiles(directory: string): string[] {
