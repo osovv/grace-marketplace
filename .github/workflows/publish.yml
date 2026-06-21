@@ -86,6 +86,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           body_path: /tmp/release-body.md
+          prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
