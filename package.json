@@ -62,7 +62,7 @@
     "prepare": "lefthook install --force"
   },
   "bin": {
-    "grace": "./src/grace.ts"
+    "grace": "src/grace.ts"
   },
   "dependencies": {
     "citty": "^0.2.2",

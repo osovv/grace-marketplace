@@ -73,7 +73,7 @@ When a tag matching `v*` is pushed, the `publish.yml` GitHub Actions workflow:
 1. Verifies the tag matches `package.json` version.
 2. Runs `bun install --frozen-lockfile`.
 3. Runs `release:check`, `typecheck`, `test`, `validate:cli`, and `validate:marketplace`.
-4. Publishes to npm with `npm publish --access public`.
+4. Publishes stable versions to npm with the default dist-tag, and prerelease versions with the prerelease identifier as the dist-tag (for example, `4.0.0-rc.0` publishes with `--tag rc`).
 5. Creates a GitHub Release with the matching changelog block as body.
 
 ## Commit Message Convention

@@ -59,7 +59,17 @@ jobs:
         run: bun run validate:marketplace
 
       - name: Publish to npm
-        run: npm publish --access public
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [[ "${PKG_VERSION}" == *-* ]]; then
+            PRERELEASE_TAG="${PKG_VERSION#*-}"
+            DIST_TAG="${PRERELEASE_TAG%%.*}"
+            echo "Publishing prerelease ${PKG_VERSION} with npm dist-tag ${DIST_TAG}"
+            npm publish --access public --tag "${DIST_TAG}"
+          else
+            echo "Publishing stable ${PKG_VERSION} with npm default dist-tag"
+            npm publish --access public
+          fi
 
       - name: Extract changelog entry for release
         id: changelog
