@@ -15,10 +15,14 @@ const packageJson = JSON.parse(readFileSync(path.join(repoRoot, "package.json"),
 const version = packageJson.version ?? "unknown";
 const changelog = readFileSync(path.join(repoRoot, "CHANGELOG.md"), "utf8");
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 const checklist: ChecklistItem[] = [
   {
     label: "Current version is documented in CHANGELOG.md",
-    ok: new RegExp(`^## \\[${version.replaceAll(".", "\\.")}\\]`, "m").test(changelog),
+    ok: new RegExp(`^##\\s+<small>${escapeRegExp(version)}\\s+\\(`, "m").test(changelog),
     detail: `Expected CHANGELOG.md entry for ${version}.`,
   },
   {

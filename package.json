@@ -49,14 +49,17 @@
     "grace": "bun run ./src/grace.ts",
     "grace:lint": "bun run ./src/grace.ts lint",
     "lint": "bun run ./src/grace.ts lint",
-    "test": "bun test",
+    "test": "bun test --timeout=30000",
     "typecheck": "bunx tsc --noEmit",
-    "validate:cli": "bun test src/grace-lint.test.ts src/grace-status.test.ts src/grace-query.test.ts",
-    "validate:ci": "bun run typecheck && bun test && bun run validate:cli && bun run ./scripts/validate-marketplace.ts",
+    "validate:cli": "bun test --timeout=30000 src/grace-lint.test.ts src/grace-status.test.ts src/grace-query.test.ts",
+    "validate:ci": "bun run typecheck && bun run test && bun run validate:cli && bun run ./scripts/validate-marketplace.ts",
     "validate:marketplace": "bun run ./scripts/validate-marketplace.ts",
-    "validate:release": "bun run validate:ci && bun run ./scripts/release-checklist.ts",
+    "validate:release": "bun run typecheck && bun run test && bun run release:check && bun run ./scripts/validate-marketplace.ts",
+    "release:check": "bun run scripts/release-check.ts",
+    "release:bump": "bun run scripts/release-bump.ts",
     "release:checklist": "bun run ./scripts/release-checklist.ts",
-    "prepublishOnly": "bun run validate:release"
+    "prepublishOnly": "bun run validate:release",
+    "prepare": "lefthook install --force"
   },
   "bin": {
     "grace": "./src/grace.ts"
@@ -67,6 +70,10 @@
     "typescript": "^6.0.2"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.14"
+    "@commitlint/config-conventional": "^19.8.1",
+    "@types/bun": "^1.3.14",
+    "commitlint": "^19.8.1",
+    "conventional-changelog-cli": "^5.0.0",
+    "lefthook": "^1.11.12"
   }
 }

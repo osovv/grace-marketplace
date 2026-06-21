@@ -1,12 +1,8 @@
-# Changelog
+## <small>4.0.0 (2026-06-20)</small>
 
-All notable changes to this project will be documented in this file.
+### Summary
 
-The format is inspired by Keep a Changelog, and this project follows Semantic Versioning.
-
-This changelog currently starts at `1.3.0`. Earlier history is available in the git log.
-
-## [4.0.0] - 2026-06-20
+This release introduces the GRACE 4 artifact model with parser-backed XML validation, artifact grammar checks, and assertion evaluation, replacing the legacy shared-doc approach with a `.grace` current-state structure. `grace-spec` and `grace-migrate` skills join the published surface for change specification and GRACE 3-to-4 migration, while `grace-multiagent-execute` is folded into `grace-execute` as a parallel-safe mode.
 
 ### Added
 
@@ -26,7 +22,7 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 - Removed CLI dual-mode behavior for legacy GRACE 3 docs. Legacy projects now receive migration guidance and use `grace-migrate`.
 - Removed `grace lint --profile autonomous` / autonomy gate. GRACE 4 uses `.grace` current-state validation, status, assertions, and scopes instead.
 
-## [3.11.0] - 2026-04-19
+## <small>3.11.0 (2026-04-19)</small>
 
 ### Added
 
@@ -41,7 +37,7 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 - Enriched `grace lint` and `grace status` JSON output with schema/version metadata and summary counts for machine-readable automation.
 - Extended marketplace validation to verify `package.json` version sync and require a matching `CHANGELOG.md` entry for the current version.
 
-## [3.8.0] - 2026-04-19
+## <small>3.8.0 (2026-04-19)</small>
 
 ### Added
 
@@ -53,7 +49,7 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 - Reframed the marketplace, CLI docs, and GRACE skills around process-first execution, semantic anchoring, approved stacks, checkpoint reports, and operational packets.
 - Updated `grace-init` templates so technology, development-plan, verification-plan, and operational-packets examples explicitly model autonomy policy and checkpoint handoff.
 
-## [3.7.0] - 2026-04-05
+## <small>3.7.0 (2026-04-05)</small>
 
 ### Added
 
@@ -61,10 +57,10 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 
 ### Changed
 
-- Updated skill trigger wording to use agent-neutral `Use when you ...` phrasing instead of Claude-specific wording.
+- Updated skill trigger wording to use agent-neutral "Use when you ..." phrasing instead of Claude-specific wording.
 - Reworked the README install guidance so GRACE skills are the primary surface, the CLI is a strongly recommended companion, and requirements/technology artifacts are designed together with the agent.
 
-## [3.6.0] - 2026-04-05
+## <small>3.6.0 (2026-04-05)</small>
 
 ### Added
 
@@ -76,7 +72,7 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 - Expanded the CLI surface from integrity-only linting into read/query navigation for public shared-doc context and private file-local context.
 - Updated the shipped GRACE skills and README so agents know when to use `grace lint`, `grace module find`, `grace module show`, and `grace file show`.
 
-## [3.5.0] - 2026-04-05
+## <small>3.5.0 (2026-04-05)</small>
 
 ### Changed
 
@@ -84,21 +80,21 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 - Kept private helpers, internal types, and implementation-only orchestration details in file-local markup, local contracts, and semantic blocks instead of shared XML artifacts.
 - Updated planning, refresh, reviewer, execution, refactor, explainer, init templates, and packaged mirrors to follow that boundary consistently.
 
-## [3.4.0] - 2026-04-05
+## <small>3.4.0 (2026-04-05)</small>
 
 ### Changed
 
 - Added a rich Python adapter without `pyright`, while keeping TypeScript/JavaScript on the TypeScript compiler API for exact export analysis.
 - Made adapter failures non-fatal so linting can continue with structural checks and warnings.
 
-## [3.3.0] - 2026-04-05
+## <small>3.3.0 (2026-04-05)</small>
 
 ### Changed
 
 - Removed profile selection from `grace lint`; it now validates only against the current GRACE artifact set.
 - Limited `.grace-lint.json` to the current schema and reject unknown keys instead of carrying compatibility paths for unused legacy config.
 
-## [3.2.0] - 2026-04-05
+## <small>3.2.0 (2026-04-05)</small>
 
 ### Changed
 
@@ -106,7 +102,7 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 - Added `ROLE` and `MAP_MODE` support for governed files so tests, barrels, configs, types, and scripts are linted by semantics instead of filename masks.
 - Added `auto/current/legacy` profile support and `.grace-lint.json` repository configuration.
 
-## [3.1.1] - 2026-04-05
+## <small>3.1.1 (2026-04-05)</small>
 
 ### Changed
 
@@ -114,7 +110,7 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 - Updated `CLAUDE.md` so future sessions treat the published `@osovv/grace-cli` package and `grace lint` workflow as part of the repo context.
 - Switched the published CLI install example in `README.md` to `bun add -g @osovv/grace-cli`.
 
-## [3.1.0] - 2026-04-05
+## <small>3.1.0 (2026-04-05)</small>
 
 ### Added
 
@@ -127,21 +123,21 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 - Updated execution, verification, ask, fix, status, and explainer skills to recognize `docs/operational-packets.xml` when present.
 - Prepared the published CLI as the scoped npm package `@osovv/grace-cli` with a Bun-powered `grace` binary and prepublish verification checks.
 
-## [3.0.4] - 2026-04-05
+## <small>3.0.4 (2026-04-05)</small>
 
 ### Changed
 
 - Improved worker commit message format in `grace-multiagent-execute`: requires concrete file/function/export listing and descriptive body instead of generic "harden X" phrases.
 - Improved controller meta-sync commit format: lists which artifacts were updated and per-module delta description instead of bare module list.
 
-## [3.0.3] - 2026-03-19
+## <small>3.0.3 (2026-03-19)</small>
 
 ### Fixed
 
 - Replaced the `plugins/grace/skills` symlink with real packaged skill files so OpenPackage can install the plugin for `opencode`.
 - Added validator coverage for drift between canonical `skills/grace/*` content and the packaged copy inside `plugins/grace`.
 
-## [3.0.2] - 2026-03-19
+## <small>3.0.2 (2026-03-19)</small>
 
 ### Fixed
 
@@ -149,7 +145,7 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 - Restored the plugin manifest to `plugins/grace/.claude-plugin/plugin.json` and removed the unsupported root plugin manifest.
 - Updated marketplace validation to enforce relative plugin sources and to verify component paths inside each plugin source directory.
 
-## [3.0.1] - 2026-03-19
+## <small>3.0.1 (2026-03-19)</small>
 
 ### Fixed
 
@@ -157,7 +153,7 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 - Added a root `.claude-plugin/plugin.json` manifest and removed the broken nested `plugins/grace` packaging layout.
 - Updated validation to catch missing component paths inside the declared plugin source before release.
 
-## [3.0.0] - 2026-03-16
+## <small>3.0.0 (2026-03-16)</small>
 
 ### Added
 
@@ -177,7 +173,7 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 
 - Removed `grace-generate` from the public skill set in favor of the execution-centric workflow through `grace-execute` and `grace-multiagent-execute`.
 
-## [2.1.0] - 2026-03-09
+## <small>2.1.0 (2026-03-09)</small>
 
 ### Changed
 
@@ -185,13 +181,13 @@ This changelog currently starts at `1.3.0`. Earlier history is available in the 
 - Controller commits only shared artifacts (graph, plan), not implementation files.
 - Updated `grace-execute` and `grace-multiagent-execute` with explicit commit timing guidance.
 
-## [2.0.0] - 2026-03-09
+## <small>2.0.0 (2026-03-09)</small>
 
 ### Changed
 
 - Reorganized skills directory structure: all GRACE skills moved to `skills/grace/` subfolder for better organization and namespacing.
 
-## [1.3.0] - 2026-03-09
+## <small>1.3.0 (2026-03-09)</small>
 
 ### Added
 

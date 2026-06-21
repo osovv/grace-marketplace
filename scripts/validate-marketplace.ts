@@ -91,9 +91,15 @@ function getPackageVersion(): string | null {
   return typeof packageJson.version === "string" ? packageJson.version : null;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Checks that CHANGELOG.md contains a strict vv-style header for the given version. */
 function changelogHasVersion(version: string) {
   const changelog = readFileSync(changelogPath, "utf8");
-  return new RegExp(`^## \\[${version.replaceAll(".", "\\.")}\\]`, "m").test(changelog);
+  const escaped = escapeRegExp(version);
+  return new RegExp(`^##\\s+<small>${escaped}\\s+\\(`, "m").test(changelog);
 }
 
 function normalizeComparableValue(value: unknown): string {

@@ -1,4 +1,5 @@
 pre-commit:
+  parallel: true
   commands:
     typecheck:
       tags: typecheck
@@ -6,3 +7,8 @@ pre-commit:
     validate-marketplace:
       tags: marketplace
       run: bun run validate:marketplace
+
+commit-msg:
+  commands:
+    commitlint:
+      run: bunx commitlint --edit "$1"
