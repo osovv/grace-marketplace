@@ -11,6 +11,7 @@ const EXAMPLE_MARKETPLACE = JSON.stringify(
 );
 
 const EXAMPLE_PLUGIN_MANIFEST = JSON.stringify({ name: "grace", version: "4.0.0" }, null, 2);
+const EXAMPLE_CLI_ENTRY = `const main = defineCommand({ meta: { name: "grace", version: "4.0.0" } });`;
 
 const EXAMPLE_README = `# GRACE Marketplace\nCurrent packaged version: \`4.0.0\``;
 
@@ -171,6 +172,33 @@ describe("collectReleaseConsistencyErrors", () => {
     const pm = JSON.stringify({ name: "grace", version: "1.0.0" });
     const errors = collectReleaseConsistencyErrors(makePkg("4.0.0"), EXAMPLE_README, EXAMPLE_OPENPACKAGE, EXAMPLE_MARKETPLACE, pm, EXAMPLE_CHANGELOG);
     expect(errors.some((e) => e.includes("plugin.json version"))).toBe(true);
+  });
+
+  it("fails on CLI metadata version mismatch when provided", () => {
+    const cliEntry = `const main = defineCommand({ meta: { name: "grace", version: "1.0.0" } });`;
+    const errors = collectReleaseConsistencyErrors(
+      makePkg("4.0.0"),
+      EXAMPLE_README,
+      EXAMPLE_OPENPACKAGE,
+      EXAMPLE_MARKETPLACE,
+      EXAMPLE_PLUGIN_MANIFEST,
+      EXAMPLE_CHANGELOG,
+      cliEntry,
+    );
+    expect(errors.some((e) => e.includes("src/grace.ts CLI metadata version"))).toBe(true);
+  });
+
+  it("passes when CLI metadata version matches package version", () => {
+    const errors = collectReleaseConsistencyErrors(
+      makePkg("4.0.0"),
+      EXAMPLE_README,
+      EXAMPLE_OPENPACKAGE,
+      EXAMPLE_MARKETPLACE,
+      EXAMPLE_PLUGIN_MANIFEST,
+      EXAMPLE_CHANGELOG,
+      EXAMPLE_CLI_ENTRY,
+    );
+    expect(errors).toEqual([]);
   });
 
   // ---------------------------------------------------------------------------

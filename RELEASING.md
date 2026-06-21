@@ -24,6 +24,7 @@ bun run release:bump prepatch --preid rc
    - `openpackage.yml` — `version:` line
    - `.claude-plugin/marketplace.json` — `metadata.version` and plugin `version`
    - `plugins/grace/.claude-plugin/plugin.json` — `version` field
+   - `src/grace.ts` — CLI metadata shown by `grace --version`
 7. Run `bun run release:check` to validate consistency.
 8. Assert only expected release files have changed.
 9. Commit those files with a `chore:` message.

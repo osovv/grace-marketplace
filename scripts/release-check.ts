@@ -3,7 +3,7 @@
 // VERSION: 1.0.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify release consistency: package name, semver version, version sync across version surface files, CHANGELOG.md presence and headers, and latest changelog entry summary gate.
-//   SCOPE: Reads package.json, README.md, openpackage.yml, .claude-plugin/marketplace.json, plugins/grace/.claude-plugin/plugin.json, and CHANGELOG.md; validates package identity/version, that all version surface files are in sync, that CHANGELOG.md exists with valid headers, and that the latest release block has a valid ### Summary section.
+//   SCOPE: Reads package.json, README.md, openpackage.yml, .claude-plugin/marketplace.json, plugins/grace/.claude-plugin/plugin.json, src/grace.ts, and CHANGELOG.md; validates package identity/version, that all version surface files are in sync, that CHANGELOG.md exists with valid headers, and that the latest release block has a valid ### Summary section.
 //   DEPENDS: [node:fs, scripts/release-summary]
 //   LINKS: [M-RELEASE-AUTOMATION, VF-RELEASE-AUTOMATION]
 //   ROLE: SCRIPT
@@ -28,6 +28,7 @@ const README_PATH = path.join(REPO_ROOT, "README.md");
 const OPENPACKAGE_PATH = path.join(REPO_ROOT, "openpackage.yml");
 const MARKETPLACE_PATH = path.join(REPO_ROOT, ".claude-plugin/marketplace.json");
 const PLUGIN_MANIFEST_PATH = path.join(REPO_ROOT, "plugins/grace/.claude-plugin/plugin.json");
+const CLI_ENTRY_PATH = path.join(REPO_ROOT, "src/grace.ts");
 const CHANGELOG_PATH = path.join(REPO_ROOT, "CHANGELOG.md");
 
 const EXPECTED_PACKAGE_NAME = "@osovv/grace-cli";
@@ -36,6 +37,7 @@ const CHANGELOG_VERSION_HEADER = /^##\s+/m;
 const README_VERSION_MARKER = /Current packaged version:\s*`([^`]+)`/;
 const OPENPACKAGE_VERSION = /^version:\s*([^\s]+)\s*$/m;
 const LATEST_HEADER_VERSION = /^##\s+<small>([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\s+/m;
+const CLI_META_VERSION = /meta:\s*\{[\s\S]*?version:\s*"([^"]+)"/;
 interface PackageJson {
   name?: string;
   version?: string;
@@ -53,6 +55,7 @@ export function collectReleaseConsistencyErrors(
   marketplaceText: string | null,
   pluginManifestText: string | null,
   changelogText: string | null,
+  cliEntryText?: string | null,
 ): string[] {
   const errors: string[] = [];
 
@@ -132,6 +135,20 @@ export function collectReleaseConsistencyErrors(
     }
   }
 
+  // Validate src/grace.ts CLI metadata version when provided by the CLI entrypoint caller.
+  if (cliEntryText !== undefined) {
+    if (!cliEntryText) {
+      errors.push("src/grace.ts is missing or unreadable");
+    } else {
+      const cliVersionMatch = cliEntryText.match(CLI_META_VERSION);
+      if (!cliVersionMatch) {
+        errors.push("src/grace.ts: missing CLI metadata version");
+      } else if (cliVersionMatch[1] !== version) {
+        errors.push(`src/grace.ts CLI metadata version is "${cliVersionMatch[1]}", expected "${version}"`);
+      }
+    }
+  }
+
   // Validate CHANGELOG.md
   if (!changelogText) {
     errors.push("CHANGELOG.md is missing or empty");
@@ -186,6 +203,7 @@ function main(): void {
   const openpackageText = readTextOrNull(OPENPACKAGE_PATH);
   const marketplaceText = readTextOrNull(MARKETPLACE_PATH);
   const pluginManifestText = readTextOrNull(PLUGIN_MANIFEST_PATH);
+  const cliEntryText = readTextOrNull(CLI_ENTRY_PATH);
   const changelogText = readTextOrNull(CHANGELOG_PATH);
 
   const errors = collectReleaseConsistencyErrors(
@@ -195,6 +213,7 @@ function main(): void {
     marketplaceText,
     pluginManifestText,
     changelogText,
+    cliEntryText,
   );
 
   if (errors.length > 0) exitWithErrors(errors);

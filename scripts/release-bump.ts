@@ -20,7 +20,7 @@
 //   sleepMs - Blocks synchronously for the given milliseconds between retry attempts.
 //   generateChangelog - Runs conventional-changelog as subprocess to generate entry from git history.
 //   prependToChangelog - Prepends a changelog entry to CHANGELOG.md, creating the file if missing.
-//   updateVersionSurfaceFiles - Updates version in README.md, openpackage.yml, marketplace.json, and plugin.json.
+//   updateVersionSurfaceFiles - Updates version in README.md, openpackage.yml, marketplace.json, plugin.json, and the CLI entrypoint metadata.
 //   assertOnlyReleaseFilesChanged - Ensures the bump leaves only version/changelog-related files changed before commit.
 //   assertTagDoesNotExist - Verifies the release tag does not already exist.
 //   getCurrentBranchName - Returns the current branch name and rejects detached HEAD release bumps.
@@ -51,6 +51,7 @@ const OPENPACKAGE_PATH = path.join(REPO_ROOT, "openpackage.yml");
 const MARKETPLACE_PATH = path.join(REPO_ROOT, ".claude-plugin/marketplace.json");
 const PLUGIN_MANIFEST_PATH = path.join(REPO_ROOT, "plugins/grace/.claude-plugin/plugin.json");
 const CHANGELOG_PATH = path.join(REPO_ROOT, "CHANGELOG.md");
+const CLI_ENTRY_PATH = path.join(REPO_ROOT, "src/grace.ts");
 
 const PACKAGE_NAME = "@osovv/grace-cli";
 const ALLOWED_RELEASE_FILES = new Set([
@@ -60,6 +61,7 @@ const ALLOWED_RELEASE_FILES = new Set([
   "openpackage.yml",
   ".claude-plugin/marketplace.json",
   "plugins/grace/.claude-plugin/plugin.json",
+  "src/grace.ts",
 ]);
 const CAPTURE_MAX_BUFFER = 128 * 1024 * 1024;
 const RELEASE_TYPES = new Set([
@@ -250,7 +252,8 @@ function prependToChangelog(entry: string): void {
  * Affected files: README.md (Current packaged version marker),
  * openpackage.yml (version line),
  * .claude-plugin/marketplace.json (metadata.version and plugin[0].version),
- * plugins/grace/.claude-plugin/plugin.json (version).
+ * plugins/grace/.claude-plugin/plugin.json (version),
+ * src/grace.ts (CLI metadata version).
  */
 function updateVersionSurfaceFiles(newVersion: string): void {
   // Update README.md
@@ -308,6 +311,17 @@ function updateVersionSurfaceFiles(newVersion: string): void {
     } catch {
       console.error("✗ Failed to parse plugins/grace/.claude-plugin/plugin.json. Version update skipped.");
     }
+  }
+
+  // Update CLI entrypoint metadata version shown by `grace --version`
+  const cliEntryText = readFileText(CLI_ENTRY_PATH);
+  if (cliEntryText) {
+    const updatedCliEntry = cliEntryText.replace(
+      /(meta:\s*\{[\s\S]*?version:\s*")([^"]+)(")/,
+      (_match, prefix, _oldVersion, suffix) => `${prefix}${newVersion}${suffix}`,
+    );
+    writeFileSync(CLI_ENTRY_PATH, updatedCliEntry, "utf8");
+    console.log(`Updated src/grace.ts CLI metadata version to ${newVersion}`);
   }
 }
 
@@ -441,6 +455,7 @@ function main(): void {
     "openpackage.yml",
     ".claude-plugin/marketplace.json",
     "plugins/grace/.claude-plugin/plugin.json",
+    "src/grace.ts",
   ], "git add failed.");
   run(
     "git",
