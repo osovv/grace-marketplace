@@ -186,6 +186,38 @@ describe("grace query core", () => {
     expect(resolved.module?.id).toBe("M-PROVIDER-PERSIST");
   });
 
+  it("collects explicit TestFiles/File from verification entries into query model", () => {
+    const root = createProject();
+    writeProjectFile(
+      root,
+      ".grace/graph/index.xml",
+      '<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns><M-EXAMPLE /></Owns></GD-MAIN></GraphDocuments></GraceGraphIndex>',
+    );
+    writeProjectFile(
+      root,
+      ".grace/graph/main.xml",
+      '<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-EXAMPLE><Summary>Example module.</Summary></M-EXAMPLE></GD-MAIN></GraceGraphDocument>',
+    );
+    writeProjectFile(
+      root,
+      ".grace/verification/index.xml",
+      '<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-EXAMPLE /></Owns></VD-MAIN></VerificationDocuments></GraceVerificationIndex>',
+    );
+    // Verification has both a Command with a test file reference AND explicit TestFiles/File tags
+    writeProjectFile(
+      root,
+      ".grace/verification/main.xml",
+      '<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><Command>bun test src/module.test.ts</Command><TestFiles><File>src/module-explicit.test.ts</File><File>src/module-additional.test.ts</File></TestFiles><Scenario>example works</Scenario><Marker>[Example]</Marker></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>',
+    );
+
+    const index = loadGraceArtifactIndex(root);
+    const resolved = resolveVerification(index, "V-M-EXAMPLE");
+    // Test files should include both inferred (from command) AND explicit (from TestFiles)
+    expect(resolved.verification.testFiles).toContain("src/module.test.ts");
+    expect(resolved.verification.testFiles).toContain("src/module-explicit.test.ts");
+    expect(resolved.verification.testFiles).toContain("src/module-additional.test.ts");
+  });
+
   it("builds module health from projections and linked files", () => {
     const root = createQueryProject();
     const index = loadGraceArtifactIndex(root);

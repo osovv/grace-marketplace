@@ -175,4 +175,125 @@ describe("GRACE 4 graph and verification projections", () => {
     expect([...monolithicGraph.dataFlows.keys()].sort()).toEqual([...segmentedGraph.dataFlows.keys()].sort());
     expect([...monolithicVerification.entries.keys()].sort()).toEqual([...segmentedVerification.entries.keys()].sort());
   });
+
+  it("detects nested graph anchors inside grouping tags", () => {
+    const root = createProject();
+    writeProjectFile(
+      root,
+      ".grace/graph/index.xml",
+      `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns><M-AUTH-SESSION /><M-USER-PROFILE /></Owns></GD-MAIN></GraphDocuments></GraceGraphIndex>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/graph/main.xml",
+      `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-AUTH-SESSION /><M-USER-PROFILE /><ModuleAnchors><M-AUTH-SESSION><Summary>Authenticate users.</Summary></M-AUTH-SESSION></ModuleAnchors></GD-MAIN></GraceGraphDocument>`,
+    );
+
+    const graph = buildGraphProjection(resolveGrace4Paths(root));
+    expect(issueCodes(graph.issues)).toContain("projection.graph.nested-anchors");
+    // Empty direct anchor is still found, but nested content is NOT projected
+    expect(graph.modules.has("M-AUTH-SESSION")).toBe(true);
+    expect(graph.modules.get("M-AUTH-SESSION")?.text).not.toContain("Authenticate");
+  });
+
+  it("detects nested verification anchors inside grouping tags", () => {
+    const root = createProject();
+    writeProjectFile(
+      root,
+      ".grace/graph/index.xml",
+      `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns><M-EXAMPLE /></Owns></GD-MAIN></GraphDocuments></GraceGraphIndex>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/graph/main.xml",
+      `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-EXAMPLE><Summary>Example module.</Summary></M-EXAMPLE></GD-MAIN></GraceGraphDocument>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/verification/index.xml",
+      `<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-EXAMPLE /></Owns></VD-MAIN></VerificationDocuments></GraceVerificationIndex>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/verification/main.xml",
+      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE /><ModuleVerification><V-M-EXAMPLE><Command>bun test example</Command></V-M-EXAMPLE></ModuleVerification></VD-MAIN></GraceVerificationDocument>`,
+    );
+
+    const paths = resolveGrace4Paths(root);
+    const graph = buildGraphProjection(paths);
+    const verification = buildVerificationProjection(paths, graph);
+    expect(issueCodes(verification.issues)).toContain("projection.verification.nested-anchors");
+    // Empty direct anchor is still found, but nested content is NOT projected
+    expect(verification.entries.has("V-M-EXAMPLE")).toBe(true);
+    expect(verification.entries.get("V-M-EXAMPLE")?.commands).toEqual([]);
+  });
+
+  it("reports nested anchors when populated grouped section shadows empty direct anchor", () => {
+    const root = createProject();
+    writeProjectFile(
+      root,
+      ".grace/graph/index.xml",
+      `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns><M-AUTH-SESSION /><M-USER-PROFILE /></Owns></GD-MAIN></GraphDocuments></GraceGraphIndex>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/graph/main.xml",
+      `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-AUTH-SESSION /><M-USER-PROFILE /><Modules><M-AUTH-SESSION><Summary>Nested auth session.</Summary></M-AUTH-SESSION></Modules></GD-MAIN></GraceGraphDocument>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/verification/index.xml",
+      `<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-AUTH-SESSION /></Owns></VD-MAIN></VerificationDocuments></GraceVerificationIndex>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/verification/main.xml",
+      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-AUTH-SESSION /><VerificationAnchors><V-M-AUTH-SESSION><Command>bun test auth</Command></V-M-AUTH-SESSION></VerificationAnchors></VD-MAIN></GraceVerificationDocument>`,
+    );
+
+    const paths = resolveGrace4Paths(root);
+    const graph = buildGraphProjection(paths);
+    const verification = buildVerificationProjection(paths, graph);
+    expect(issueCodes(graph.issues)).toContain("projection.graph.nested-anchors");
+    expect(issueCodes(verification.issues)).toContain("projection.verification.nested-anchors");
+    // Empty direct anchors are still found
+    expect(graph.modules.has("M-AUTH-SESSION")).toBe(true);
+    expect(verification.entries.has("V-M-AUTH-SESSION")).toBe(true);
+    // Nested content NOT projected into records
+    expect(verification.entries.get("V-M-AUTH-SESSION")?.commands).toEqual([]);
+  });
+
+  it("collects testFiles only from <TestFiles><File> and excludes naked <File> siblings", () => {
+    const root = createProject();
+    writeProjectFile(
+      root,
+      ".grace/graph/index.xml",
+      `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns><M-EXAMPLE /></Owns></GD-MAIN></GraphDocuments></GraceGraphIndex>`
+    );
+    writeProjectFile(
+      root,
+      ".grace/graph/main.xml",
+      `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-EXAMPLE><Summary>Example module.</Summary></M-EXAMPLE></GD-MAIN></GraceGraphDocument>`
+    );
+    writeProjectFile(
+      root,
+      ".grace/verification/index.xml",
+      `<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-EXAMPLE /></Owns></VD-MAIN></VerificationDocuments></GraceVerificationIndex>`
+    );
+    writeProjectFile(
+      root,
+      ".grace/verification/main.xml",
+      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><TestFiles><File>src/example.test.ts</File></TestFiles><File>src/metadata.ts</File><Command>bun test example</Command></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>`
+    );
+
+    const paths = resolveGrace4Paths(root);
+    const graph = buildGraphProjection(paths);
+    const verification = buildVerificationProjection(paths, graph);
+
+    expect(verification.issues).toHaveLength(0);
+    const entry = verification.entries.get("V-M-EXAMPLE")!;
+    expect(entry.testFiles).toEqual(["src/example.test.ts"]);
+    // src/metadata.ts under a naked <File> (outside <TestFiles>) must NOT appear
+    expect(entry.testFiles).not.toContain("src/metadata.ts");
+  });
 });

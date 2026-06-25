@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { ANCHOR_PATTERNS, type Grace4Issue, type Grace4ProjectPaths } from "./types";
-import { childText, readGraceXmlArtifact, walkNodes, type GraceXmlNode } from "./xml";
+import { childNodes, childText, readGraceXmlArtifact, walkNodes, type GraceXmlNode } from "./xml";
 
 /** One graph anchor owned by a graph document. */
 export type GraphAnchorRecord = {
@@ -31,6 +31,7 @@ export type VerificationAnchorRecord = {
   commands: string[];
   scenarios: string[];
   markers: string[];
+  testFiles: string[];
 };
 
 /** Unified current verification projection independent of physical segmentation. */
@@ -82,6 +83,22 @@ export function buildGraphProjection(paths: Grace4ProjectPaths): GraphProjection
         issue("error", "projection.graph.wrapper-mismatch", route.file, `Graph document must contain matching ${route.owner} wrapper.`),
       );
       continue;
+    }
+
+    // Detect nested/grouped sections that hide graph anchors below non-anchor grouping tags
+    for (const child of wrapper.children) {
+      if (!ANCHOR_PATTERNS.module.test(child.tag) && !ANCHOR_PATTERNS.dataFlow.test(child.tag)) {
+        const nestedAnchors = [...walkNodes(child)]
+          .filter((n) => n !== child)
+          .filter((n) => ANCHOR_PATTERNS.module.test(n.tag) || ANCHOR_PATTERNS.dataFlow.test(n.tag))
+          .map((n) => n.tag);
+        if (nestedAnchors.length > 0) {
+          projection.issues.push(
+            issue("error", "projection.graph.nested-anchors", route.file,
+              route.owner + " contains <" + child.tag + "> with nested graph anchors (" + nestedAnchors.join(", ") + "). Graph anchors must be direct children of " + route.owner + ", not nested inside grouping tags."),
+          );
+        }
+      }
     }
 
     for (const anchor of graphAnchorsInWrapper(wrapper)) {
@@ -170,6 +187,22 @@ export function buildVerificationProjection(paths: Grace4ProjectPaths, graph: Gr
       continue;
     }
 
+    // Detect nested/grouped sections that hide verification anchors below non-anchor grouping tags
+    for (const child of wrapper.children) {
+      if (!ANCHOR_PATTERNS.verification.test(child.tag)) {
+        const nestedAnchors = [...walkNodes(child)]
+          .filter((n) => n !== child)
+          .filter((n) => ANCHOR_PATTERNS.verification.test(n.tag))
+          .map((n) => n.tag);
+        if (nestedAnchors.length > 0) {
+          projection.issues.push(
+            issue("error", "projection.verification.nested-anchors", route.file,
+              route.owner + " contains <" + child.tag + "> with nested verification anchors (" + nestedAnchors.join(", ") + "). Verification anchors must be direct children of " + route.owner + ", not nested inside grouping tags."),
+          );
+        }
+      }
+    }
+
     for (const node of verificationAnchorsInWrapper(wrapper)) {
       foundAnchors.add(node.tag);
       const expectedOwner = expectedAnchors.get(node.tag);
@@ -202,6 +235,7 @@ export function buildVerificationProjection(paths: Grace4ProjectPaths, graph: Gr
         commands: collectTextByTag(node, /command/i),
         scenarios: collectTextByTag(node, /scenario/i),
         markers: collectTextByTag(node, /marker/i),
+        testFiles: collectTestFiles(node),
       });
     }
   }
@@ -346,6 +380,19 @@ function isGraphAnchor(anchor: string) {
 function collectPriority(node: GraceXmlNode): string | undefined {
   const priority = childText(node, "Priority")?.trim();
   return priority || undefined;
+}
+
+function collectTestFiles(node: GraceXmlNode): string[] {
+  const result: string[] = [];
+  for (const tfNode of childNodes(node, "TestFiles")) {
+    for (const child of tfNode.children) {
+      if (/^file$/i.test(child.tag)) {
+        const text = aggregateNodeText(child).trim();
+        if (text) result.push(text);
+      }
+    }
+  }
+  return result;
 }
 
 function resolveArtifactPath(graceDir: string, artifactPath: string) {
