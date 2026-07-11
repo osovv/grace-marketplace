@@ -3,23 +3,11 @@ import path from "node:path";
 
 import { getModuleName, getModulePath, getModuleType, resolveModule } from "./core";
 import { checkModuleCheckReferences } from "../verification/check-references";
+import { hasRuntimeMarkerEvidence, parseMarkerBlockName } from "../project-utils";
 import type { GraceArtifactIndex, ModuleHealthIssue, ModuleHealthRecord, ModuleRecord } from "./types";
 
 function isLikelyTestPath(relativePath: string) {
   return /(^|\/)(__tests__|tests)(\/|$)|(^|\/)(test_[^/]+|[^/]+\.(test|spec)\.[^.]+)$/.test(relativePath);
-}
-
-function parseMarkerBlockName(marker: string) {
-  const match = marker.match(/\[([^\]]+)\]\s*$/);
-  if (!match) {
-    return undefined;
-  }
-
-  return match[1].startsWith("BLOCK_") ? match[1].slice("BLOCK_".length) : undefined;
-}
-
-function looksLikeEvidenceEmission(line: string) {
-  return /(console\.|logger\.|tracer\.|trace\(|emit\(|\.(info|warn|error|debug|trace)\s*\()/.test(line);
 }
 
 function pushIssue(
@@ -236,7 +224,7 @@ export function buildModuleHealth(index: GraceArtifactIndex, moduleRecord: Modul
     }
 
     for (const marker of entry.requiredLogMarkers) {
-      if (!runtimeTexts.some(({ text }) => text.split("\n").some((line) => line.includes(marker) && !/^\s*(\/\/|#|--|;+|\*)/.test(line) && looksLikeEvidenceEmission(line)))) {
+      if (!runtimeTexts.some(({ text }) => hasRuntimeMarkerEvidence(text, marker))) {
         pushIssue(
           blockers,
           "error",

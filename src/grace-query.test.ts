@@ -304,6 +304,119 @@ describe("grace query core", () => {
     expect(dbHealth.nextAction).toContain("$grace-verification");
   });
 
+  it("credits a required log marker in module health when it is referenced via a same-file constant", () => {
+    const root = createProject();
+
+    writeProjectFile(
+      root,
+      "docs/knowledge-graph.xml",
+      `<KnowledgeGraph>
+  <Project NAME="Example" VERSION="0.1.0">
+    <M-EXAMPLE NAME="Example" TYPE="CORE_LOGIC">
+      <purpose>Run the example flow.</purpose>
+      <path>src/example.ts</path>
+      <depends>none</depends>
+      <verification-ref>V-M-EXAMPLE</verification-ref>
+      <annotations>
+        <fn-run PURPOSE="Run the example flow" />
+      </annotations>
+    </M-EXAMPLE>
+  </Project>
+</KnowledgeGraph>`,
+    );
+
+    writeProjectFile(
+      root,
+      "docs/development-plan.xml",
+      `<DevelopmentPlan VERSION="0.1.0">
+  <Modules>
+    <M-EXAMPLE NAME="Example" TYPE="CORE_LOGIC" STATUS="planned">
+      <contract>
+        <purpose>Run the example flow.</purpose>
+      </contract>
+      <verification-ref>V-M-EXAMPLE</verification-ref>
+    </M-EXAMPLE>
+  </Modules>
+  <ImplementationOrder>
+    <Phase-1 name="Foundation" status="pending">
+      <step-1 module="M-EXAMPLE" status="pending" verification="V-M-EXAMPLE">Implement example.</step-1>
+    </Phase-1>
+  </ImplementationOrder>
+</DevelopmentPlan>`,
+    );
+
+    writeProjectFile(
+      root,
+      "docs/verification-plan.xml",
+      `<VerificationPlan VERSION="0.1.0">
+  <ModuleVerification>
+    <V-M-EXAMPLE MODULE="M-EXAMPLE">
+      <test-files>
+        <file-1>src/example.test.ts</file-1>
+      </test-files>
+      <module-checks>
+        <command-1>bun test src/example.test.ts</command-1>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">Primary success path returns ok.</scenario-1>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[ExampleDomain][run][BLOCK_EXECUTE_FLOW]</marker-1>
+      </required-log-markers>
+      <wave-follow-up>Run the merged example integration path.</wave-follow-up>
+      <phase-follow-up>Run the full regression suite before phase completion.</phase-follow-up>
+    </V-M-EXAMPLE>
+  </ModuleVerification>
+</VerificationPlan>`,
+    );
+
+    writeProjectFile(
+      root,
+      "src/example.ts",
+      `// START_MODULE_CONTRACT
+//   PURPOSE: Run the example flow.
+//   SCOPE: Execute the happy path.
+//   DEPENDS: none
+//   LINKS: M-EXAMPLE
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   run - Execute the example flow.
+// END_MODULE_MAP
+//
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: [v0.1.0 - Added example module]
+// END_CHANGE_SUMMARY
+const marker = "[ExampleDomain][run][BLOCK_EXECUTE_FLOW]";
+
+export function run() {
+  // START_BLOCK_EXECUTE_FLOW
+  console.info(marker + " ok");
+  return "ok";
+  // END_BLOCK_EXECUTE_FLOW
+}
+`,
+    );
+
+    writeProjectFile(
+      root,
+      "src/example.test.ts",
+      `import { expect, test } from "bun:test";
+import { run } from "./example";
+
+test("run", () => {
+  expect(run()).toBe("ok");
+});
+`,
+    );
+
+    const index = loadGraceArtifactIndex(root);
+    const health = buildModuleHealth(index, resolveModule(index, "M-EXAMPLE"));
+    const issueCodes = [...health.blockers, ...health.warnings].map((issue) => issue.code);
+    expect(issueCodes).not.toContain("health.required-log-marker-not-found");
+    expect(issueCodes).not.toContain("health.required-log-marker-block-not-found");
+  });
+
   it("preserves ambiguity errors when resolving verification entries", () => {
     const root = createQueryProject();
     writeProjectFile(
