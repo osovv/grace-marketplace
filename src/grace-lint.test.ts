@@ -994,6 +994,103 @@ test("run", () => {
     expect(result.issues.map((issue) => issue.code)).toContain("autonomy.required-log-marker-not-found");
   });
 
+  it("credits a required log marker referenced via a same-file constant that is actually passed to a logging call", () => {
+    const root = createProject();
+    writeCurrentDocs(root);
+
+    writeProjectFile(
+      root,
+      "src/example.ts",
+      `// START_MODULE_CONTRACT
+//   PURPOSE: Run the example flow.
+//   SCOPE: Execute the happy path.
+//   DEPENDS: none
+//   LINKS: M-EXAMPLE
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   run - Execute the example flow.
+// END_MODULE_MAP
+//
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: [v0.1.0 - Added example module]
+// END_CHANGE_SUMMARY
+const marker = "[ExampleDomain][run][BLOCK_EXECUTE_FLOW]";
+
+export function run() {
+  // START_BLOCK_EXECUTE_FLOW
+  console.info(marker + " ok");
+  return "ok";
+  // END_BLOCK_EXECUTE_FLOW
+}
+`,
+    );
+
+    writeProjectFile(
+      root,
+      "src/example.test.ts",
+      `import { expect, test } from "bun:test";
+import { run } from "./example";
+
+test("run", () => {
+  expect(run()).toBe("ok");
+});
+`,
+    );
+
+    const result = lintGraceProject(root, { profile: "autonomous" });
+    expect(result.issues.map((issue) => issue.code)).not.toContain("autonomy.required-log-marker-not-found");
+  });
+
+  it("finds a required log-marker block that is nested inside a larger enclosing block", () => {
+    const root = createProject();
+    writeCurrentDocs(root);
+
+    writeProjectFile(
+      root,
+      "src/example.ts",
+      `// START_MODULE_CONTRACT
+//   PURPOSE: Run the example flow.
+//   SCOPE: Execute the happy path.
+//   DEPENDS: none
+//   LINKS: M-EXAMPLE
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   run - Execute the example flow.
+// END_MODULE_MAP
+//
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: [v0.1.0 - Added example module]
+// END_CHANGE_SUMMARY
+export function run() {
+  // START_BLOCK_APPLY_STATE
+  console.info("[ExampleDomain][run][BLOCK_APPLY_STATE] ok");
+  // START_BLOCK_EXECUTE_FLOW
+  console.info("[ExampleDomain][run][BLOCK_EXECUTE_FLOW] ok");
+  // END_BLOCK_EXECUTE_FLOW
+  return "ok";
+  // END_BLOCK_APPLY_STATE
+}
+`,
+    );
+
+    writeProjectFile(
+      root,
+      "src/example.test.ts",
+      `import { expect, test } from "bun:test";
+import { run } from "./example";
+
+test("run", () => {
+  expect(run()).toBe("ok");
+});
+`,
+    );
+
+    const result = lintGraceProject(root, { profile: "autonomous" });
+    expect(result.issues.map((issue) => issue.code)).not.toContain("autonomy.required-log-marker-block-not-found");
+  });
+
   it("explains lint issue codes through the CLI", () => {
     const guide = getLintIssueGuide("docs.missing-required-artifact");
     const explanation = formatLintExplanation("docs.missing-required-artifact");

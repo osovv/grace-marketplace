@@ -473,16 +473,37 @@ function parseScopedFieldSections(text: string) {
   return sections;
 }
 
-function parseBlocks(text: string) {
+function parseBlocks(text: string): FileBlockRecord[] {
+  // Stack-based, not a single backreferenced regex: a same-name backreference match (`START_BLOCK_X...END_BLOCK_\1`)
+  // stops at the first END_BLOCK_X it finds, so a block nested inside another block gets swallowed whole by its
+  // enclosing block's non-greedy match and is never extracted on its own (`matchAll`'s lastIndex only advances
+  // past the outer match). A stack mirrors `lintScopedMarkers` in lint/core.ts and correctly resolves nesting.
   const blocks: FileBlockRecord[] = [];
-  for (const match of text.matchAll(/START_BLOCK_([A-Za-z0-9_]+)([\s\S]*?)END_BLOCK_\1/g)) {
-    const startIndex = match.index ?? 0;
-    const endIndex = startIndex + match[0].length;
-    blocks.push({
-      name: match[1],
-      startLine: lineNumberAt(text, startIndex),
-      endLine: lineNumberAt(text, endIndex),
-    });
+  const lines = text.split("\n");
+  const stack: Array<{ name: string; startLine: number }> = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const startMatch = line.match(/START_BLOCK_([A-Za-z0-9_]+)/);
+    if (startMatch?.[1]) {
+      stack.push({ name: startMatch[1], startLine: index + 1 });
+    }
+
+    const endMatch = line.match(/END_BLOCK_([A-Za-z0-9_]+)/);
+    if (endMatch?.[1]) {
+      const name = endMatch[1];
+      let openIndex = -1;
+      for (let i = stack.length - 1; i >= 0; i -= 1) {
+        if (stack[i].name === name) {
+          openIndex = i;
+          break;
+        }
+      }
+      if (openIndex !== -1) {
+        const [open] = stack.splice(openIndex, 1);
+        blocks.push({ name: open.name, startLine: open.startLine, endLine: index + 1 });
+      }
+    }
   }
 
   return blocks;

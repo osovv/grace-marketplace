@@ -611,6 +611,7 @@ function lintAutonomousReadiness(
 ) {
   const isLikelyTestPath = (relativePath: string) => /(^|\/)(__tests__|tests)(\/|$)|(^|\/)(test_[^/]+|[^/]+\.(test|spec)\.[^.]+)$/.test(relativePath);
   const looksLikeEvidenceEmission = (line: string) => /(console\.|logger\.|tracer\.|trace\(|emit\(|\.(info|warn|error|debug|trace)\s*\()/.test(line);
+  const isEvidenceLine = (line: string) => !/^\s*(\/\/|#|--|;+|\*)/.test(line) && looksLikeEvidenceEmission(line);
   const parseMarkerBlockName = (marker: string) => {
     const match = marker.match(/\[([^\]]+)\]\s*$/);
     if (!match) {
@@ -619,10 +620,32 @@ function lintAutonomousReadiness(
 
     return match[1].startsWith("BLOCK_") ? match[1].slice("BLOCK_".length) : undefined;
   };
-  const lineHasRuntimeMarker = (text: string, marker: string) =>
-    text
-      .split("\n")
-      .some((line) => line.includes(marker) && !/^\s*(\/\/|#|--|;+|\*)/.test(line) && looksLikeEvidenceEmission(line));
+  const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Finds a same-file identifier assigned exactly the marker string (e.g. `static let x = "[Module][fn][BLOCK_X]"`
+  // or `const x = "..."`), so a marker interpolated into a log call via that identifier can still be credited as
+  // real runtime evidence — not just markers repeated as a literal at the call site.
+  const findConstantNameForMarker = (text: string, marker: string) => {
+    const pattern = new RegExp(
+      `([A-Za-z_$][A-Za-z0-9_$]*)\\s*(?::\\s*[^=\\n]+)?(?<![=!<>])=(?!=)\\s*(['"\`])${escapeRegExp(marker)}\\2`,
+    );
+    return text.match(pattern)?.[1];
+  };
+  const lineHasRuntimeMarker = (text: string, marker: string) => {
+    const lines = text.split("\n");
+    if (lines.some((line) => line.includes(marker) && isEvidenceLine(line))) {
+      return true;
+    }
+
+    // Fall back to a same-file constant that is genuinely referenced from an emission-shaped line — this is
+    // what lets `log.info("\(markerConstant) ...")`-style call sites count, without crediting a constant that
+    // is merely declared (or returned/compared) but never actually passed to anything log-shaped.
+    const constantName = findConstantNameForMarker(text, marker);
+    if (!constantName) {
+      return false;
+    }
+    const nameBoundary = new RegExp(`\\b${escapeRegExp(constantName)}\\b`);
+    return lines.some((line) => nameBoundary.test(line) && isEvidenceLine(line));
+  };
 
   if (!operationalPackets) {
     addAutonomyIssue(
