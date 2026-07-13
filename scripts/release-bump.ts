@@ -2,8 +2,8 @@
 // FILE: scripts/release-bump.ts
 // VERSION: 1.0.0
 // START_MODULE_CONTRACT
-//   PURPOSE: Wrapper around npm version --no-git-tag-version that generates changelog, generates a required AI summary, updates all version surface files, runs release checks, then commits, tags, and pushes the release.
-//   SCOPE: Validates clean worktree, accepts npm version args (patch/minor/major/prerelease/explicit semver), generates changelog entry from git history via conventional-changelog, collects commit metadata plus full per-commit diffs, generates a mandatory AI release changelog summary with OpenCode --pure run and retry/validation, updates package.json via npm version and syncs all version-surface files (README.md, openpackage.yml, marketplace.json, plugin.json), runs release:check, asserts only allowed release files changed, commits, tags, and pushes the current branch plus the created tag.
+//   PURPOSE: Wrapper around npm version --no-git-tag-version that generates changelog, generates a required AI summary, updates all version surface files, runs full release validation, then commits, tags, and pushes the release.
+//   SCOPE: Validates clean worktree, accepts npm version args (patch/minor/major/prerelease/explicit semver), generates changelog entry from git history via conventional-changelog, collects commit metadata plus full per-commit diffs, generates a mandatory AI release changelog summary with OpenCode --pure run and retry/validation, updates package.json via npm version and syncs all version-surface files (README.md, openpackage.yml, marketplace.json, plugin.json), runs validate:release, asserts only allowed release files changed, commits, tags, and pushes the current branch plus the created tag.
 //   DEPENDS: [node:fs, node:child_process, scripts/release-summary.ts]
 //   LINKS: [M-RELEASE-AUTOMATION, VF-RELEASE-AUTOMATION]
 //   ROLE: SCRIPT
@@ -24,7 +24,7 @@
 //   assertOnlyReleaseFilesChanged - Ensures the bump leaves only version/changelog-related files changed before commit.
 //   assertTagDoesNotExist - Verifies the release tag does not already exist.
 //   getCurrentBranchName - Returns the current branch name and rejects detached HEAD release bumps.
-//   main - Runs the guarded release bump, changelog generation, mandatory AI summary generation, version surface sync, consistency check, commit, tag, and push flow.
+//   main - Runs the guarded release bump, changelog generation, mandatory AI summary generation, version surface sync, full release validation, commit, tag, and push flow.
 // END_MODULE_MAP
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -435,8 +435,8 @@ function main(): void {
   // END_BLOCK_UPDATE_VERSION_SURFACES
 
   // START_BLOCK_RUN_RELEASE_CHECK
-  console.log("\nRunning release:check...\n");
-  run("bun", ["run", "release:check"], "release:check failed after bump. Release aborted.");
+  console.log("\nRunning validate:release...\n");
+  run("bun", ["run", "validate:release"], "validate:release failed after bump. Release aborted.");
   // END_BLOCK_RUN_RELEASE_CHECK
 
   // START_BLOCK_GIT_COMMIT_AND_TAG

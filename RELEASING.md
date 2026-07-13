@@ -10,6 +10,7 @@ bun run release:bump patch
 bun run release:bump minor
 bun run release:bump major
 bun run release:bump prepatch --preid rc
+bun run release:bump 4.0.0 # promote an approved RC line to stable
 ```
 
 `release:bump` will:
@@ -25,7 +26,7 @@ bun run release:bump prepatch --preid rc
    - `.claude-plugin/marketplace.json` — `metadata.version` and plugin `version`
    - `plugins/grace/.claude-plugin/plugin.json` — `version` field
    - `src/grace.ts` — CLI metadata shown by `grace --version`
-7. Run `bun run release:check` to validate consistency.
+7. Run `bun run validate:release` to execute typecheck, tests, release consistency, and marketplace validation.
 8. Assert only expected release files have changed.
 9. Commit those files with a `chore:` message.
 10. Create an annotated tag `v<version>`.
@@ -42,14 +43,17 @@ bun run release:bump prepatch --preid rc
 
 ## Pre-Release Validation
 
-Before the first automated `release:bump` in this repository, ensure a reachable baseline tag exists for the current published version. For the current `4.0.0` baseline, create and push it before the release-automation workflow is introduced on the tagged commit:
+The release automation baseline is the existing `v3.11.0` tag, and GRACE 4 release-candidate tags are already published. Do **not** create a synthetic `v4.0.0` baseline tag: `v4.0.0` is reserved for the actual stable release.
+
+Before a release bump, fetch tags and confirm that the latest reachable tag is the release being promoted from. For the final GRACE 4 promotion, the expected predecessor is the latest `v4.0.0-rc.*` tag. Run the explicit stable target only after the release branch is confirmed as the intended stable source:
 
 ```bash
-git tag -a v4.0.0 -m v4.0.0
-git push origin v4.0.0
+git fetch origin --tags
+git describe --tags --abbrev=0
+bun run release:bump 4.0.0
 ```
 
-After that one-time seed tag exists, future `release:bump` runs generate changelog and summary context from the latest reachable tag.
+Future `release:bump` runs generate changelog and summary context from that latest reachable tag.
 
 Before running `release:bump`, ensure CI passes:
 

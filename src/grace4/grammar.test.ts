@@ -85,6 +85,53 @@ describe("GRACE 4 Artifact Grammar", () => {
     ]);
   });
 
+  it("rejects graph and verification documents with the wrong artifact root", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(
+      root,
+      ".grace/graph/main.xml",
+      `<GraceRequirements graceVersion="4.0"><GD-MAIN><M-EXAMPLE /></GD-MAIN></GraceRequirements>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/verification/main.xml",
+      `<GracePrinciples graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE /></VD-MAIN></GracePrinciples>`,
+    );
+
+    const resultCodes = codes(validateGrace4Project(root));
+    expect(resultCodes.filter((code) => code === "artifact.unexpected-root-tag")).toHaveLength(2);
+  });
+
+  it("rejects mismatched bundle ids and approved plans without the required executable contract", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-FOLDER/spec.xml",
+      `<GraceChangeSpec graceVersion="4.0" status="approved"><C-SPEC /></GraceChangeSpec>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-FOLDER/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-PLAN /></GraceChangePlan>`,
+    );
+
+    const resultCodes = codes(validateGrace4Project(root));
+    expect(resultCodes).toContain("change.bundle-id-mismatch");
+    expect(resultCodes).toContain("change.spec-plan-id-mismatch");
+    expect(resultCodes).toContain("change.spec-missing-section");
+    expect(resultCodes).toContain("change.plan-missing-section");
+  });
+
+  it("rejects active plans created beside non-approved specs", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeChangeBundleFixture(root, { changeId: "C-DRAFT", location: "active", specStatus: "draft", planStatus: "draft" });
+
+    expect(codes(validateGrace4Project(root))).toContain("change.plan-requires-approved-spec");
+  });
+
   it("reports missing graceVersion, unsupported versions, invalid roots, and malformed XML", () => {
     const missing = validateArtifactRoot(parseGraceXmlArtifact("requirements.xml", `<GraceRequirements />`));
     const unsupported = validateArtifactRoot(parseGraceXmlArtifact("requirements.xml", `<GraceRequirements graceVersion="3.11" />`));
@@ -152,6 +199,19 @@ describe("GRACE 4 Artifact Grammar", () => {
     const allCodes = results.flatMap(codes);
 
     expect(allCodes.filter((code) => code === "context.not-applicable-reason-missing")).toHaveLength(2);
+  });
+
+  it("rejects lack of a web UI as the sole UX not-applicable reason", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(
+      root,
+      ".grace/context/ux-guidelines.xml",
+      `<GraceUXGuidelines graceVersion="4.0"><Applicability>not-applicable</Applicability><Reason>Not a web app</Reason></GraceUXGuidelines>`,
+    );
+
+    const allCodes = validateContextArtifacts(resolveGrace4Paths(root)).flatMap(codes);
+    expect(allCodes).toContain("context.ux-not-applicable-reason-insufficient");
   });
 
   it("errors when superseded change does not reference a replacement C-*", () => {

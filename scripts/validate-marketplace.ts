@@ -309,6 +309,22 @@ function validateGrace4Dependencies(errors: string[]): void {
   if (typeof dependencies["fast-xml-parser"] !== "string") {
     errors.push("package.json: missing runtime dependency fast-xml-parser required by GRACE 4 XML parsing");
   }
+
+  const publishedFiles = Array.isArray(packageJson.files)
+    ? packageJson.files.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  for (const exclusion of ["!src/**/*.test.ts", "!src/grace4/test-fixtures.ts"]) {
+    if (!publishedFiles.includes(exclusion)) {
+      errors.push(`package.json: missing published-files exclusion ${exclusion}`);
+    }
+  }
+
+  const scripts = typeof packageJson.scripts === "object" && packageJson.scripts
+    ? packageJson.scripts as JsonObject
+    : {};
+  if (typeof scripts["validate:release"] !== "string" || !scripts["validate:release"].includes("validate:cli")) {
+    errors.push("package.json: validate:release must invoke validate:cli");
+  }
 }
 
 function validate(): ValidationResult {

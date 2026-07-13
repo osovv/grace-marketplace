@@ -207,15 +207,31 @@ describe("grace query core", () => {
     writeProjectFile(
       root,
       ".grace/verification/main.xml",
-      '<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><Command>bun test src/module.test.ts</Command><TestFiles><File>src/module-explicit.test.ts</File><File>src/module-additional.test.ts</File></TestFiles><Scenario>example works</Scenario><Marker>[Example]</Marker></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>',
+      '<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><Cwd>apps/web</Cwd><Command>bun test src/module.test.ts</Command><TestFiles><File>src/module-explicit.test.ts</File><File>src/module-additional.test.ts</File></TestFiles><Scenario>example works</Scenario><Marker>[Example]</Marker></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>',
     );
 
     const index = loadGraceArtifactIndex(root);
     const resolved = resolveVerification(index, "V-M-EXAMPLE");
+    expect(resolved.verification.cwd).toBe("apps/web");
     // Test files should include both inferred (from command) AND explicit (from TestFiles)
-    expect(resolved.verification.testFiles).toContain("src/module.test.ts");
+    expect(resolved.verification.testFiles).toContain("apps/web/src/module.test.ts");
     expect(resolved.verification.testFiles).toContain("src/module-explicit.test.ts");
     expect(resolved.verification.testFiles).toContain("src/module-additional.test.ts");
+  });
+
+  it("uses verification Cwd when checking monorepo test command references", () => {
+    const root = createProject();
+    writeProjectFile(root, ".grace/graph/index.xml", '<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns><M-WEB /></Owns></GD-MAIN></GraphDocuments></GraceGraphIndex>');
+    writeProjectFile(root, ".grace/graph/main.xml", '<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-WEB><Summary>Web workspace.</Summary></M-WEB></GD-MAIN></GraceGraphDocument>');
+    writeProjectFile(root, ".grace/verification/index.xml", '<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-WEB /></Owns></VD-MAIN></VerificationDocuments></GraceVerificationIndex>');
+    writeProjectFile(root, ".grace/verification/main.xml", '<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-WEB><Cwd>apps/web</Cwd><TestFiles><File>apps/web/src/web.test.ts</File></TestFiles><Command>bun test src/web.test.ts</Command><Scenario>web works</Scenario></V-M-WEB></VD-MAIN></GraceVerificationDocument>');
+    writeProjectFile(root, "apps/web/src/web.ts", '// START_MODULE_CONTRACT\n// PURPOSE: Web runtime.\n// LINKS: M-WEB\n// END_MODULE_CONTRACT\nexport const web = true;\n');
+    writeProjectFile(root, "apps/web/src/web.test.ts", '// START_MODULE_CONTRACT\n// PURPOSE: Web tests.\n// LINKS: M-WEB\n// END_MODULE_CONTRACT\n');
+
+    const index = loadGraceArtifactIndex(root);
+    const health = buildModuleHealth(index, resolveModule(index, "M-WEB"));
+    expect(health.warnings.map((warning) => warning.code)).not.toContain("health.verification-command-does-not-reference-test-file");
+    expect(health.blockers.map((blocker) => blocker.code)).not.toContain("health.verification-test-file-missing-on-disk");
   });
 
   it("builds module health from projections and linked files", () => {

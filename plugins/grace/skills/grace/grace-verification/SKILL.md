@@ -15,4 +15,7 @@ Strengthen deterministic verification for modules and changes. Verification stat
 4. Update or propose `.grace/verification` changes through the active change plan.
 5. Run the commands and record fresh evidence in the response.
 </workflow>
+<cwd_contract>
+When verification commands run from a workspace or package directory, add one direct `<Cwd>relative/project/path</Cwd>` child to the owning `V-M-*` entry. Keep declared `<TestFiles><File>...</File></TestFiles>` paths project-root-relative; the CLI uses `Cwd` only to compare them with cwd-relative command arguments.
+</cwd_contract>
 </skill>

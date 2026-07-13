@@ -12,7 +12,7 @@ import json
 import os
 import sys
 
-source = sys.stdin.read()
+source = sys.stdin.buffer.read().decode("utf-8", errors="replace")
 file_path = sys.argv[1]
 base_name = os.path.basename(file_path)
 

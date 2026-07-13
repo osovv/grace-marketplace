@@ -1,3 +1,4 @@
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { ANCHOR_PATTERNS, type Grace4Issue, type Grace4ProjectPaths } from "./types";
@@ -28,6 +29,7 @@ export type VerificationAnchorRecord = {
   owner: string;
   file: string;
   priority?: string;
+  cwd?: string;
   commands: string[];
   scenarios: string[];
   markers: string[];
@@ -59,8 +61,12 @@ export function buildGraphProjection(paths: Grace4ProjectPaths): GraphProjection
   const routes = readGraphRoutes(paths, projection.issues);
   const expectedAnchors = new Map<string, string>();
   const foundAnchors = new Set<string>();
+  reportUnindexedDocuments(paths.graphDir, paths.graphIndex, routes, "graph", projection.issues);
 
   for (const route of routes) {
+    if (projection.documents.has(route.owner)) {
+      projection.issues.push(issue("error", "projection.graph.duplicate-document-route", paths.graphIndex, `${route.owner} appears more than once in the graph index.`));
+    }
     projection.documents.set(route.owner, route.file);
     for (const anchor of route.owns) {
       const previousOwner = expectedAnchors.get(anchor);
@@ -159,8 +165,12 @@ export function buildVerificationProjection(paths: Grace4ProjectPaths, graph: Gr
   const routes = readVerificationRoutes(paths, projection.issues);
   const expectedAnchors = new Map<string, string>();
   const foundAnchors = new Set<string>();
+  reportUnindexedDocuments(paths.verificationDir, paths.verificationIndex, routes, "verification", projection.issues);
 
   for (const route of routes) {
+    if (projection.documents.has(route.owner)) {
+      projection.issues.push(issue("error", "projection.verification.duplicate-document-route", paths.verificationIndex, `${route.owner} appears more than once in the verification index.`));
+    }
     projection.documents.set(route.owner, route.file);
     for (const anchor of route.owns) {
       const previousOwner = expectedAnchors.get(anchor);
@@ -232,6 +242,7 @@ export function buildVerificationProjection(paths: Grace4ProjectPaths, graph: Gr
         owner: route.owner,
         file: route.file,
         priority: collectPriority(node),
+        cwd: collectCwd(node, route.file, projection.issues),
         commands: collectTextByTag(node, /command/i),
         scenarios: collectTextByTag(node, /scenario/i),
         markers: collectTextByTag(node, /marker/i),
@@ -262,7 +273,7 @@ function readGraphRoutes(paths: Grace4ProjectPaths, issues: Grace4Issue[]): Owne
   return artifact.root.children
     .flatMap((node) => (node.tag === "GraphDocuments" ? node.children : []))
     .filter((node) => ANCHOR_PATTERNS.graphDocument.test(node.tag))
-    .map((node) => routeFromOwnerNode(paths.graceDir, paths.graphIndex, node, (anchor) => isGraphAnchor(anchor), issues));
+    .map((node) => routeFromOwnerNode(paths.graceDir, paths.graphDir, paths.graphIndex, node, (anchor) => isGraphAnchor(anchor), issues));
 }
 
 function readVerificationRoutes(paths: Grace4ProjectPaths, issues: Grace4Issue[]): OwnerRoute[] {
@@ -275,19 +286,29 @@ function readVerificationRoutes(paths: Grace4ProjectPaths, issues: Grace4Issue[]
   return artifact.root.children
     .flatMap((node) => (node.tag === "VerificationDocuments" ? node.children : []))
     .filter((node) => ANCHOR_PATTERNS.verificationDocument.test(node.tag))
-    .map((node) => routeFromOwnerNode(paths.graceDir, paths.verificationIndex, node, (anchor) => ANCHOR_PATTERNS.verification.test(anchor), issues));
+    .map((node) => routeFromOwnerNode(paths.graceDir, paths.verificationDir, paths.verificationIndex, node, (anchor) => ANCHOR_PATTERNS.verification.test(anchor), issues));
 }
 
 function routeFromOwnerNode(
   graceDir: string,
+  allowedDir: string,
   indexFile: string,
   node: GraceXmlNode,
   ownsPredicate: (anchor: string) => boolean,
   issues: Grace4Issue[],
 ): OwnerRoute {
-  const rawPath = childText(node, "Path")?.trim();
+  const pathNodes = childNodes(node, "Path");
+  const rawPath = pathNodes[0]?.text.trim();
   if (!rawPath) {
     issues.push(issue("error", "projection.index.missing-path", indexFile, `${node.tag} route is missing a Path.`));
+  } else if (pathNodes.length !== 1) {
+    issues.push(issue("error", "projection.index.duplicate-path", indexFile, `${node.tag} route must contain exactly one Path.`));
+  }
+
+  const resolvedPath = rawPath ? resolveArtifactPath(graceDir, rawPath) : null;
+  const safePath = resolvedPath && !isPortableAbsolutePath(rawPath!) && isInsideDir(allowedDir, resolvedPath) && path.extname(resolvedPath) === ".xml";
+  if (rawPath && !safePath) {
+    issues.push(issue("error", "projection.index.path-outside-area", indexFile, `${node.tag} Path '${rawPath}' must be a relative XML path inside ${path.basename(allowedDir)}/.`));
   }
 
   const owns = node.children
@@ -297,7 +318,7 @@ function routeFromOwnerNode(
 
   return {
     owner: node.tag,
-    file: rawPath ? resolveArtifactPath(graceDir, rawPath) : path.join(graceDir, "__missing-route__", `${node.tag}.xml`),
+    file: safePath && resolvedPath ? resolvedPath : path.join(graceDir, "__invalid-route__", `${node.tag}.xml`),
     owns,
   };
 }
@@ -382,6 +403,22 @@ function collectPriority(node: GraceXmlNode): string | undefined {
   return priority || undefined;
 }
 
+function collectCwd(node: GraceXmlNode, file: string, issues: Grace4Issue[]): string | undefined {
+  const cwdNodes = childNodes(node, "Cwd");
+  if (cwdNodes.length > 1) {
+    issues.push(issue("error", "projection.verification.duplicate-cwd", file, `${node.tag} must contain at most one direct Cwd.`));
+  }
+  const cwd = cwdNodes[0]?.text.trim().replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/$/, "");
+  if (!cwd || cwd === ".") {
+    return undefined;
+  }
+  if (isPortableAbsolutePath(cwd) || cwd === ".." || cwd.startsWith("../") || cwd.includes("/../")) {
+    issues.push(issue("error", "projection.verification.invalid-cwd", file, `${node.tag} Cwd '${cwd}' must be project-relative and must not escape the project root.`));
+    return undefined;
+  }
+  return cwd;
+}
+
 function collectTestFiles(node: GraceXmlNode): string[] {
   const result: string[] = [];
   for (const tfNode of childNodes(node, "TestFiles")) {
@@ -396,10 +433,51 @@ function collectTestFiles(node: GraceXmlNode): string[] {
 }
 
 function resolveArtifactPath(graceDir: string, artifactPath: string) {
-  if (path.isAbsolute(artifactPath)) {
-    return artifactPath;
+  return path.resolve(graceDir, artifactPath);
+}
+
+function reportUnindexedDocuments(
+  directory: string,
+  indexFile: string,
+  routes: OwnerRoute[],
+  kind: "graph" | "verification",
+  issues: Grace4Issue[],
+): void {
+  const routedFiles = new Set(routes.map((route) => path.resolve(route.file)));
+  for (const file of listXmlFiles(directory)) {
+    if (path.resolve(file) === path.resolve(indexFile) || routedFiles.has(path.resolve(file))) {
+      continue;
+    }
+    issues.push(issue(
+      "error",
+      kind === "graph" ? "projection.graph.unindexed-document" : "projection.verification.unindexed-document",
+      file,
+      `${path.relative(path.dirname(indexFile), file)} exists but is not routed by ${path.basename(indexFile)}.`,
+    ));
   }
-  return path.join(graceDir, artifactPath);
+}
+
+function listXmlFiles(directory: string): string[] {
+  if (!existsSync(directory)) {
+    return [];
+  }
+
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      return listXmlFiles(entryPath);
+    }
+    return entry.isFile() && entry.name.endsWith(".xml") ? [entryPath] : [];
+  }).sort();
+}
+
+function isInsideDir(parentDir: string, targetPath: string): boolean {
+  const relative = path.relative(parentDir, targetPath);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function isPortableAbsolutePath(value: string): boolean {
+  return path.isAbsolute(value) || /^[A-Za-z]:\//.test(value) || value.startsWith("//");
 }
 
 function issue(severity: Grace4Issue["severity"], code: string, file: string, message: string): Grace4Issue {

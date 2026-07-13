@@ -158,6 +158,33 @@ describe("GRACE 4 graph and verification projections", () => {
     expect(issueCodes(graph.issues)).toContain("projection.graph.dangling-link");
   });
 
+  it("reports graph and verification XML documents that are not routed by their indexes", () => {
+    const root = createProject();
+    writeProjectFile(root, ".grace/graph/index.xml", `<GraceGraphIndex graceVersion="4.0"><GraphDocuments /></GraceGraphIndex>`);
+    writeProjectFile(root, ".grace/graph/main.xml", `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-EXAMPLE /></GD-MAIN></GraceGraphDocument>`);
+    writeProjectFile(root, ".grace/verification/index.xml", `<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments /></GraceVerificationIndex>`);
+    writeProjectFile(root, ".grace/verification/main.xml", `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE /></VD-MAIN></GraceVerificationDocument>`);
+
+    const paths = resolveGrace4Paths(root);
+    const graph = buildGraphProjection(paths);
+    const verification = buildVerificationProjection(paths, graph);
+
+    expect(issueCodes(graph.issues)).toContain("projection.graph.unindexed-document");
+    expect(issueCodes(verification.issues)).toContain("projection.verification.unindexed-document");
+  });
+
+  it("rejects absolute and escaping projection paths without reading them", () => {
+    const root = createProject();
+    writeProjectFile(
+      root,
+      ".grace/graph/index.xml",
+      `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-ESCAPE><Path>../outside.xml</Path><Owns /></GD-ESCAPE><GD-ABS><Path>/tmp/outside.xml</Path><Owns /></GD-ABS><GD-WINDOWS><Path>C:\\outside.xml</Path><Owns /></GD-WINDOWS></GraphDocuments></GraceGraphIndex>`,
+    );
+
+    const graph = buildGraphProjection(resolveGrace4Paths(root));
+    expect(issueCodes(graph.issues).filter((code) => code === "projection.index.path-outside-area")).toHaveLength(3);
+  });
+
   it("produces equivalent projections for monolithic and segmented storage", () => {
     const monolithicRoot = createProject();
     const segmentedRoot = createProject();
@@ -283,7 +310,7 @@ describe("GRACE 4 graph and verification projections", () => {
     writeProjectFile(
       root,
       ".grace/verification/main.xml",
-      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><TestFiles><File>src/example.test.ts</File></TestFiles><File>src/metadata.ts</File><Command>bun test example</Command></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>`
+      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><Cwd>apps/web</Cwd><TestFiles><File>src/example.test.ts</File></TestFiles><File>src/metadata.ts</File><Command>bun test example</Command></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>`
     );
 
     const paths = resolveGrace4Paths(root);
@@ -292,8 +319,25 @@ describe("GRACE 4 graph and verification projections", () => {
 
     expect(verification.issues).toHaveLength(0);
     const entry = verification.entries.get("V-M-EXAMPLE")!;
+    expect(entry.cwd).toBe("apps/web");
     expect(entry.testFiles).toEqual(["src/example.test.ts"]);
     // src/metadata.ts under a naked <File> (outside <TestFiles>) must NOT appear
     expect(entry.testFiles).not.toContain("src/metadata.ts");
+  });
+
+  it("rejects verification cwd values that escape the project root", () => {
+    const root = createProject();
+    writeMonolithicProject(root);
+    writeProjectFile(
+      root,
+      ".grace/verification/main.xml",
+      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-AUTH-SESSION><Cwd>../../outside</Cwd></V-M-AUTH-SESSION><V-M-USER-PROFILE><Cwd>C:\\outside</Cwd></V-M-USER-PROFILE></VD-MAIN></GraceVerificationDocument>`,
+    );
+
+    const paths = resolveGrace4Paths(root);
+    const graph = buildGraphProjection(paths);
+    const verification = buildVerificationProjection(paths, graph);
+    expect(issueCodes(verification.issues).filter((code) => code === "projection.verification.invalid-cwd")).toHaveLength(2);
+    expect(verification.entries.get("V-M-AUTH-SESSION")?.cwd).toBeUndefined();
   });
 });

@@ -19,6 +19,13 @@ export type ObservedWriteScope = {
   globs: string[];
 };
 
+/** Returns whether one project-relative file is covered by an observed write scope. */
+export function observedWriteScopeContains(scope: ObservedWriteScope, filePath: string): boolean {
+  const normalizedFile = normalizeScopePath(filePath);
+  return scope.files.map(normalizeScopePath).includes(normalizedFile)
+    || scope.globs.map(normalizeScopePath).some((glob) => globMatchesFile(glob, normalizedFile));
+}
+
 /** Active change summary used for overlap detection and status reporting. */
 export type ActiveChangeScope = {
   changeId: string;
@@ -64,18 +71,14 @@ export function detectScopeOverlaps(changes: ActiveChangeScope[]): Grace4Issue[]
 export function detectUnsafeConcurrentExecution(changes: ActiveChangeScope[]): Grace4Issue[] {
   const issues: Grace4Issue[] = [];
   forEachApprovedPair(changes, (left, right) => {
-    const fileOverlaps = intersection(left.observedWrites.files, right.observedWrites.files);
-    const globOverlaps = intersection(left.observedWrites.globs, right.observedWrites.globs);
-    if (fileOverlaps.length > 0 || globOverlaps.length > 0) {
+    const overlaps = observedWriteOverlaps(left.observedWrites, right.observedWrites);
+    if (overlaps.length > 0) {
       issues.push(
         issue(
           "error",
           "scope.observed-write-overlap",
           left.bundlePath,
-          `${left.changeId} and ${right.changeId} cannot run in parallel; overlapping writes: ${[
-            ...fileOverlaps,
-            ...globOverlaps,
-          ].join(", ")}.`,
+          `${left.changeId} and ${right.changeId} cannot run in parallel; overlapping writes: ${overlaps.join(", ")}.`,
         ),
       );
     }
@@ -174,6 +177,70 @@ function forEachApprovedPair(changes: ActiveChangeScope[], callback: (left: Acti
 function intersection(left: string[], right: string[]) {
   const rightSet = new Set(right);
   return [...new Set(left.filter((value) => rightSet.has(value)))].sort();
+}
+
+function observedWriteOverlaps(left: ObservedWriteScope, right: ObservedWriteScope): string[] {
+  const overlaps = new Set<string>();
+  const leftFiles = left.files.map(normalizeScopePath);
+  const rightFiles = right.files.map(normalizeScopePath);
+  const leftGlobs = left.globs.map(normalizeScopePath);
+  const rightGlobs = right.globs.map(normalizeScopePath);
+
+  for (const file of intersection(leftFiles, rightFiles)) {
+    overlaps.add(file);
+  }
+  for (const file of leftFiles) {
+    for (const glob of rightGlobs) {
+      if (globMatchesFile(glob, file)) overlaps.add(`${file} ↔ ${glob}`);
+    }
+  }
+  for (const file of rightFiles) {
+    for (const glob of leftGlobs) {
+      if (globMatchesFile(glob, file)) overlaps.add(`${file} ↔ ${glob}`);
+    }
+  }
+  for (const leftGlob of leftGlobs) {
+    for (const rightGlob of rightGlobs) {
+      if (globsMayOverlap(leftGlob, rightGlob)) overlaps.add(`${leftGlob} ↔ ${rightGlob}`);
+    }
+  }
+
+  return [...overlaps].sort();
+}
+
+function normalizeScopePath(value: string): string {
+  return value.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/{2,}/g, "/").replace(/\/$/, "");
+}
+
+function globMatchesFile(glob: string, file: string): boolean {
+  try {
+    return new Bun.Glob(glob).match(file);
+  } catch {
+    return glob === file;
+  }
+}
+
+function globsMayOverlap(left: string, right: string): boolean {
+  if (left === right || globMatchesFile(left, right) || globMatchesFile(right, left)) {
+    return true;
+  }
+
+  const leftPrefix = staticGlobPrefix(left);
+  const rightPrefix = staticGlobPrefix(right);
+  if (!leftPrefix || !rightPrefix) {
+    return true;
+  }
+  return pathPrefixesOverlap(leftPrefix, rightPrefix);
+}
+
+function staticGlobPrefix(glob: string): string {
+  const wildcardIndex = glob.search(/[?*[{]/);
+  const prefix = wildcardIndex === -1 ? glob : glob.slice(0, wildcardIndex);
+  return prefix.replace(/\/$/, "");
+}
+
+function pathPrefixesOverlap(left: string, right: string): boolean {
+  return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
 }
 
 function dedupeDurableScope(scope: DurableScope): DurableScope {

@@ -40,30 +40,6 @@ This release candidate introduces the GRACE 4 artifact model, replacing the lega
 * feat: add language-registry module, check-references utility, and CWD verification support ([bd3028e](https://github.com/osovv/grace-marketplace/commit/bd3028e))
 * feat: create Dart language adapter and wire through language-registry ([643ba63](https://github.com/osovv/grace-marketplace/commit/643ba63))
 
-## <small>4.0.0 (2026-06-20)</small>
-
-### Summary
-
-This release introduces the GRACE 4 artifact model with parser-backed XML validation, artifact grammar checks, and assertion evaluation, replacing the legacy shared-doc approach with a `.grace` current-state structure. `grace-spec` and `grace-migrate` skills join the published surface for change specification and GRACE 3-to-4 migration, while `grace-multiagent-execute` is folded into `grace-execute` as a parallel-safe mode.
-
-### Added
-
-- Added the GRACE 4 `.grace` artifact model with parser-backed XML validation, artifact grammar checks, graph and verification projections, assertion evaluation, active-change scopes, and overlap detection.
-- Added `grace-spec` and `grace-migrate` skills for change specification and agent-applied GRACE 3 to GRACE 4 migration.
-- Added GRACE 4 init templates for `.grace/context`, `.grace/graph`, `.grace/verification`, and empty change directories.
-
-### Changed
-
-- Reworked `grace lint`, `grace status`, `grace module`, `grace verification`, and `grace file` around `.grace` current state instead of legacy shared-doc validation.
-- Updated skills and README to use `grace-spec`, `grace-plan`, and unified `grace-execute` with sequential or parallel-safe mode selection.
-- Synchronized canonical and packaged skill mirrors for the GRACE 4 skill surface.
-
-### Removed
-
-- Removed `grace-multiagent-execute` as a separate published skill; parallel-safe execution is now a mode of `grace-execute`.
-- Removed CLI dual-mode behavior for legacy GRACE 3 docs. Legacy projects now receive migration guidance and use `grace-migrate`.
-- Removed `grace lint --profile autonomous` / autonomy gate. GRACE 4 uses `.grace` current-state validation, status, assertions, and scopes instead.
-
 ## <small>3.11.0 (2026-04-19)</small>
 
 ### Added

@@ -29,8 +29,9 @@ Durable `.grace` updates are centralized after verified observed changes; worker
 1. Run baseline assertions before implementation.
 2. Execute one `T-*` task or one parallel-safe batch at a time.
 3. Run task verification immediately after changes.
-4. Run target assertions before durable apply.
-5. Update `.grace/graph` and `.grace/verification` only according to the approved plan, then set spec/plan status to `applied` and archive the bundle after successful validation.
-6. Never silently edit approved plans, bypass stale assertions, or continue through unknown drift.
+4. Apply the approved durable `.grace/context`, `.grace/graph`, and `.grace/verification` edits centrally as working-tree changes after observed work and task verification pass.
+5. Run `TargetAssertions`, the plan verification gates, and full `grace lint` against the combined observed plus durable end state. If any check fails, keep the bundle active and do not mark it applied or archive it.
+6. Only after fresh end-state validation passes, set both spec and plan status to `applied` and move the complete bundle to `.grace/changes/archive/C-*`.
+7. Never silently edit approved plans, bypass stale assertions, or continue through unknown drift.
 </execution_rules>
 </skill>

@@ -22,6 +22,23 @@ const COMPANION_ROOT_TAGS = new Set<string>(GRACE4_CHANGE_COMPANION_TAGS);
 const VALID_CHANGE_STATUSES = new Set<string>(CHANGE_STATUSES);
 const ROOT_METADATA_ATTRIBUTE = new Set(["graceVersion"]);
 const CHANGE_ROOT_METADATA_ATTRIBUTES = new Set(["graceVersion", "status"]);
+const SPEC_REQUIRED_SECTIONS = [
+  "Summary",
+  "Goals",
+  "NonGoals",
+  "AcceptanceCriteria",
+  "AffectedAreas",
+  "VerificationIntent",
+] as const;
+const PLAN_REQUIRED_SECTIONS = [
+  "IntentSummary",
+  "BaselineAssertions",
+  "TargetAssertions",
+  "DurableScope",
+  "ObservedWriteScope",
+  "ImplementationPlan",
+] as const;
+const TASK_REQUIRED_SECTIONS = ["Title", "AcceptanceCriteria", "Verification"] as const;
 
 const CONTEXT_ARTIFACTS = [
   { file: "requirements.xml", rootTag: "GraceRequirements" },
@@ -182,6 +199,16 @@ export function validateChangeArtifact(
     );
   }
 
+  if (wrappers.length === 1) {
+    const wrapper = wrappers[0]!;
+    if (root.tag === "GraceChangeSpec") {
+      validateRequiredSections(artifact.file, wrapper, SPEC_REQUIRED_SECTIONS, "change.spec-missing-section", result.issues);
+    } else {
+      validateRequiredSections(artifact.file, wrapper, PLAN_REQUIRED_SECTIONS, "change.plan-missing-section", result.issues);
+      validateImplementationTasks(artifact.file, wrapper, result.issues);
+    }
+  }
+
   if (status === "superseded" && wrappers.length === 1) {
     const wrapper = wrappers[0];
     const hasReplacement = wrapper.children.some(
@@ -235,6 +262,12 @@ export function validateChangeDesignContextArtifact(
     issues.push(issue("error", "design-context.forbidden-status", artifact.file, "GraceChangeDesignContext must not declare a status attribute."));
   }
 
+  for (const attribute of Object.keys(root.attributes)) {
+    if (attribute !== "graceVersion" && attribute !== "status") {
+      issues.push(issue("error", "design-context.forbidden-root-attribute", artifact.file, `${attribute} is not an allowed root attribute on GraceChangeDesignContext.`));
+    }
+  }
+
   issues.push(...validateSemanticAnchorDiscipline(artifact.file, root));
 
   return { file: artifact.file, rootTag: root.tag, graceVersion: root.attributes.graceVersion, issues };
@@ -260,11 +293,11 @@ export function validateGrace4Project(root: string): Grace4ValidationResult {
   const paths = resolveGrace4Paths(projectRoot);
   artifacts.push(...validateContextArtifacts(paths));
   artifacts.push(...validateRequiredArtifact(paths.graphIndex, "GraceGraphIndex"));
-  artifacts.push(...validateXmlFilesInDirectory(paths.graphDir, [paths.graphIndex]));
+  artifacts.push(...validateXmlFilesInDirectory(paths.graphDir, [paths.graphIndex], "GraceGraphDocument"));
   artifacts.push(...validateRequiredArtifact(paths.verificationIndex, "GraceVerificationIndex"));
-  artifacts.push(...validateXmlFilesInDirectory(paths.verificationDir, [paths.verificationIndex]));
-  artifacts.push(...validateChangeArtifactsInDirectory(paths.changesActiveDir, "active"));
-  artifacts.push(...validateChangeArtifactsInDirectory(paths.changesArchiveDir, "archive"));
+  artifacts.push(...validateXmlFilesInDirectory(paths.verificationDir, [paths.verificationIndex], "GraceVerificationDocument"));
+  artifacts.push(...validateChangeBundlesInDirectory(paths.changesActiveDir, "active"));
+  artifacts.push(...validateChangeBundlesInDirectory(paths.changesArchiveDir, "archive"));
 
   return {
     root: projectRoot,
@@ -291,10 +324,17 @@ function validateRequiredArtifact(file: string, expectedRootTag: string): Artifa
     );
   }
 
+  if (artifact.root?.tag === "GraceGraphIndex" && artifact.root.children.filter((child) => child.tag === "GraphDocuments").length !== 1) {
+    result.issues.push(issue("error", "graph.index-invalid-documents-section", file, "GraceGraphIndex must contain exactly one direct GraphDocuments section."));
+  }
+  if (artifact.root?.tag === "GraceVerificationIndex" && artifact.root.children.filter((child) => child.tag === "VerificationDocuments").length !== 1) {
+    result.issues.push(issue("error", "verification.index-invalid-documents-section", file, "GraceVerificationIndex must contain exactly one direct VerificationDocuments section."));
+  }
+
   return [result];
 }
 
-function validateXmlFilesInDirectory(directory: string, excludedFiles: string[]): ArtifactValidationResult[] {
+function validateXmlFilesInDirectory(directory: string, excludedFiles: string[], expectedRootTag: "GraceGraphDocument" | "GraceVerificationDocument"): ArtifactValidationResult[] {
   if (!existsSync(directory)) {
     return [];
   }
@@ -302,10 +342,31 @@ function validateXmlFilesInDirectory(directory: string, excludedFiles: string[])
   const excluded = new Set(excludedFiles.map((file) => path.resolve(file)));
   return listXmlFiles(directory)
     .filter((file) => !excluded.has(path.resolve(file)))
-    .map((file) => validateParsedArtifact(readGraceXmlArtifact(file)));
+    .map((file) => {
+      const artifact = readGraceXmlArtifact(file);
+      const result = validateParsedArtifact(artifact);
+      if (artifact.root && artifact.root.tag !== expectedRootTag) {
+        result.issues.push(issue("error", "artifact.unexpected-root-tag", file, `${path.basename(file)} must use root tag ${expectedRootTag}.`));
+        return result;
+      }
+
+      if (artifact.root) {
+        const wrapperPattern = expectedRootTag === "GraceGraphDocument" ? ANCHOR_PATTERNS.graphDocument : ANCHOR_PATTERNS.verificationDocument;
+        const wrappers = artifact.root.children.filter((child) => wrapperPattern.test(child.tag));
+        if (wrappers.length !== 1) {
+          result.issues.push(issue(
+            "error",
+            expectedRootTag === "GraceGraphDocument" ? "graph.invalid-document-wrapper" : "verification.invalid-document-wrapper",
+            file,
+            `${expectedRootTag} must contain exactly one direct ${expectedRootTag === "GraceGraphDocument" ? "GD-*" : "VD-*"} wrapper.`,
+          ));
+        }
+      }
+      return result;
+    });
 }
 
-function validateChangeArtifactsInDirectory(
+function validateChangeBundlesInDirectory(
   directory: string,
   location: "active" | "archive",
 ): ArtifactValidationResult[] {
@@ -313,17 +374,117 @@ function validateChangeArtifactsInDirectory(
     return [];
   }
 
-  const files = listXmlFiles(directory);
   const results: ArtifactValidationResult[] = [];
-  for (const file of files) {
-    const filename = path.basename(file);
-    if (filename === "design-context.xml") {
-      results.push(validateChangeDesignContextArtifact(readGraceXmlArtifact(file)));
-    } else {
-      results.push(validateChangeArtifact(readGraceXmlArtifact(file), location));
+  const entries = readdirSync(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    const entryPath = path.join(directory, entry.name);
+    if (!entry.isDirectory()) {
+      if (entry.isFile() && entry.name.endsWith(".xml")) {
+        results.push({ file: entryPath, issues: [issue("error", "change.unexpected-file", entryPath, "Change XML artifacts must live inside a direct C-* bundle directory.")] });
+      }
+      continue;
+    }
+
+    const bundleId = entry.name;
+    const bundleIssues: Grace4Issue[] = [];
+    if (!ANCHOR_PATTERNS.change.test(bundleId)) {
+      bundleIssues.push(issue("error", "change.invalid-bundle-id", entryPath, `Change bundle directory '${bundleId}' must use a C-* identifier.`));
+    }
+
+    const specFile = path.join(entryPath, "spec.xml");
+    const planFile = path.join(entryPath, "plan.xml");
+    const designFile = path.join(entryPath, "design-context.xml");
+    const specArtifact = readGraceXmlArtifact(specFile);
+    const specResult = validateChangeArtifact(specArtifact, location);
+    const specWrapper = directChangeWrapper(specArtifact.root);
+    if (specWrapper && specWrapper.tag !== bundleId) {
+      specResult.issues.push(issue("error", "change.bundle-id-mismatch", specFile, `spec.xml uses ${specWrapper.tag}, but its bundle directory is ${bundleId}.`));
+    }
+    results.push(specResult);
+
+    let planArtifact: ParsedGraceXmlArtifact | null = null;
+    if (existsSync(planFile)) {
+      planArtifact = readGraceXmlArtifact(planFile);
+      const planResult = validateChangeArtifact(planArtifact, location);
+      const planWrapper = directChangeWrapper(planArtifact.root);
+      if (planWrapper && planWrapper.tag !== bundleId) {
+        planResult.issues.push(issue("error", "change.bundle-id-mismatch", planFile, `plan.xml uses ${planWrapper.tag}, but its bundle directory is ${bundleId}.`));
+      }
+      if (specWrapper && planWrapper && specWrapper.tag !== planWrapper.tag) {
+        planResult.issues.push(issue("error", "change.spec-plan-id-mismatch", planFile, `spec.xml uses ${specWrapper.tag}, but plan.xml uses ${planWrapper.tag}.`));
+      }
+      results.push(planResult);
+    }
+
+    const specStatus = specArtifact.root?.attributes.status;
+    const planStatus = planArtifact?.root?.attributes.status;
+    if (location === "active" && planArtifact && specStatus !== "approved") {
+      bundleIssues.push(issue("error", "change.plan-requires-approved-spec", entryPath, "An active plan may exist only beside an approved spec."));
+    }
+    if (location === "archive" && planArtifact && specStatus && planStatus && specStatus !== planStatus) {
+      bundleIssues.push(issue("error", "change.archive-status-mismatch", entryPath, `Archived spec status '${specStatus}' must match plan status '${planStatus}'.`));
+    }
+    if (location === "archive" && specStatus === "applied" && (!planArtifact || planStatus !== "applied")) {
+      bundleIssues.push(issue("error", "change.applied-plan-missing", entryPath, "An applied archived bundle requires an applied plan.xml."));
+    }
+
+    if (existsSync(designFile)) {
+      const designArtifact = readGraceXmlArtifact(designFile);
+      const designResult = validateChangeDesignContextArtifact(designArtifact);
+      const designChange = designArtifact.root ? childText(designArtifact.root, "Change")?.trim() : undefined;
+      if (designChange && designChange !== bundleId) {
+        designResult.issues.push(issue("error", "design-context.bundle-id-mismatch", designFile, `design-context.xml references ${designChange}, but its bundle directory is ${bundleId}.`));
+      }
+      results.push(designResult);
+    }
+
+    for (const fileEntry of readdirSync(entryPath, { withFileTypes: true })) {
+      if (fileEntry.isFile() && fileEntry.name.endsWith(".xml") && !["spec.xml", "plan.xml", "design-context.xml"].includes(fileEntry.name)) {
+        const file = path.join(entryPath, fileEntry.name);
+        bundleIssues.push(issue("error", "change.unexpected-file", file, `Unsupported XML artifact '${fileEntry.name}' in change bundle ${bundleId}.`));
+      }
+    }
+
+    if (bundleIssues.length > 0) {
+      results.push({ file: entryPath, issues: bundleIssues });
     }
   }
   return results;
+}
+
+function directChangeWrapper(root: GraceXmlNode | null): GraceXmlNode | undefined {
+  return root?.children.find((child) => ANCHOR_PATTERNS.change.test(child.tag));
+}
+
+function validateRequiredSections(
+  file: string,
+  wrapper: GraceXmlNode,
+  sections: readonly string[],
+  code: string,
+  issues: Grace4Issue[],
+): void {
+  for (const section of sections) {
+    if (!wrapper.children.some((child) => child.tag === section)) {
+      issues.push(issue("error", code, file, `${wrapper.tag} is missing required direct section <${section}>.`));
+    }
+  }
+}
+
+function validateImplementationTasks(file: string, wrapper: GraceXmlNode, issues: Grace4Issue[]): void {
+  const implementationPlan = wrapper.children.find((child) => child.tag === "ImplementationPlan");
+  if (!implementationPlan) {
+    return;
+  }
+
+  const tasks = implementationPlan.children.filter((child) => ANCHOR_PATTERNS.task.test(child.tag));
+  if (tasks.length === 0) {
+    issues.push(issue("error", "change.plan-missing-task", file, "ImplementationPlan must contain at least one direct T-* task."));
+    return;
+  }
+
+  for (const task of tasks) {
+    validateRequiredSections(file, task, TASK_REQUIRED_SECTIONS, "change.task-missing-section", issues);
+  }
 }
 
 function listXmlFiles(directory: string): string[] {
@@ -363,11 +524,18 @@ function validateOptionalContextApplicability(file: string, root: GraceXmlNode):
   }
 
   const reason = (childText(root, "Reason") ?? childText(root, "NotApplicableReason") ?? childText(root, "Rationale") ?? "").trim();
-  if (reason.length > 0) {
-    return [];
+  if (reason.length === 0) {
+    return [issue("error", "context.not-applicable-reason-missing", file, `${root.tag} marked not-applicable requires a reason.`)];
   }
 
-  return [issue("error", "context.not-applicable-reason-missing", file, `${root.tag} marked not-applicable requires a reason.`)];
+  if (
+    root.tag === "GraceUXGuidelines"
+    && /^(?:this project is\s+)?(?:not a web app|not web|no web ui|no ui|no frontend)[.!]?$/i.test(reason)
+  ) {
+    return [issue("error", "context.ux-not-applicable-reason-insufficient", file, "UX applies to CLI, API, documentation, operator, and agent interactions; lack of a web UI alone is not a sufficient reason.")];
+  }
+
+  return [];
 }
 
 function findSemanticAnchorInAttribute(value: string): string | null {

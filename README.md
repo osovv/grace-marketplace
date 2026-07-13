@@ -30,6 +30,8 @@ GRACE 4 uses `.grace` as the durable project model:
 
 GRACE 4 does not dual-validate legacy GRACE 3 project docs as current state. Existing GRACE 3 projects use `$grace-migrate`; the CLI validates the generated `.grace` result but does not convert legacy docs itself.
 
+Verification commands run from the project root by default. A `V-M-*` entry may declare one project-relative `<Cwd>packages/example</Cwd>` while keeping `<TestFiles><File>...</File></TestFiles>` paths project-root-relative for monorepo-safe validation.
+
 ## Install
 
 Install **skills** first. The CLI is optional but recommended once skills are installed.
@@ -61,6 +63,10 @@ cp -r grace-marketplace/skills/grace/grace-* /path/to/your/agent/skills/
 Requires `bun` on `PATH`.
 
 ```bash
+# GRACE 4 release candidates while npm `latest` still points to GRACE 3
+bun add -g @osovv/grace-cli@rc
+
+# Stable channel after GRACE 4 is promoted to npm `latest`
 bun add -g @osovv/grace-cli
 grace lint --path /path/to/grace4-project
 ```
@@ -103,8 +109,8 @@ Existing GRACE 3 projects should run `$grace-migrate` and review the migration r
 
 | Command | What It Does |
 | --- | --- |
-| `grace lint --path <root>` | Validate `.grace` grammar, projections, assertions, lifecycle locations, and scope overlap |
-| `grace status --path <root>` | Report durable and operational GRACE 4 health |
+| `grace lint --path <root>` | Validate `.grace` grammar, routed document coverage, change-bundle contracts, assertions, lifecycle locations, and scope overlap |
+| `grace status --path <root>` | Report durable health, stale plans, scope conflicts, and explained/unexplained observed git drift |
 | `grace module find <query> --path <root>` | Search graph projection modules by id, path, text, dependency, or verification id |
 | `grace module show <id-or-path> --path <root>` | Show graph projection context and linked file-local markup |
 | `grace module show <id> --with verification --path <root>` | Include matching deterministic `V-M-*` verification entries |

@@ -37,6 +37,7 @@ const CHANGELOG_VERSION_HEADER = /^##\s+/m;
 const README_VERSION_MARKER = /Current packaged version:\s*`([^`]+)`/;
 const OPENPACKAGE_VERSION = /^version:\s*([^\s]+)\s*$/m;
 const LATEST_HEADER_VERSION = /^##\s+<small>([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\s+/m;
+const ALL_HEADER_VERSIONS = /^##\s+<small>([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\s+/gm;
 const CLI_META_VERSION = /meta:\s*\{[\s\S]*?version:\s*"([^"]+)"/;
 interface PackageJson {
   name?: string;
@@ -161,6 +162,17 @@ export function collectReleaseConsistencyErrors(
       errors.push(`CHANGELOG.md latest header does not match expected format "## <small>X.Y.Z ..."`);
     } else if (headerMatch[1] !== version) {
       errors.push(`CHANGELOG.md latest header version is "${headerMatch[1]}", expected "${version}"`);
+    }
+
+    const seenVersions = new Set<string>();
+    const duplicateVersions = new Set<string>();
+    for (const match of changelogText.matchAll(ALL_HEADER_VERSIONS)) {
+      const headerVersion = match[1]!;
+      if (seenVersions.has(headerVersion)) duplicateVersions.add(headerVersion);
+      seenVersions.add(headerVersion);
+    }
+    if (duplicateVersions.size > 0) {
+      errors.push(`CHANGELOG.md contains duplicate release headers: ${[...duplicateVersions].sort().join(", ")}`);
     }
 
     const summary = validateLatestChangelogSummary(changelogText);

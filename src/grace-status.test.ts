@@ -62,15 +62,22 @@ export function run() {
   writeProjectFile(root, "src/example.test.ts", `import { expect, test } from "bun:test";\ntest("example", () => expect(1).toBe(1));\n`);
 }
 
-function writeChange(root: string, changeId: string, options: { location?: "active" | "archive"; specStatus: string; planStatus: string; file?: string }) {
+function writeChange(root: string, changeId: string, options: { location?: "active" | "archive"; specStatus: string; planStatus: string; file?: string; baselineAssertion?: string }) {
   const location = options.location ?? "active";
   const bundle = `.grace/changes/${location}/${changeId}`;
-  writeProjectFile(root, `${bundle}/spec.xml`, `<GraceChangeSpec graceVersion="4.0" status="${options.specStatus}"><${changeId}><Summary>Change.</Summary></${changeId}></GraceChangeSpec>`);
+  writeProjectFile(root, `${bundle}/spec.xml`, `<GraceChangeSpec graceVersion="4.0" status="${options.specStatus}"><${changeId}><Summary>Change.</Summary><Goals><Goal>Apply the change.</Goal></Goals><NonGoals><NonGoal>Unrelated work.</NonGoal></NonGoals><AcceptanceCriteria><Criterion>The change is verified.</Criterion></AcceptanceCriteria><AffectedAreas><M-EXAMPLE /></AffectedAreas><VerificationIntent><ExpectedCommand>bun test</ExpectedCommand><ExpectedEvidence>Passing tests.</ExpectedEvidence></VerificationIntent></${changeId}></GraceChangeSpec>`);
   writeProjectFile(
     root,
     `${bundle}/plan.xml`,
-    `<GraceChangePlan graceVersion="4.0" status="${options.planStatus}"><${changeId}><DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>${options.file ?? "src/example.ts"}</File></ObservedWriteScope></${changeId}></GraceChangePlan>`,
+    `<GraceChangePlan graceVersion="4.0" status="${options.planStatus}"><${changeId}><IntentSummary>Apply the change.</IntentSummary><BaselineAssertions>${options.baselineAssertion ?? ""}</BaselineAssertions><TargetAssertions></TargetAssertions><DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>${options.file ?? "src/example.ts"}</File></ObservedWriteScope><ImplementationPlan><T-001><Title>Apply change</Title><AcceptanceCriteria><Criterion>The change is complete.</Criterion></AcceptanceCriteria><Verification><Command>bun test</Command></Verification></T-001></ImplementationPlan></${changeId}></GraceChangePlan>`,
   );
+}
+
+function runGit(root: string, args: string[]) {
+  const result = Bun.spawnSync({ cmd: ["git", ...args], cwd: root, stdout: "pipe", stderr: "pipe" });
+  if (result.exitCode !== 0) {
+    throw new Error(Buffer.from(result.stderr).toString("utf8"));
+  }
 }
 
 describe("grace status", () => {
@@ -138,6 +145,43 @@ describe("grace status", () => {
 
     expect(result.changes.find((change) => change.changeId === "C-NEEDS-PLAN")?.derivedStates).toContain("needs-plan-approval");
     expect(result.nextAction).toContain("GraceChangePlan");
+  });
+
+  it("marks approved changes with failed baseline assertions as stale plans", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeChange(root, "C-STALE", {
+      specStatus: "approved",
+      planStatus: "approved",
+      baselineAssertion: "<MustExist><Value>M-MISSING</Value></MustExist>",
+    });
+
+    const result = collectProjectStatus(root);
+    expect(result.changes.find((change) => change.changeId === "C-STALE")?.derivedStates).toContain("stale-plan");
+    expect(result.derivedStates).toContain("stale-plan");
+    expect(result.nextAction).toContain("Supersede and replan");
+  });
+
+  it("distinguishes observed writes explained by approved scopes from unexplained git drift", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeChange(root, "C-DRIFT", { specStatus: "approved", planStatus: "approved", file: "src/example.ts" });
+    runGit(root, ["init"]);
+    runGit(root, ["config", "user.email", "grace@example.test"]);
+    runGit(root, ["config", "user.name", "GRACE Test"]);
+    runGit(root, ["config", "commit.gpgsign", "false"]);
+    runGit(root, ["config", "core.hooksPath", "/dev/null"]);
+    runGit(root, ["add", "."]);
+    runGit(root, ["commit", "-m", "test: baseline"]);
+    writeProjectFile(root, "src/example.ts", "// planned change\n");
+    writeProjectFile(root, "unplanned.txt", "unexpected\n");
+
+    const result = collectProjectStatus(root);
+    expect(result.observedDrift.available).toBe(true);
+    expect(result.observedDrift.explainedFiles).toContain("src/example.ts");
+    expect(result.observedDrift.unexplainedFiles).toContain("unplanned.txt");
+    expect(result.derivedStates).toContain("explained-observed-drift");
+    expect(result.derivedStates).toContain("unexplained-observed-drift");
   });
 
   it("reports GRACE 3 projects as migration candidates without loading docs as healthy", () => {

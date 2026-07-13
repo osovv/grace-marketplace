@@ -322,16 +322,25 @@ function toModuleGraphRecord(record: GraphAnchorRecord): ModuleGraphRecord {
 }
 
 function toModuleVerificationRecord(record: VerificationAnchorRecord): ModuleVerificationRecord {
+  const inferredTestFiles = inferTestFiles(record.commands).map((file) => qualifyVerificationPath(record.cwd, file));
   return {
     id: record.id,
     moduleId: record.moduleId,
     priority: record.priority,
-    testFiles: [...new Set([...inferTestFiles(record.commands), ...record.testFiles])].sort(),
+    cwd: record.cwd,
+    testFiles: [...new Set([...inferredTestFiles, ...record.testFiles])].sort(),
     moduleChecks: record.commands,
     scenarios: record.scenarios.map((text, index) => ({ tag: "Scenario-" + (index + 1), text })),
     requiredLogMarkers: record.markers,
     requiredTraceAssertions: [],
   };
+}
+
+function qualifyVerificationPath(cwd: string | undefined, file: string): string {
+  if (!cwd || path.isAbsolute(file) || /^[A-Za-z]:[\\/]/.test(file) || file === cwd || file.startsWith(`${cwd}/`)) {
+    return file;
+  }
+  return path.posix.join(cwd, file.replaceAll("\\", "/"));
 }
 
 function inferTestFiles(commands: string[]) {

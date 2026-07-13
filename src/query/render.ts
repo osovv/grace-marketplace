@@ -17,7 +17,7 @@ function renderTable(rows: string[][], headers: string[]) {
 }
 
 function formatVerificationDetails(entry: ModuleVerificationRecord) {
-  const lines = [`Verification ${entry.id}`, `- Module: ${entry.moduleId ?? "unknown"}`, `- Priority: ${entry.priority ?? "n/a"}`];
+  const lines = [`Verification ${entry.id}`, `- Module: ${entry.moduleId ?? "unknown"}`, `- Priority: ${entry.priority ?? "n/a"}`, `- CWD: ${entry.cwd ?? "project root"}`];
   lines.push(...formatList("Test Files", entry.testFiles));
   lines.push(...formatList("Commands", entry.moduleChecks));
   if (entry.scenarios.length > 0) {

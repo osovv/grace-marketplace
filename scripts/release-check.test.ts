@@ -237,6 +237,20 @@ Stale version entry.
     expect(headerErrors[0]).toContain("4.0.0");
   });
 
+  it("fails when CHANGELOG contains duplicate release version headers", () => {
+    const duplicate = `${EXAMPLE_CHANGELOG}\n\n${EXAMPLE_CHANGELOG}`;
+    const errors = collectReleaseConsistencyErrors(
+      makePkg("4.0.0"),
+      EXAMPLE_README,
+      EXAMPLE_OPENPACKAGE,
+      EXAMPLE_MARKETPLACE,
+      EXAMPLE_PLUGIN_MANIFEST,
+      duplicate,
+      EXAMPLE_CLI_ENTRY,
+    );
+    expect(errors.some((error) => error.includes("duplicate release headers"))).toBe(true);
+  });
+
   it("fails when CHANGELOG latest header uses non-vv format", () => {
     // E.g., conventional-changelog default style with brackets
     const cl = `## [4.0.0](https://github.com) (2026-06-20)

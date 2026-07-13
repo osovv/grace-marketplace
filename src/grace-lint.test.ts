@@ -107,6 +107,22 @@ describe("lintGraceProject", () => {
     expect(result.issues.map((issue) => issue.code)).toContain("artifact.missing-grace-version");
   });
 
+  it("rejects wrong document roots, unindexed documents, and mismatched executable bundles", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(root, ".grace/graph/main.xml", `<GraceRequirements graceVersion="4.0"><GD-MAIN><M-EXAMPLE /></GD-MAIN></GraceRequirements>`);
+    writeProjectFile(root, ".grace/graph/unindexed.xml", `<GraceGraphDocument graceVersion="4.0"><GD-EXTRA><M-EXTRA /></GD-EXTRA></GraceGraphDocument>`);
+    writeProjectFile(root, ".grace/changes/active/C-FOLDER/spec.xml", `<GraceChangeSpec graceVersion="4.0" status="approved"><C-SPEC /></GraceChangeSpec>`);
+    writeProjectFile(root, ".grace/changes/active/C-FOLDER/plan.xml", `<GraceChangePlan graceVersion="4.0" status="approved"><C-PLAN /></GraceChangePlan>`);
+
+    const issueCodes = lintGraceProject(root).issues.map((issue) => issue.code);
+    expect(issueCodes).toContain("artifact.unexpected-root-tag");
+    expect(issueCodes).toContain("projection.graph.unindexed-document");
+    expect(issueCodes).toContain("change.bundle-id-mismatch");
+    expect(issueCodes).toContain("change.spec-plan-id-mismatch");
+    expect(issueCodes).toContain("change.plan-missing-section");
+  });
+
   it("documents GRACE 4 diagnostic prefixes and removes allow-missing-docs CLI exposure", () => {
     expect(getLintIssueGuide("projection.graph.wrapper-mismatch").title).toContain("Projection");
     expect(getLintIssueGuide("assertion.MustExist").title).toContain("Assertion");

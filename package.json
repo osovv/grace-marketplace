@@ -37,6 +37,8 @@
     "src/lint",
     "src/query",
     "src/verification",
+    "!src/**/*.test.ts",
+    "!src/grace4/test-fixtures.ts",
     "README.md",
     "LICENSE"
   ],
@@ -54,7 +56,7 @@
     "validate:cli": "bun test --timeout=30000 src/grace-lint.test.ts src/grace-status.test.ts src/grace-query.test.ts",
     "validate:ci": "bun run typecheck && bun run test && bun run validate:cli && bun run ./scripts/validate-marketplace.ts",
     "validate:marketplace": "bun run ./scripts/validate-marketplace.ts",
-    "validate:release": "bun run typecheck && bun run test && bun run release:check && bun run ./scripts/validate-marketplace.ts",
+    "validate:release": "bun run typecheck && bun run test && bun run validate:cli && bun run release:check && bun run ./scripts/validate-marketplace.ts",
     "release:check": "bun run scripts/release-check.ts",
     "release:bump": "bun run scripts/release-bump.ts",
     "release:checklist": "bun run ./scripts/release-checklist.ts",
