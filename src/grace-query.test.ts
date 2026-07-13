@@ -254,7 +254,7 @@ describe("grace query core", () => {
     const repoRoot = path.resolve(import.meta.dir, "..");
 
     const moduleResult = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "module", "find", "provider", "--path", root],
+      cmd: [process.execPath, "./src/grace.ts", "module", "find", "provider", "--path", root],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
@@ -263,7 +263,7 @@ describe("grace query core", () => {
     expect(Buffer.from(moduleResult.stdout).toString("utf8")).toContain("M-PROVIDER-PERSIST");
 
     const moduleShowResult = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "module", "show", "M-PROVIDER-PERSIST", "--with", "verification", "--path", root],
+      cmd: [process.execPath, "./src/grace.ts", "module", "show", "M-PROVIDER-PERSIST", "--with", "verification", "--path", root],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
@@ -274,7 +274,7 @@ describe("grace query core", () => {
     expect(moduleShowOutput).toContain("bun test src/provider/config-repo.test.ts");
 
     const moduleShowJsonResult = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "module", "show", "src/provider/config-repo.ts", "--path", root, "--json"],
+      cmd: [process.execPath, "./src/grace.ts", "module", "show", "src/provider/config-repo.ts", "--path", root, "--json"],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
@@ -285,7 +285,7 @@ describe("grace query core", () => {
     expect(moduleShowJson.verifications[0].id).toBe("V-M-PROVIDER-PERSIST");
 
     const fileResult = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "file", "show", "src/provider/config-repo.ts", "--path", root, "--contracts"],
+      cmd: [process.execPath, "./src/grace.ts", "file", "show", "src/provider/config-repo.ts", "--path", root, "--contracts"],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
@@ -294,7 +294,7 @@ describe("grace query core", () => {
     expect(Buffer.from(fileResult.stdout).toString("utf8")).toContain("Contract getProviderConfig");
 
     const fileJsonResult = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "file", "show", "src/provider/config-repo.ts", "--path", root, "--json"],
+      cmd: [process.execPath, "./src/grace.ts", "file", "show", "src/provider/config-repo.ts", "--path", root, "--json"],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
@@ -304,7 +304,7 @@ describe("grace query core", () => {
     expect(fileJson.linkedModuleIds).toEqual(["M-PROVIDER-PERSIST", "M-DB"]);
 
     const verificationFindResult = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "verification", "find", "provider", "--path", root, "--json"],
+      cmd: [process.execPath, "./src/grace.ts", "verification", "find", "provider", "--path", root, "--json"],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
@@ -314,7 +314,7 @@ describe("grace query core", () => {
     expect(verificationFindJson[0].verification.id).toBe("V-M-PROVIDER-PERSIST");
 
     const priorityFindResult = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "verification", "find", "--priority", "high", "--path", root, "--json"],
+      cmd: [process.execPath, "./src/grace.ts", "verification", "find", "--priority", "high", "--path", root, "--json"],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
@@ -325,7 +325,7 @@ describe("grace query core", () => {
     expect(priorityFindJson[0].verification.id).toBe("V-M-PROVIDER-PERSIST");
 
     const priorityMismatchResult = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "verification", "find", "--priority", "low", "--path", root, "--json"],
+      cmd: [process.execPath, "./src/grace.ts", "verification", "find", "--priority", "low", "--path", root, "--json"],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
@@ -335,7 +335,7 @@ describe("grace query core", () => {
     expect(priorityMismatchJson).toHaveLength(0);
 
     const verificationResult = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "verification", "show", "V-M-PROVIDER-PERSIST", "--path", root],
+      cmd: [process.execPath, "./src/grace.ts", "verification", "show", "V-M-PROVIDER-PERSIST", "--path", root],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
@@ -344,7 +344,7 @@ describe("grace query core", () => {
     expect(Buffer.from(verificationResult.stdout).toString("utf8")).toContain("GRACE Verification");
 
     const verificationShowByModuleResult = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "verification", "show", "M-PROVIDER-PERSIST", "--path", root, "--json"],
+      cmd: [process.execPath, "./src/grace.ts", "verification", "show", "M-PROVIDER-PERSIST", "--path", root, "--json"],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
@@ -354,7 +354,7 @@ describe("grace query core", () => {
     expect(verificationShowByModuleJson.verification.id).toBe("V-M-PROVIDER-PERSIST");
 
     const healthResult = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "module", "health", "M-PROVIDER-PERSIST", "--path", root],
+      cmd: [process.execPath, "./src/grace.ts", "module", "health", "M-PROVIDER-PERSIST", "--path", root],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
@@ -369,7 +369,7 @@ describe("grace query core", () => {
     const repoRoot = path.resolve(import.meta.dir, "..");
 
     const result = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "module", "find", "provider", "--path", root],
+      cmd: [process.execPath, "./src/grace.ts", "module", "find", "provider", "--path", root],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",

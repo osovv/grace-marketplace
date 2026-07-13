@@ -139,7 +139,7 @@ describe("lintGraceProject", () => {
     const repoRoot = path.resolve(import.meta.dir, "..");
 
     const result = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "lint", "--path", root, "--format", "json"],
+      cmd: [process.execPath, "./src/grace.ts", "lint", "--path", root, "--format", "json"],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",

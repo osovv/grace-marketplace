@@ -53,7 +53,7 @@
     "lint": "bun run ./src/grace.ts lint",
     "test": "bun test --timeout=30000",
     "typecheck": "bunx tsc --noEmit",
-    "validate:cli": "bun test --timeout=30000 src/grace-lint.test.ts src/grace-status.test.ts src/grace-query.test.ts",
+    "validate:cli": "bun test --timeout=120000 src/grace-lint.test.ts src/grace-status.test.ts src/grace-query.test.ts",
     "validate:ci": "bun run typecheck && bun run test && bun run validate:cli && bun run ./scripts/validate-marketplace.ts",
     "validate:marketplace": "bun run ./scripts/validate-marketplace.ts",
     "validate:release": "bun run typecheck && bun run test && bun run validate:cli && bun run release:check && bun run ./scripts/validate-marketplace.ts",

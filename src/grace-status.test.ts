@@ -202,7 +202,7 @@ describe("grace status", () => {
     const repoRoot = path.resolve(import.meta.dir, "..");
 
     const statusResult = Bun.spawnSync({
-      cmd: [process.execPath, "run", "./src/grace.ts", "status", "--path", root, "--json", "--fail-on", "never"],
+      cmd: [process.execPath, "./src/grace.ts", "status", "--path", root, "--json", "--fail-on", "never"],
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
