@@ -1,3 +1,14 @@
+## <small>4.0.0-rc.2 (2026-07-13)</small>
+
+### Summary
+
+This release candidate closes release readiness gaps by hardening GRACE 4 artifact validation, stabilizing CLI subprocess tests, and improving the status and execution workflows. Change bundles are now more strictly validated—with required sections, bundle-identifier matching, and constraints preventing active plans without an approved spec. Graph and verification projections reject nested anchors and unindexed documents, and verification entries support a monorepo-safe Cwd contract for project-relative command paths. The status report now detects stale plans from failed baseline assertions and distinguishes explained from unexplained git drift, giving clearer next-action guidance. Release automation is strengthened with duplicate‑header detection, dedicated CLI validation in the release pipeline, and prerelease tagging in GitHub releases. These changes make the GRACE 4 model more robust for real-world adoption and safer to execute.
+
+* test(cli): stabilize subprocess validation ([0bc8113](https://github.com/osovv/grace-marketplace/commit/0bc8113))
+* fix(grace4): close release readiness gaps ([7e4acd9](https://github.com/osovv/grace-marketplace/commit/7e4acd9))
+* fix(grace4): reject nested projection anchors ([e53dd61](https://github.com/osovv/grace-marketplace/commit/e53dd61))
+* fix(release): mark prerelease github releases ([296842b](https://github.com/osovv/grace-marketplace/commit/296842b))
+
 ## <small>4.0.0-rc.1 (2026-06-21)</small>
 
 ### Summary
