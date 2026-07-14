@@ -15,22 +15,23 @@ bun run release:bump 4.0.0 # promote an approved RC line to stable
 
 `release:bump` will:
 
-1. Verify the working tree is clean.
-2. Run `npm version --no-git-tag-version` with the given target.
-3. Generate a conventional-changelog entry from git history.
-4. Generate a mandatory AI release summary with OpenCode (requires `opencode` in PATH).
-5. Prepend the changelog entry to `CHANGELOG.md`.
-6. Update all version surface files:
+1. Verify required tools, clean working tree, checked-out branch, target tag absence, and target changelog-block absence.
+2. Run the full current `validate:release` suite before mutating release files.
+3. Resolve the target version and run `npm version --no-git-tag-version` with the given target.
+4. Generate a conventional-changelog entry from git history.
+5. Generate a mandatory AI release summary with OpenCode (requires `opencode` in PATH).
+6. Prepend exactly one target-version changelog entry to `CHANGELOG.md`.
+7. Update all version surface files:
    - `README.md` — `Current packaged version: \`x.y.z\`` marker
    - `openpackage.yml` — `version:` line
    - `.claude-plugin/marketplace.json` — `metadata.version` and plugin `version`
    - `plugins/grace/.claude-plugin/plugin.json` — `version` field
    - `src/grace.ts` — CLI metadata shown by `grace --version`
-7. Run `bun run validate:release` to execute typecheck, tests, release consistency, and marketplace validation.
-8. Assert only expected release files have changed.
-9. Commit those files with a `chore:` message.
-10. Create an annotated tag `v<version>`.
-11. Push the branch and tag.
+8. Run `bun run validate:release` again against the proposed release state.
+9. Assert only expected release files have changed.
+10. Commit those files with a `chore:` message.
+11. Create an annotated tag `v<version>`.
+12. Push the branch first, then the tag.
 
 The workflow fails closed at every boundary. A failed preflight creates no release mutation. A failure after version files change leaves the worktree uncommitted for inspection. A commit failure creates no tag. A tag failure leaves only the local release commit. A branch-push failure leaves the local commit and tag. If branch push succeeds but tag push fails, rerun only the reported tag push after inspecting the remote; do not rerun the version bump.
 
@@ -58,6 +59,8 @@ bun run release:bump 4.0.0
 ```
 
 Future `release:bump` runs generate changelog and summary context from that latest reachable tag.
+
+Stable promotion refuses an existing `v4.0.0` tag or existing `4.0.0` changelog block before mutation. The successful `4.0.0-rc.*` to `4.0.0` path prepends one stable block while preserving the RC history below it.
 
 Before running `release:bump`, ensure CI passes:
 

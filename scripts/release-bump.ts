@@ -2,38 +2,30 @@
 // FILE: scripts/release-bump.ts
 // VERSION: 1.0.0
 // START_MODULE_CONTRACT
-//   PURPOSE: Wrapper around npm version --no-git-tag-version that generates changelog, generates a required AI summary, updates all version surface files, runs full release validation, then commits, tags, and pushes the release.
-//   SCOPE: Validates clean worktree, accepts npm version args (patch/minor/major/prerelease/explicit semver), generates changelog entry from git history via conventional-changelog, collects commit metadata plus full per-commit diffs, generates a mandatory AI release changelog summary with OpenCode --pure run and retry/validation, updates package.json via npm version and syncs all version-surface files (README.md, openpackage.yml, marketplace.json, plugin.json), runs validate:release, asserts only allowed release files changed, commits, tags, and pushes the current branch plus the created tag.
+//   PURPOSE: Execute a fail-closed version bump, changelog generation, validation, release commit, tag, and push workflow.
+//   SCOPE: Testable argv/version/preflight/tag/version-surface helpers plus the guarded production release orchestration.
 //   DEPENDS: [node:fs, node:child_process, scripts/release-summary.ts]
 //   LINKS: [M-RELEASE-AUTOMATION, VF-RELEASE-AUTOMATION]
 //   ROLE: SCRIPT
-//   MAP_MODE: LOCALS
+//   MAP_MODE: EXPORTS
 // END_MODULE_CONTRACT
 //
 // START_MODULE_MAP
-//   parseNpmVersionArgs - Validates supported npm version target arguments without shell interpolation.
-//   readPackageVersion - Reads the package version from package.json.
-//   readFileText - Reads a text file or returns empty string on failure.
-//   run - Runs a command via execFileSync with inherited stdio and exits on failure.
-//   runCapture - Runs a command and captures stdout as a string.
-//   runOpencodeSummary - Invokes opencode --pure run with stdin prompt for one summary attempt.
-//   sleepMs - Blocks synchronously for the given milliseconds between retry attempts.
-//   generateChangelog - Runs conventional-changelog as subprocess to generate entry from git history.
-//   prependToChangelog - Prepends a changelog entry to CHANGELOG.md, creating the file if missing.
-//   updateVersionSurfaceFiles - Updates version in README.md, openpackage.yml, marketplace.json, plugin.json, and the CLI entrypoint metadata.
-//   assertOnlyReleaseFilesChanged - Ensures the bump leaves only version/changelog-related files changed before commit.
-//   assertTagDoesNotExist - Verifies the release tag does not already exist.
-//   getCurrentBranchName - Returns the current branch name and rejects detached HEAD release bumps.
-//   main - Runs the guarded release bump, changelog generation, mandatory AI summary generation, version surface sync, full release validation, commit, tag, and push flow.
+//   parseNpmVersionArgs - Validates the supported version target and optional prerelease identifier.
+//   calculateTargetVersion - Resolves the target semver before any repository mutation.
+//   runReleasePreflight - Verifies tools, worktree, branch, target tag/changelog uniqueness, and current release validation.
+//   updateVersionSurfaceFiles - Updates every required version surface or fails closed.
+//   prependChangelogEntry - Prepends exactly one target-version changelog block.
+//   assertTagDoesNotExist - Rejects an existing local target tag.
+//   createReleaseCommitAndTag - Creates the local release commit and annotated tag without network access.
+//   main - Runs preflight, mutation, validation, local finalization, and ordered branch/tag pushes.
 // END_MODULE_MAP
 
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
 import path from "node:path";
 import {
-  buildReleaseSummaryAgentConfig,
   collectReleaseCommitMetadata,
   generateReleaseSummaryWithRetries,
   injectSummaryIntoChangelogEntry,
@@ -44,17 +36,13 @@ import {
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
-
-const PKG_PATH = path.join(REPO_ROOT, "package.json");
-const README_PATH = path.join(REPO_ROOT, "README.md");
-const OPENPACKAGE_PATH = path.join(REPO_ROOT, "openpackage.yml");
-const MARKETPLACE_PATH = path.join(REPO_ROOT, ".claude-plugin/marketplace.json");
-const PLUGIN_MANIFEST_PATH = path.join(REPO_ROOT, "plugins/grace/.claude-plugin/plugin.json");
-const CHANGELOG_PATH = path.join(REPO_ROOT, "CHANGELOG.md");
-const CLI_ENTRY_PATH = path.join(REPO_ROOT, "src/grace.ts");
-
 const PACKAGE_NAME = "@osovv/grace-cli";
-const ALLOWED_RELEASE_FILES = new Set([
+const CAPTURE_MAX_BUFFER = 128 * 1024 * 1024;
+const RELEASE_TYPES = new Set(["major", "minor", "patch", "premajor", "preminor", "prepatch", "prerelease"]);
+const SEMVER_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
+const PREID_PATTERN = /^[0-9A-Za-z-]+$/;
+const REQUIRED_RELEASE_TOOLS = ["git", "npm", "bun", "opencode"] as const;
+const RELEASE_FILES = [
   "package.json",
   "CHANGELOG.md",
   "README.md",
@@ -62,127 +50,262 @@ const ALLOWED_RELEASE_FILES = new Set([
   ".claude-plugin/marketplace.json",
   "plugins/grace/.claude-plugin/plugin.json",
   "src/grace.ts",
-]);
-const CAPTURE_MAX_BUFFER = 128 * 1024 * 1024;
-const RELEASE_TYPES = new Set([
-  "major",
-  "minor",
-  "patch",
-  "premajor",
-  "preminor",
-  "prepatch",
-  "prerelease",
-]);
-const SEMVER_PATTERN = /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+] as const;
+const ALLOWED_RELEASE_FILES = new Set<string>(RELEASE_FILES);
 
 interface PackageJson {
+  name?: string;
   version?: string;
 }
 
-function gitStatus(): string {
+interface ParsedSemver {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string[];
+}
+
+export interface ReleasePreflightDependencies {
+  readCurrentVersion: () => string;
+  readChangelog: () => string;
+  getStatus: () => string;
+  getBranch: () => string;
+  tagExists: (tagName: string) => boolean;
+  toolExists: (tool: string) => boolean;
+  runValidation: () => void;
+}
+
+export interface ReleasePreflightResult {
+  npmVersionArgs: string[];
+  currentVersion: string;
+  targetVersion: string;
+  branchName: string;
+  tagName: string;
+}
+
+function run(command: string, args: string[], failureMessage: string, cwd = REPO_ROOT): void {
   try {
-    return execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" });
-  } catch (err) {
-    console.error(`✗ Failed to inspect git status: ${err}`);
-    process.exit(1);
+    execFileSync(command, args, { cwd, stdio: "inherit" });
+  } catch (error) {
+    throw new Error(`${failureMessage} ${String(error)}`);
   }
 }
 
-function parseNpmVersionArgs(args: string[]): string[] {
-  const bumpArg = args[0];
+function runCapture(command: string, args: string[], failureMessage: string, cwd = REPO_ROOT): string {
+  try {
+    return execFileSync(command, args, { cwd, encoding: "utf8", maxBuffer: CAPTURE_MAX_BUFFER });
+  } catch (error) {
+    throw new Error(`${failureMessage} ${String(error)}`);
+  }
+}
 
-  if (!bumpArg) {
-    console.error(
-      "Usage: bun run release:bump <patch|minor|major|prerelease|prepatch|preminor|premajor|<semver>> [--preid <id>]\n",
-    );
-    process.exit(1);
+function parseSemver(version: string): ParsedSemver {
+  const match = version.trim().match(SEMVER_PATTERN);
+  if (!match) throw new Error(`Invalid semver version: ${version}`);
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    prerelease: match[4]?.split(".") ?? [],
+  };
+}
+
+function extractPreid(args: string[]): string | undefined {
+  const equalsArg = args.find((arg) => arg.startsWith("--preid="));
+  if (equalsArg) return equalsArg.slice("--preid=".length);
+  const index = args.indexOf("--preid");
+  return index === -1 ? undefined : args[index + 1];
+}
+
+function incrementPrerelease(parts: string[]): string[] {
+  if (parts.length === 0) return ["0"];
+  const result = [...parts];
+  for (let index = result.length - 1; index >= 0; index -= 1) {
+    if (/^\d+$/.test(result[index]!)) {
+      result[index] = String(Number(result[index]) + 1);
+      return result;
+    }
+  }
+  result.push("0");
+  return result;
+}
+
+/** Validates the supported npm-version argv without shell interpolation. */
+export function parseNpmVersionArgs(args: string[]): string[] {
+  const target = args[0];
+  if (!target) {
+    throw new Error("Usage: release:bump <patch|minor|major|prerelease|prepatch|preminor|premajor|semver> [--preid <id>]");
+  }
+  if (!RELEASE_TYPES.has(target) && !SEMVER_PATTERN.test(target)) {
+    throw new Error(`Unsupported npm version target: ${target}`);
   }
 
-  if (!RELEASE_TYPES.has(bumpArg) && !SEMVER_PATTERN.test(bumpArg)) {
-    console.error(`✗ Unsupported npm version target: ${bumpArg}`);
-    process.exit(1);
-  }
-
-  for (let index = 1; index < args.length; index++) {
-    const arg = args[index];
+  let sawPreid = false;
+  for (let index = 1; index < args.length; index += 1) {
+    const arg = args[index]!;
     if (arg.startsWith("--preid=")) {
+      if (sawPreid) throw new Error("--preid may be supplied only once.");
+      sawPreid = true;
+      const value = arg.slice("--preid=".length);
+      if (!PREID_PATTERN.test(value)) throw new Error("--preid requires a non-empty alphanumeric or hyphen identifier.");
       continue;
     }
     if (arg === "--preid") {
+      if (sawPreid) throw new Error("--preid may be supplied only once.");
+      sawPreid = true;
       const value = args[index + 1];
-      if (!value || value.startsWith("-")) {
-        console.error("✗ --preid requires a non-empty value.");
-        process.exit(1);
-      }
-      index++;
+      if (!value || !PREID_PATTERN.test(value)) throw new Error("--preid requires a non-empty alphanumeric or hyphen identifier.");
+      index += 1;
       continue;
     }
-
-    console.error(`✗ Unsupported npm version option: ${arg}`);
-    console.error("  release:bump only forwards the version target plus optional --preid.");
-    process.exit(1);
+    throw new Error(`Unsupported npm version option: ${arg}`);
   }
 
-  return args;
+  return [...args];
 }
 
-function readPackageVersion(): string {
-  const pkg = JSON.parse(readFileSync(PKG_PATH, "utf8")) as PackageJson;
-  return pkg.version?.trim() ?? "";
+/** Resolves npm's supported semver target forms before mutation. */
+export function calculateTargetVersion(currentVersion: string, npmVersionArgs: string[]): string {
+  const target = npmVersionArgs[0]!;
+  if (!RELEASE_TYPES.has(target)) return target.replace(/^v/, "");
+
+  const current = parseSemver(currentVersion);
+  const requestedPreid = extractPreid(npmVersionArgs);
+  const format = (major: number, minor: number, patch: number, prerelease: string[] = []) =>
+    `${major}.${minor}.${patch}${prerelease.length > 0 ? `-${prerelease.join(".")}` : ""}`;
+  const initialPre = () => requestedPreid ? [requestedPreid, "0"] : ["0"];
+
+  switch (target) {
+    case "major":
+      return current.prerelease.length > 0 && current.minor === 0 && current.patch === 0
+        ? format(current.major, 0, 0)
+        : format(current.major + 1, 0, 0);
+    case "minor":
+      return current.prerelease.length > 0 && current.patch === 0
+        ? format(current.major, current.minor, 0)
+        : format(current.major, current.minor + 1, 0);
+    case "patch":
+      return current.prerelease.length > 0
+        ? format(current.major, current.minor, current.patch)
+        : format(current.major, current.minor, current.patch + 1);
+    case "premajor":
+      return format(current.major + 1, 0, 0, initialPre());
+    case "preminor":
+      return format(current.major, current.minor + 1, 0, initialPre());
+    case "prepatch":
+      return format(current.major, current.minor, current.patch + 1, initialPre());
+    case "prerelease": {
+      if (current.prerelease.length === 0) {
+        return format(current.major, current.minor, current.patch + 1, [requestedPreid ?? "0", ...(requestedPreid ? ["0"] : [])]);
+      }
+      if (requestedPreid && current.prerelease[0] !== requestedPreid) {
+        return format(current.major, current.minor, current.patch, [requestedPreid, "0"]);
+      }
+      return format(current.major, current.minor, current.patch, incrementPrerelease(current.prerelease));
+    }
+  }
 }
 
-function readFileText(filePath: string): string {
+function changelogHasVersion(changelog: string, version: string): boolean {
+  const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^##\\s+<small>${escaped}\\s+\\(`, "m").test(changelog);
+}
+
+/** Runs every deterministic safety gate before npm version can mutate files. */
+export function runReleasePreflight(args: string[], deps: ReleasePreflightDependencies): ReleasePreflightResult {
+  const npmVersionArgs = parseNpmVersionArgs(args);
+  const currentVersion = deps.readCurrentVersion().trim();
+  const targetVersion = calculateTargetVersion(currentVersion, npmVersionArgs);
+  const tagName = `v${targetVersion}`;
+
+  const missingTools = REQUIRED_RELEASE_TOOLS.filter((tool) => !deps.toolExists(tool));
+  if (missingTools.length > 0) throw new Error(`Missing required release tool(s): ${missingTools.join(", ")}`);
+
+  const status = deps.getStatus();
+  if (status.trim()) throw new Error(`Worktree is dirty. Commit or stash changes before release.\n${status.trimEnd()}`);
+
+  const branchName = deps.getBranch().trim();
+  if (!branchName || branchName === "HEAD") throw new Error("release:bump requires a checked-out branch; detached HEAD is unsupported.");
+  if (deps.tagExists(tagName)) throw new Error(`Tag ${tagName} already exists.`);
+  if (changelogHasVersion(deps.readChangelog(), targetVersion)) {
+    throw new Error(`CHANGELOG.md already contains a ${targetVersion} release block.`);
+  }
+
+  deps.runValidation();
+  return { npmVersionArgs, currentVersion, targetVersion, branchName, tagName };
+}
+
+function readRequired(filePath: string): string {
   try {
     return readFileSync(filePath, "utf8");
-  } catch {
-    return "";
+  } catch (error) {
+    throw new Error(`Required release file is missing or unreadable: ${filePath}. ${String(error)}`);
   }
 }
 
-function run(command: string, args: string[], failureMessage: string): string {
-  try {
-    return execFileSync(command, args, { encoding: "utf8", stdio: "inherit" }) ?? "";
-  } catch (err) {
-    console.error(`\n✗ ${failureMessage}`);
-    console.error(`  ${String(err)}`);
-    process.exit(1);
-  }
+function replaceRequired(source: string, pattern: RegExp, replacement: string, label: string): string {
+  if (!pattern.test(source)) throw new Error(`${label} does not contain the required version marker.`);
+  return source.replace(pattern, replacement);
 }
 
-function runCapture(command: string, args: string[], failureMessage: string): string {
-  try {
-    return execFileSync(command, args, { encoding: "utf8", maxBuffer: CAPTURE_MAX_BUFFER });
-  } catch (err) {
-    console.error(`\n✗ ${failureMessage}`);
-    console.error(`  ${String(err)}`);
-    process.exit(1);
+/** Updates all required package, marketplace, plugin, README, OpenPackage, and CLI version surfaces. */
+export function updateVersionSurfaceFiles(repoRoot: string, newVersion: string): void {
+  const readmePath = path.join(repoRoot, "README.md");
+  const openpackagePath = path.join(repoRoot, "openpackage.yml");
+  const marketplacePath = path.join(repoRoot, ".claude-plugin/marketplace.json");
+  const pluginPath = path.join(repoRoot, "plugins/grace/.claude-plugin/plugin.json");
+  const cliPath = path.join(repoRoot, "src/grace.ts");
+
+  writeFileSync(readmePath, replaceRequired(readRequired(readmePath), /(Current packaged version:\s*`)([^`]+)(`)/, `$1${newVersion}$3`, "README.md"));
+  writeFileSync(openpackagePath, replaceRequired(readRequired(openpackagePath), /^(version:\s*).+$/m, `$1${newVersion}`, "openpackage.yml"));
+
+  const marketplace = JSON.parse(readRequired(marketplacePath)) as { metadata?: { version?: string }; plugins?: Array<{ version?: string }> };
+  if (!marketplace.metadata || typeof marketplace.metadata.version !== "string" || !marketplace.plugins?.[0] || typeof marketplace.plugins[0].version !== "string") {
+    throw new Error("marketplace.json is missing required version surfaces.");
   }
+  marketplace.metadata.version = newVersion;
+  marketplace.plugins[0].version = newVersion;
+  writeFileSync(marketplacePath, `${JSON.stringify(marketplace, null, 2)}\n`);
+
+  const plugin = JSON.parse(readRequired(pluginPath)) as { version?: string };
+  if (typeof plugin.version !== "string") throw new Error("plugin.json is missing its version surface.");
+  plugin.version = newVersion;
+  writeFileSync(pluginPath, `${JSON.stringify(plugin, null, 2)}\n`);
+
+  writeFileSync(cliPath, replaceRequired(readRequired(cliPath), /(meta:\s*\{[\s\S]*?version:\s*")([^"]+)(")/, `$1${newVersion}$3`, "src/grace.ts"));
 }
 
-/** Runs opencode for one release summary attempt using stdin and JSONL output. */
+function normalizeChangelogHeader(entry: string, newVersion: string): string {
+  const today = new Date().toISOString().slice(0, 10);
+  const traditionalHeader = /^##\s+\[?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\]?(?:\([^\n]*\))?\s*\(?\d{4}-\d{2}-\d{2}\)?/m;
+  return traditionalHeader.test(entry)
+    ? entry.replace(traditionalHeader, `## <small>${newVersion} (${today})</small>`)
+    : entry;
+}
+
+/** Returns changelog text with exactly one new target-version block prepended. */
+export function prependChangelogEntry(existing: string, entry: string, newVersion: string): string {
+  if (changelogHasVersion(existing, newVersion)) throw new Error(`CHANGELOG.md already contains a ${newVersion} release block.`);
+  const normalized = normalizeChangelogHeader(entry.trim(), newVersion);
+  if (!changelogHasVersion(normalized, newVersion)) throw new Error(`Generated changelog entry has no ${newVersion} vv-style header.`);
+  return existing.trim() ? `${normalized}\n\n${existing.trim()}\n` : `${normalized}\n`;
+}
+
+function generateChangelog(repoRoot: string): string {
+  return runCapture(
+    "bun",
+    ["x", "conventional-changelog", "-p", "conventionalcommits", "-r", "1"],
+    "conventional-changelog failed; release aborted.",
+    repoRoot,
+  ).trim();
+}
+
 function runOpencodeSummary(request: OpencodeRunRequest): OpencodeRunResult {
   const result = spawnSync(
     "opencode",
-    [
-      "--pure",
-      "run",
-      "--format",
-      "json",
-      "--agent",
-      "release-summary",
-      "--model",
-      request.model,
-      "Generate the required release changelog summary from stdin. Return only the <summary> envelope.",
-    ],
-    {
-      encoding: "utf8",
-      input: request.input,
-      env: request.env,
-      timeout: request.timeoutMs,
-      maxBuffer: 1024 * 1024,
-    },
+    ["--pure", "run", "--format", "json", "--agent", "release-summary", "--model", request.model, "Generate the required release changelog summary from stdin. Return only the <summary> envelope."],
+    { encoding: "utf8", input: request.input, env: request.env, timeout: request.timeoutMs, maxBuffer: 1024 * 1024 },
   );
-
   return {
     status: result.status,
     signal: result.signal,
@@ -193,296 +316,140 @@ function runOpencodeSummary(request: OpencodeRunRequest): OpencodeRunResult {
   };
 }
 
-/** Sleeps synchronously between release summary retry attempts. */
 function sleepMs(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-/**
- * Runs conventional-changelog as a subprocess to generate a changelog entry
- * from git history. Uses the conventionalcommits preset and generates for the
- * latest release (commits since last tag).
- * Returns the stdout output. Throws on subprocess failure.
- */
-function generateChangelog(): string {
-  return runCapture(
-    "bun",
-    ["x", "conventional-changelog", "-p", "conventionalcommits", "-r", "1"],
-    "conventional-changelog failed. Release aborted."
-  ).trim();
-}
-
-/**
- * Normalizes the first release header from conventional-changelog default style
- * (## [X.Y.Z](...) (YYYY-MM-DD) or ## X.Y.Z (YYYY-MM-DD)) into vv-style
- * ## <small>X.Y.Z (YYYY-MM-DD)</small>.
- * If the header is already in vv-style or the format is unrecognized, returns the entry unchanged.
- */
-function normalizeChangelogHeader(entry: string, newVersion: string): string {
-  // Match traditional conventional-changelog headers:
-  //   ## [1.2.3](https://...) (2024-01-01)
-  //   ## 1.2.3 (2024-01-01)
-  // Replace with vv-style: ## <small>1.2.3 (2024-01-01)</small>
-  const today = new Date().toISOString().slice(0, 10);
-  const traditionalHeader = /^##\s+\[?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\]?\(?[^)]*\)?\s*\(?\d{4}-\d{2}-\d{2}\)?/m;
-  if (traditionalHeader.test(entry)) {
-    return entry.replace(traditionalHeader, `## <small>${newVersion} (${today})</small>`);
-  }
-  // Already vv-style or unrecognized — leave as-is
-  return entry;
-}
-/**
- * Prepends the given changelog entry to CHANGELOG.md.
- * If the file does not exist, creates it with the entry as its full content.
- * Preserves existing content below the newly prepended entry.
- */
-function prependToChangelog(entry: string): void {
-  let existing = "";
-  try {
-    existing = readFileSync(CHANGELOG_PATH, "utf8").trim();
-  } catch {
-    // File does not exist yet — create from scratch.
-  }
-  const content = existing ? `${entry}\n\n${existing}` : `${entry}\n`;
-  writeFileSync(CHANGELOG_PATH, content, "utf8");
-}
-
-/**
- * Updates all version surface files to match the given version.
- * Affected files: README.md (Current packaged version marker),
- * openpackage.yml (version line),
- * .claude-plugin/marketplace.json (metadata.version and plugin[0].version),
- * plugins/grace/.claude-plugin/plugin.json (version),
- * src/grace.ts (CLI metadata version).
- */
-function updateVersionSurfaceFiles(newVersion: string): void {
-  // Update README.md
-  const readmeText = readFileText(README_PATH);
-  if (readmeText) {
-    const updatedReadme = readmeText.replace(
-      /(Current packaged version:\s*`)([^`]+)(`)/,
-      (_match, prefix, _oldVersion, suffix) => `${prefix}${newVersion}${suffix}`,
-    );
-    writeFileSync(README_PATH, updatedReadme, "utf8");
-    console.log(`Updated README.md version marker to ${newVersion}`);
-  }
-
-  // Update openpackage.yml
-  const openpackageText = readFileText(OPENPACKAGE_PATH);
-  if (openpackageText) {
-    const updatedOp = openpackageText.replace(
-      /^(version:\s*).+/m,
-      (_match, prefix) => `${prefix}${newVersion}`,
-    );
-    writeFileSync(OPENPACKAGE_PATH, updatedOp, "utf8");
-    console.log(`Updated openpackage.yml version to ${newVersion}`);
-  }
-
-  // Update marketplace.json via JSON parse/mutate/stringify
-  const marketplaceText = readFileText(MARKETPLACE_PATH);
-  if (marketplaceText) {
-    try {
-      const marketplace = JSON.parse(marketplaceText) as Record<string, unknown>;
-      const metadata = marketplace.metadata as Record<string, unknown> | undefined;
-      if (metadata && typeof metadata.version === "string") {
-        metadata.version = newVersion;
-      }
-      const plugins = marketplace.plugins as Array<Record<string, unknown>> | undefined;
-      if (plugins && plugins.length > 0 && typeof plugins[0]!.version === "string") {
-        plugins[0]!.version = newVersion;
-      }
-      writeFileSync(MARKETPLACE_PATH, JSON.stringify(marketplace, null, 2) + "\n", "utf8");
-      console.log(`Updated .claude-plugin/marketplace.json version to ${newVersion}`);
-    } catch {
-      console.error("✗ Failed to parse .claude-plugin/marketplace.json. Version update skipped.");
-    }
-  }
-
-  // Update plugin manifest via JSON parse/mutate/stringify
-  const pluginManifestText = readFileText(PLUGIN_MANIFEST_PATH);
-  if (pluginManifestText) {
-    try {
-      const manifest = JSON.parse(pluginManifestText) as Record<string, unknown>;
-      if (typeof manifest.version === "string") {
-        manifest.version = newVersion;
-      }
-      writeFileSync(PLUGIN_MANIFEST_PATH, JSON.stringify(manifest, null, 2) + "\n", "utf8");
-      console.log(`Updated plugins/grace/.claude-plugin/plugin.json version to ${newVersion}`);
-    } catch {
-      console.error("✗ Failed to parse plugins/grace/.claude-plugin/plugin.json. Version update skipped.");
-    }
-  }
-
-  // Update CLI entrypoint metadata version shown by `grace --version`
-  const cliEntryText = readFileText(CLI_ENTRY_PATH);
-  if (cliEntryText) {
-    const updatedCliEntry = cliEntryText.replace(
-      /(meta:\s*\{[\s\S]*?version:\s*")([^"]+)(")/,
-      (_match, prefix, _oldVersion, suffix) => `${prefix}${newVersion}${suffix}`,
-    );
-    writeFileSync(CLI_ENTRY_PATH, updatedCliEntry, "utf8");
-    console.log(`Updated src/grace.ts CLI metadata version to ${newVersion}`);
-  }
-}
-
-function assertOnlyReleaseFilesChanged(): void {
-  const changedFiles = gitStatus()
+function changedReleaseFiles(repoRoot: string): string[] {
+  return runCapture("git", ["status", "--porcelain"], "Failed to inspect release changes.", repoRoot)
     .split("\n")
     .map((line) => line.trimEnd())
     .filter(Boolean)
     .map((line) => line.slice(3));
-
-  const unexpectedFiles = changedFiles.filter((filePath) => !ALLOWED_RELEASE_FILES.has(filePath));
-  if (unexpectedFiles.length > 0) {
-    console.error("✗ release:bump produced unexpected working tree changes:");
-    for (const fp of unexpectedFiles) {
-      console.error(`  ${fp}`);
-    }
-    console.error("Commit or handle these files manually before creating a release tag.");
-    process.exit(1);
-  }
 }
 
-function assertTagDoesNotExist(tagName: string): void {
+function assertOnlyReleaseFilesChanged(repoRoot: string): void {
+  const unexpected = changedReleaseFiles(repoRoot).filter((file) => !ALLOWED_RELEASE_FILES.has(file));
+  if (unexpected.length > 0) throw new Error(`release:bump produced unexpected changes: ${unexpected.join(", ")}`);
+}
+
+function tagExists(repoRoot: string, tagName: string): boolean {
+  const result = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/tags/${tagName}`], { cwd: repoRoot, stdio: "ignore" });
+  return result.status === 0;
+}
+
+/** Rejects an existing local target tag. */
+export function assertTagDoesNotExist(repoRoot: string, tagName: string): void {
+  if (tagExists(repoRoot, tagName)) throw new Error(`Tag ${tagName} already exists.`);
+}
+
+/** Creates the release commit and annotated tag locally; it performs no push. */
+export function createReleaseCommitAndTag(options: {
+  repoRoot: string;
+  currentVersion: string;
+  newVersion: string;
+  tagName?: string;
+  gitConfig?: string[];
+}): { commitSha: string; tagName: string } {
+  const tagName = options.tagName ?? `v${options.newVersion}`;
+  const gitPrefix = (options.gitConfig ?? []).flatMap((config) => ["-c", config]);
+  assertOnlyReleaseFilesChanged(options.repoRoot);
+  assertTagDoesNotExist(options.repoRoot, tagName);
+  run("git", [...gitPrefix, "add", ...RELEASE_FILES], "git add failed.", options.repoRoot);
+  run(
+    "git",
+    [...gitPrefix, "commit", "-m", `chore: bump version from ${options.currentVersion} to ${options.newVersion} with changelog`],
+    "git commit failed; release files remain staged for inspection.",
+    options.repoRoot,
+  );
+  run("git", [...gitPrefix, "tag", "-a", tagName, "-m", tagName], "git tag failed; the release commit exists without a tag.", options.repoRoot);
+  return {
+    commitSha: runCapture("git", ["rev-parse", "HEAD"], "git rev-parse failed.", options.repoRoot).trim(),
+    tagName,
+  };
+}
+
+function readPackageVersion(repoRoot: string): string {
+  const pkg = JSON.parse(readRequired(path.join(repoRoot, "package.json"))) as PackageJson;
+  if (pkg.name !== PACKAGE_NAME) throw new Error(`package.json name must be ${PACKAGE_NAME}.`);
+  if (!pkg.version) throw new Error("package.json version is missing.");
+  parseSemver(pkg.version);
+  return pkg.version;
+}
+
+function productionPreflightDependencies(repoRoot: string): ReleasePreflightDependencies {
+  return {
+    readCurrentVersion: () => readPackageVersion(repoRoot),
+    readChangelog: () => readRequired(path.join(repoRoot, "CHANGELOG.md")),
+    getStatus: () => runCapture("git", ["status", "--porcelain"], "Failed to inspect git status.", repoRoot),
+    getBranch: () => runCapture("git", ["rev-parse", "--abbrev-ref", "HEAD"], "Failed to detect current branch.", repoRoot),
+    tagExists: (tagName) => tagExists(repoRoot, tagName),
+    toolExists: (tool) => spawnSync(tool, ["--version"], { cwd: repoRoot, stdio: "ignore" }).status === 0,
+    runValidation: () => run("bun", ["run", "validate:release"], "Pre-bump validate:release failed; no release files were mutated.", repoRoot),
+  };
+}
+
+/** Runs the guarded production release workflow and returns a process exit code. */
+export function main(
+  argv = process.argv.slice(2),
+  repoRoot = REPO_ROOT,
+  preflightDependencies = productionPreflightDependencies(repoRoot),
+): number {
   try {
-    execFileSync("git", ["rev-parse", "--verify", "--quiet", `refs/tags/${tagName}`], {
-      stdio: "ignore",
-    });
-    console.error(`✗ Tag ${tagName} already exists.`);
-    process.exit(1);
-  } catch {
-    // Expected when the tag does not exist.
-  }
-}
+    const preflight = runReleasePreflight(argv, preflightDependencies);
+    console.log(`Current version: ${preflight.currentVersion}`);
+    console.log(`Target version: ${preflight.targetVersion}`);
 
-function getCurrentBranchName(): string {
-  const branchName = runCapture(
-    "git",
-    ["rev-parse", "--abbrev-ref", "HEAD"],
-    "git rev-parse failed while detecting the current branch.",
-  ).trim();
+    run("npm", ["version", "--no-git-tag-version", ...preflight.npmVersionArgs], "npm version failed; release aborted.", repoRoot);
+    const newVersion = readPackageVersion(repoRoot);
+    if (newVersion !== preflight.targetVersion) {
+      throw new Error(`npm version produced ${newVersion}, but preflight predicted ${preflight.targetVersion}.`);
+    }
 
-  if (!branchName || branchName === "HEAD") {
-    console.error("✗ release:bump requires a checked-out branch. Detached HEAD is not supported.");
-    process.exit(1);
-  }
+    let changelogEntry = generateChangelog(repoRoot);
+    if (!changelogEntry) {
+      const today = new Date().toISOString().slice(0, 10);
+      changelogEntry = `## <small>${newVersion} (${today})</small>\n\n_No user-facing changes._`;
+    } else {
+      changelogEntry = normalizeChangelogHeader(changelogEntry, newVersion);
+    }
 
-  return branchName;
-}
-
-function main(): void {
-  const npmVersionArgs = parseNpmVersionArgs(process.argv.slice(2));
-
-  // START_BLOCK_CHECK_CLEAN_WORKTREE
-  const status = gitStatus();
-  if (status.trim()) {
-    console.error(
-      "✗ Worktree is dirty. Commit or stash your changes before running release:bump.\n",
+    const summary = generateReleaseSummaryWithRetries(
+      runOpencodeSummary,
+      {
+        version: newVersion,
+        changelogEntry,
+        commits: collectReleaseCommitMetadata((command, args, failureMessage) => runCapture(command, args, failureMessage, repoRoot)),
+      },
+      resolveReleaseSummaryOptions(process.env),
+      sleepMs,
     );
-    console.error("Uncommitted changes:\n");
-    process.stderr.write(status);
-    process.exit(1);
+    changelogEntry = injectSummaryIntoChangelogEntry(changelogEntry, summary);
+    const changelogPath = path.join(repoRoot, "CHANGELOG.md");
+    writeFileSync(changelogPath, prependChangelogEntry(readRequired(changelogPath), changelogEntry, newVersion));
+    updateVersionSurfaceFiles(repoRoot, newVersion);
+
+    run("bun", ["run", "validate:release"], "Post-bump validate:release failed; release files remain uncommitted for inspection.", repoRoot);
+    const localRelease = createReleaseCommitAndTag({
+      repoRoot,
+      currentVersion: preflight.currentVersion,
+      newVersion,
+      tagName: preflight.tagName,
+    });
+
+    run("git", ["push", "origin", preflight.branchName], `Branch push failed; local commit ${localRelease.commitSha} and ${localRelease.tagName} remain.`, repoRoot);
+    run("git", ["push", "origin", localRelease.tagName], `Tag push failed after branch push; push ${localRelease.tagName} manually after inspection.`, repoRoot);
+
+    console.log(`\n✓ Release ${localRelease.tagName} committed, tagged, and pushed.`);
+    console.log(`  Git SHA: ${localRelease.commitSha}`);
+    console.log(`  Branch: ${preflight.branchName}`);
+    return 0;
+  } catch (error) {
+    console.error(`\n✗ ${error instanceof Error ? error.message : String(error)}\n`);
+    return 1;
   }
-  // END_BLOCK_CHECK_CLEAN_WORKTREE
-
-  // Read current version
-  const currentVersion = readPackageVersion();
-  console.log(`Current version: ${currentVersion}`);
-
-  // START_BLOCK_RUN_NPM_VERSION
-  console.log(`\nRunning: npm version --no-git-tag-version ${npmVersionArgs.join(" ")}`);
-  run("npm", ["version", "--no-git-tag-version", ...npmVersionArgs], "npm version failed. Aborting release bump.");
-  // END_BLOCK_RUN_NPM_VERSION
-
-  // Read new version
-  const newVersion = readPackageVersion();
-  if (!newVersion) {
-    console.error("✗ Failed to read new version from package.json after bump.");
-    process.exit(1);
-  }
-  console.log(`New version: ${newVersion}`);
-
-  // START_BLOCK_GENERATE_CHANGELOG
-  console.log("\nGenerating changelog entry...\n");
-  let changelogEntry = generateChangelog();
-  if (!changelogEntry) {
-    const today = new Date().toISOString().slice(0, 10);
-    changelogEntry = `## <small>${newVersion} (${today})</small>\n\n_No user-facing changes._`;
-  } else {
-    changelogEntry = normalizeChangelogHeader(changelogEntry, newVersion);
-  }
-  // START_BLOCK_GENERATE_SUMMARY
-  console.log("\nGenerating release summary with OpenCode...\n");
-  const summaryOptions = resolveReleaseSummaryOptions(process.env);
-  const commits = collectReleaseCommitMetadata(runCapture);
-  const summary = generateReleaseSummaryWithRetries(
-    runOpencodeSummary,
-    { version: newVersion, changelogEntry, commits },
-    summaryOptions,
-    sleepMs,
-  );
-  changelogEntry = injectSummaryIntoChangelogEntry(changelogEntry, summary);
-  console.log("Release summary generated and injected into changelog entry.");
-  // END_BLOCK_GENERATE_SUMMARY
-
-  prependToChangelog(changelogEntry);
-  console.log("Changelog entry prepended to CHANGELOG.md");
-  // END_BLOCK_GENERATE_CHANGELOG
-
-  // START_BLOCK_UPDATE_VERSION_SURFACES
-  console.log("\nUpdating version surface files...\n");
-  updateVersionSurfaceFiles(newVersion);
-  // END_BLOCK_UPDATE_VERSION_SURFACES
-
-  // START_BLOCK_RUN_RELEASE_CHECK
-  console.log("\nRunning validate:release...\n");
-  run("bun", ["run", "validate:release"], "validate:release failed after bump. Release aborted.");
-  // END_BLOCK_RUN_RELEASE_CHECK
-
-  // START_BLOCK_GIT_COMMIT_AND_TAG
-  assertOnlyReleaseFilesChanged();
-
-  const branchName = getCurrentBranchName();
-  const tagName = `v${newVersion}`;
-  assertTagDoesNotExist(tagName);
-
-  console.log("\nCreating release commit and tag...\n");
-  run("git", [
-    "add",
-    "package.json",
-    "CHANGELOG.md",
-    "README.md",
-    "openpackage.yml",
-    ".claude-plugin/marketplace.json",
-    "plugins/grace/.claude-plugin/plugin.json",
-    "src/grace.ts",
-  ], "git add failed.");
-  run(
-    "git",
-    ["commit", "-m", `chore: bump version from ${currentVersion} to ${newVersion} with changelog`],
-    "git commit failed. package.json and version surface files have been updated but may not be committed.",
-  );
-  run("git", ["tag", "-a", tagName, "-m", tagName], "git tag failed. Release commit was created without a tag.");
-  // END_BLOCK_GIT_COMMIT_AND_TAG
-
-  // START_BLOCK_GIT_PUSH
-  console.log("\nPushing release commit and tag...\n");
-  run(
-    "git",
-    ["push", "origin", branchName],
-    `git push origin ${branchName} failed. Release commit and tag were created locally but not pushed.`,
-  );
-  run(
-    "git",
-    ["push", "origin", tagName],
-    `git push origin ${tagName} failed. Release tag exists locally but was not pushed.`,
-  );
-  // END_BLOCK_GIT_PUSH
-
-  console.log(`\n✓ Release ${tagName} committed, tagged, and pushed.\n`);
-  console.log(`  Git SHA: ${runCapture("git", ["rev-parse", "HEAD"], "git rev-parse failed.").trim()}`);
-  console.log(`  Branch: ${branchName}`);
-  console.log(`  Tag: ${tagName}\n`);
 }
 
-main();
+if (import.meta.main) {
+  process.exitCode = main();
+}
