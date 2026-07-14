@@ -1,11 +1,26 @@
 # GRACE 4 Migration Checklist
 
-- [ ] Generated `.grace/context` artifacts reviewed.
-- [ ] Generated `.grace/graph/index.xml` and graph documents reviewed.
-- [ ] Generated `.grace/verification/index.xml` and verification documents reviewed.
+## Before Writing `.grace`
+
+- [ ] Every legacy source path is inventoried with its intended GRACE 4 destination or an explicit unsupported/omitted reason.
+- [ ] A restorable backup exists at a recorded path outside the cleanup set.
+- [ ] Backup verification evidence and timestamp are recorded.
 - [ ] Ambiguities and unsupported legacy structures are listed.
-- [ ] No retroactive `C-*` bundles were created.
-- [ ] `grace lint --path <project-root>` passed or findings are understood.
-- [ ] `grace status --path <project-root>` reports GRACE 4 state.
-- [ ] Legacy cleanup proposal is explicit.
-- [ ] User explicitly confirmed cleanup before deleting or moving legacy docs.
+- [ ] No retroactive `C-*` bundles are proposed.
+- [ ] The user explicitly approved writing the reviewed `.grace` artifacts.
+
+## After Writing `.grace`
+
+- [ ] Generated `.grace/context` artifacts and source coverage were reviewed.
+- [ ] Generated graph index, routed graph documents, and projection coverage were reviewed.
+- [ ] Generated verification index, routed verification documents, and projection coverage were reviewed.
+- [ ] `grace lint --path <project-root> --assertions current` passed and the exit state is recorded.
+- [ ] `grace status --path <project-root> --json` was reviewed and its exit state is recorded.
+- [ ] Any failed or incomplete gate stopped cleanup while preserving legacy sources.
+
+## Before Legacy Cleanup
+
+- [ ] The cleanup proposal lists exact inventoried paths and actions; it contains no broad glob or unreviewed recursive deletion.
+- [ ] The restorable backup remains available and is not included in cleanup.
+- [ ] The user separately and explicitly approved the exact cleanup proposal.
+- [ ] Each archive/delete action and result will be recorded in the migration report.

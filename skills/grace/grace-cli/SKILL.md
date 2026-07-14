@@ -5,14 +5,21 @@ description: Operate the GRACE 4 CLI for .grace linting, status, module navigati
 
 <skill>
 <commands>
-- `grace lint --path <project-root>` validates `.grace` grammar, projections, assertions, lifecycle locations, and scope overlap.
-- `grace status --path <project-root> --with modules` summarizes health and next action.
-- `grace module find|show` navigates `.grace/graph` projection records and linked files.
-- `grace verification find|show` navigates `.grace/verification` projection records.
-- `grace file show` reads file-local/private semantic markup.
+- Current lint: `grace lint --path PROJECT --assertions current`
+- Selected baseline: `grace lint --path PROJECT --change C-ID --assertions baseline`
+- Selected target: `grace lint --path PROJECT --change C-ID --assertions target --run-commands`
+- Parallel preflight: `grace lint --path PROJECT --parallel-preflight`
+- Status: `grace status --path PROJECT --with modules --json`
+- Navigation: `grace module find|show`, `grace verification find|show`, and `grace file show`.
 </commands>
 
-<migration_boundary>
-If the CLI reports legacy GRACE 3 docs, use `grace-migrate`. GRACE 4 commands do not dual-validate legacy docs as current state.
-</migration_boundary>
+<failure_contract>
+Navigation validates Artifact Grammar and projections before returning records. JSON failures are one `{ "schemaVersion": "1.0.0", "ok": false, "error": { ... } }` object on stdout. Text failures are one concise actionable line with a nonzero exit code and no stack trace.
+</failure_contract>
+
+<runtime_contract>
+TypeScript/JavaScript analysis is bundled. Python and Dart governed files require their runtimes on PATH; missing runtimes emit `analysis.adapter-failed` and do not count as exact/full parity.
+</runtime_contract>
+
+<migration_boundary>GRACE 4 commands do not dual-validate legacy GRACE 3 docs. Use `grace-migrate`.</migration_boundary>
 </skill>

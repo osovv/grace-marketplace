@@ -5,33 +5,38 @@ description: Execute an approved GRACE 4 GraceChangePlan in sequential or parall
 
 <skill>
 <preflight>
-Require one active bundle under `.grace/changes/active/C-*` with `spec.xml` status `approved` and `plan.xml` status `approved`. Confirm the same `C-*` wrapper appears in both files. Read `.grace/context`, `.grace/graph`, `.grace/verification`, `BaselineAssertions`, `TargetAssertions`, `DurableScope`, and `ObservedWriteScope` before editing code.
+Require one active bundle with approved, identity-matched `spec.xml` and `plan.xml`. Approved plans are immutable. Read context, projections, assertions, scopes, task dependencies, and verification before editing.
 </preflight>
 
+<assertion_commands>
+- Current validation: `grace lint --path PROJECT --assertions current`
+- Selected baseline: `grace lint --path PROJECT --change C-ID --assertions baseline`
+- Selected target without commands: `grace lint --path PROJECT --change C-ID --assertions target`
+- Selected target with command evidence: `grace lint --path PROJECT --change C-ID --assertions target --run-commands`
+- Parallel preflight: `grace lint --path PROJECT --parallel-preflight`
+</assertion_commands>
+
 <mode_selection>
-Present execution modes and wait for explicit user choice:
-
-- `sequential`: run `T-*` tasks in dependency order in the current session or bounded worker loop.
-- `parallel-safe`: group independent `T-*` tasks only when scopes do not overlap and verification can be merged safely.
-
-Durable `.grace` updates are centralized after verified observed changes; workers do not mutate approved plans independently.
+Wait for explicit `sequential` or `parallel-safe` choice. Parallel-safe requires the explicit preflight to pass. Workers never mutate approved plans; durable `.grace` changes are applied centrally after observed work verifies.
 </mode_selection>
 
-<recovery_states>
-- `clean-to-start`: assertions and scopes match the approved plan.
-- `partial-observed-writes`: source files changed but durable state is not updated; inspect and either resume or revert with user approval.
-- `durable-state-changed`: graph, verification, or context changed after approval; hard stop and replan or explicitly refresh assertions.
-- `target-already-satisfied`: target assertions already pass; ask whether to mark applied or supersede.
-- `unsafe-unknown-drift`: drift cannot be explained safely; hard stop and hand off findings.
-</recovery_states>
+<recovery_decision_table>
+| state | required action |
+| clean-to-start | Run selected baseline, then execute tasks. |
+| partial-observed-writes | Inspect the declared observed scope and ask whether to resume or revert. |
+| durable-state-changed | Hard stop; supersede and replan. Approved assertions are immutable. |
+| target-already-satisfied | Run fresh target validation, opted-in command evidence when declared, durable reconciliation, full lint, and ask for explicit apply confirmation. |
+| unsafe-unknown-drift | Hard stop and report unexplained files. |
+</recovery_decision_table>
 
 <execution_rules>
-1. Run baseline assertions before implementation.
-2. Execute one `T-*` task or one parallel-safe batch at a time.
-3. Run task verification immediately after changes.
-4. Apply the approved durable `.grace/context`, `.grace/graph`, and `.grace/verification` edits centrally as working-tree changes after observed work and task verification pass.
-5. Run `TargetAssertions`, the plan verification gates, and full `grace lint` against the combined observed plus durable end state. If any check fails, keep the bundle active and do not mark it applied or archive it.
-6. Only after fresh end-state validation passes, set both spec and plan status to `applied` and move the complete bundle to `.grace/changes/archive/C-*`.
-7. Never silently edit approved plans, bypass stale assertions, or continue through unknown drift.
+1. Run the selected baseline before implementation.
+2. Execute one dependency-ready task or one verified parallel-safe batch at a time.
+3. Run each task's acceptance and verification immediately.
+4. Apply approved durable context, graph, and verification changes centrally.
+5. Run selected target validation, including `--run-commands` when `MustPassCommand` is declared, reconcile durable state, run plan gates, and run full current lint.
+6. Ask for explicit apply confirmation after fresh end-state evidence passes.
+7. Only then set spec and plan to `applied` and archive the complete bundle.
+8. Never edit approved assertions/scopes/tasks in place, bypass stale evidence, or continue through unknown drift.
 </execution_rules>
 </skill>

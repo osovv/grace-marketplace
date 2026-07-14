@@ -55,6 +55,8 @@ Requirements (.grace/context/requirements.xml)
 
 Never jump levels. If requirements are unclear — stop and clarify with the user.
 
+Approved plans are immutable execution evidence. If baseline/target assertions, scopes, tasks, or verification gates need to change after approval, create a replacement `C-*` bundle and mark the old bundle superseded; do not refresh an approved plan in place.
+
 ## Governed Autonomy (PCAM)
 
 PCAM = Purpose, Constraints, Autonomy, Metrics.
@@ -85,11 +87,12 @@ Modules in the GraceChangeSpec carry their contract in XML:
 <GraceChangeSpec graceVersion="4.0" status="approved">
   <C-ADD-AUTH>
     <Summary>Add authentication module</Summary>
-    <DurableScope>
-      <GraphAnchors>
-        <M-AUTH />
-      </GraphAnchors>
-    </DurableScope>
+    <Goals><Goal>Authenticate protected requests.</Goal></Goals>
+    <Constraints><Constraint>Preserve existing public session APIs.</Constraint></Constraints>
+    <NonGoals><NonGoal>Replace the user store.</NonGoal></NonGoals>
+    <AcceptanceCriteria><Criterion>Protected requests reject invalid sessions.</Criterion></AcceptanceCriteria>
+    <AffectedAreas><M-AUTH /></AffectedAreas>
+    <VerificationIntent><ExpectedCommand>bun test auth</ExpectedCommand></VerificationIntent>
   </C-ADD-AUTH>
 </GraceChangeSpec>
 ```

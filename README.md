@@ -30,7 +30,9 @@ GRACE 4 uses `.grace` as the durable project model:
 
 GRACE 4 does not dual-validate legacy GRACE 3 project docs as current state. Existing GRACE 3 projects use `$grace-migrate`; the CLI validates the generated `.grace` result but does not convert legacy docs itself.
 
-Verification commands run from the project root by default. A `V-M-*` entry may declare one project-relative `<Cwd>packages/example</Cwd>` while keeping `<TestFiles><File>...</File></TestFiles>` paths project-root-relative for monorepo-safe validation.
+Verification commands run from the project root by default. A `V-M-*` entry may declare one contained project-relative `<Cwd>packages/example</Cwd>` while keeping `<TestFiles><File>...</File></TestFiles>` paths project-root-relative. Absolute paths, `..` escapes, and symlink escapes fail closed.
+
+TypeScript/JavaScript semantic analysis is bundled. Governed Python and Dart files require their respective runtimes on `PATH`; a missing or failed adapter emits `analysis.adapter-failed` rather than claiming exact `MODULE_MAP` parity.
 
 ## Install
 
@@ -79,9 +81,11 @@ For a new GRACE 4 project:
 2. Fill `.grace/context` artifacts with your agent.
 3. Run `$grace-spec` for a change.
 4. Run `$grace-plan` after spec approval.
-5. Run `grace lint --path /path/to/project`.
-6. Run `grace status --path /path/to/project`.
-7. Run `$grace-execute` and choose sequential or parallel-safe mode.
+5. Run `grace lint --path /path/to/project --assertions current`.
+6. Run `grace lint --path /path/to/project --change C-ID --assertions baseline` before execution.
+7. Run `grace status --path /path/to/project --json`.
+8. Run `$grace-execute` and choose sequential or parallel-safe mode. Parallel-safe mode additionally requires `grace lint --path /path/to/project --parallel-preflight`.
+9. Before apply/archive, run selected target assertions; add `--run-commands` when the plan declares `MustPassCommand`.
 
 Existing GRACE 3 projects should run `$grace-migrate` and review the migration report before writing `.grace` artifacts.
 
@@ -109,7 +113,10 @@ Existing GRACE 3 projects should run `$grace-migrate` and review the migration r
 
 | Command | What It Does |
 | --- | --- |
-| `grace lint --path <root>` | Validate `.grace` grammar, routed document coverage, change-bundle contracts, assertions, lifecycle locations, and scope overlap |
+| `grace lint --path <root> --assertions current` | Validate current `.grace` grammar, routed coverage, lifecycle locations, and scope overlap |
+| `grace lint --path <root> --change C-ID --assertions baseline` | Validate the immutable selected baseline before implementation |
+| `grace lint --path <root> --change C-ID --assertions target --run-commands` | Validate selected target assertions and explicitly opt into `MustPassCommand` execution |
+| `grace lint --path <root> --parallel-preflight` | Run the explicit approved-plan scope coexistence gate required for parallel-safe execution |
 | `grace status --path <root>` | Report durable health, stale plans, scope conflicts, and explained/unexplained observed git drift |
 | `grace module find <query> --path <root>` | Search graph projection modules by id, path, text, dependency, or verification id |
 | `grace module show <id-or-path> --path <root>` | Show graph projection context and linked file-local markup |
@@ -127,6 +134,8 @@ Output modes:
 - `grace verification find`: `table`, `json`
 - `grace verification show`: `text`, `json`
 - `grace file show`: `text`, `json`
+
+Projection-backed navigation is fail closed: invalid grammar, duplicate ownership, missing routed files, or ambiguous targets produce a nonzero exit. JSON failures emit one stable `{ "schemaVersion": "1.0.0", "ok": false, "error": { ... } }` envelope on stdout; text failures emit one concise actionable line without a stack trace.
 
 ## Grep-First Navigation
 

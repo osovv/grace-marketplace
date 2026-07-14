@@ -32,6 +32,10 @@ bun run release:bump 4.0.0 # promote an approved RC line to stable
 10. Create an annotated tag `v<version>`.
 11. Push the branch and tag.
 
+The workflow fails closed at every boundary. A failed preflight creates no release mutation. A failure after version files change leaves the worktree uncommitted for inspection. A commit failure creates no tag. A tag failure leaves only the local release commit. A branch-push failure leaves the local commit and tag. If branch push succeeds but tag push fails, rerun only the reported tag push after inspecting the remote; do not rerun the version bump.
+
+Every command uses argument arrays without shell interpolation. Release automation rejects detached HEAD, dirty worktrees, existing target tags, unexpected changed files, invalid version surfaces, missing changelog summaries, marketplace drift, and validation failures before publish-triggering tag push.
+
 > **Note:** Canonical skill mirror syncing (`skills/grace/*` → `plugins/grace/skills/grace/*`) is **not** done automatically. The `validate:marketplace` script catches drift. Sync skills separately when needed.
 
 ## Environment Variables

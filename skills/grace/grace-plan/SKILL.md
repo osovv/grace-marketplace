@@ -4,42 +4,38 @@ description: Read an approved GRACE 4 GraceChangeSpec and optional design contex
 ---
 
 <skill>
-<purpose>
-Convert one approved active `GraceChangeSpec` into a `GraceChangePlan`. The plan is the executable contract for `grace-execute`; this skill does not implement source code.
-</purpose>
+<purpose>Convert one approved active `GraceChangeSpec` into the executable `GraceChangePlan`; do not implement source code.</purpose>
 
 <inputs>
 - Required: `.grace/changes/active/C-CHANGE-ID/spec.xml`
-- Optional: `.grace/changes/active/C-CHANGE-ID/design-context.xml`
-- Context: `.grace/context/*.xml`, `.grace/graph/index.xml`, `.grace/verification/index.xml`, and routed current-state documents.
+- Optional: sibling `design-context.xml`
+- Current state: `.grace/context`, graph and verification indexes, and their routed documents
 </inputs>
 
 <preflight>
-- Refuse missing specs.
-- Refuse specs whose root is not `GraceChangeSpec`, lacks exactly one direct `C-*` wrapper, or has status other than `approved`.
-- Refuse `draft`, `rejected`, `cancelled`, `applied`, or `superseded` specs.
-- Treat `spec.xml` as normative. Read `design-context.xml` only as explanatory context; if it conflicts with the spec, the spec wins.
+- Require `.grace/changes/active/C-CHANGE-ID/spec.xml` with `GraceChangeSpec`, status `approved`, and exactly one matching direct `C-*` wrapper.
+- Refuse draft, rejected, cancelled, applied, or superseded specs.
+- Treat optional `design-context.xml` as explanatory; `spec.xml` wins on conflict.
+- Run `grace lint --path PROJECT --assertions current` and surface stale or invalid state before planning.
 </preflight>
 
-<must_do>
-Produce `plan.xml` from `references/change-plan-template.xml` with:
+<approved_plan_immutability>
+- If `plan.xml` already exists with status `approved`, stop before writing.
+- Do not refresh `BaselineAssertions`, `TargetAssertions`, `DurableScope`, `ObservedWriteScope`, or tasks in place.
+- Create a new `C-*` bundle and mark the old bundle superseded with an explicit replacement reference.
+</approved_plan_immutability>
 
-- `GraceChangePlan graceVersion="4.0" status="draft"` unless the user explicitly approves the final plan in the same session.
-- the same `C-*` wrapper as the spec.
-- `IntentSummary` mapping spec goals to implementation outcomes.
-- `BaselineAssertions` for current-state assumptions.
-- `TargetAssertions` for required end state.
-- `DurableScope` covering graph anchors, verification anchors, context artifacts, and graph/verification documents expected to change.
-- `ObservedWriteScope` covering files and globs expected to be edited.
-- `ImplementationPlan` with `T-*` tasks, dependencies, per-task acceptance criteria, and verification commands.
-- explicit overlap or stale-state warnings surfaced to the user without silently mutating approved artifacts.
+<must_do>
+Produce `plan.xml` from `references/change-plan-template.xml` as draft unless the user explicitly approves the completed plan. Require a matching `C-*` wrapper, meaningful intent, non-empty baseline and target assertions, explicit durable and observed scopes, and unique acyclic `T-NNN` tasks. Every task has one `Title`, one `DependsOn`, non-empty acceptance criteria, and non-empty verification commands. Surface stale-state and coexistence warnings, and reject unsupported scope glob syntax instead of guessing.
 </must_do>
 
+<validation>
+- Current validation: `grace lint --path PROJECT --assertions current`
+- Parallel safety: `grace lint --path PROJECT --parallel-preflight`
+- Recommend `grace status --path PROJECT --json` after approval.
+</validation>
+
 <hard_rules>
-- Do not implement code.
-- Do not silently approve a plan; approval requires explicit user confirmation.
-- Do not edit current graph or verification artifacts unless the plan itself is the requested artifact change.
-- Semantic anchors are XML tags, never attributes.
-- After writing the plan, recommend `grace lint --path <project-root>` and `grace status --path <project-root>`.
+Do not implement code, silently approve a plan, overwrite an approved plan, or mutate current graph/verification artifacts while planning. Semantic anchors are canonical XML tags, never attributes.
 </hard_rules>
 </skill>

@@ -20,8 +20,10 @@ For longer autonomous runs, verification is also an autonomy gate. It must prove
 
 The `.grace/verification/` directory holds one or more VD-* verification documents. Each VD-* document wraps V-M-* entries. The `index.xml` maps VD-* routes to their document paths.
 
-Each V-M-* entry contains:
+Each `V-M-*` entry may contain:
 
+- `<Cwd>` - one contained project-relative command working directory
+- `<TestFiles><File>...</File></TestFiles>` - exact project-root-relative test paths
 - `<Command>` - module-local verification command
 - `<Scenario>` - named success or failure behavior
 - `<Marker>` - required log markers for trace assertions
@@ -31,20 +33,15 @@ Each V-M-* entry contains:
 Example:
 
 ```xml
-<V-M-CHATS MODULE="M-CHATS" PRIORITY="high">
-  <test-files>
-    <file>apps/server/src/chat/index.test.ts</file>
-  </test-files>
-  <module-checks>
-    <check-1>bun test apps/server/src/chat/index.test.ts</check-1>
-  </module-checks>
-  <scenarios>
-    <scenario-1 kind="success">Generated title is assigned only when the chat is still untitled.</scenario-1>
-    <scenario-2 kind="failure">Ownership failure rejects the mutation.</scenario-2>
-  </scenarios>
-  <required-log-markers>
-    <marker-1>[ChatDomain][setGeneratedTitleIfEmpty][BLOCK_ASSIGN_GENERATED_TITLE]</marker-1>
-  </required-log-markers>
+<V-M-CHATS>
+  <Cwd>apps/server</Cwd>
+  <TestFiles>
+    <File>apps/server/src/chat/index.test.ts</File>
+  </TestFiles>
+  <Command>bun test src/chat/index.test.ts</Command>
+  <Scenario>Generated title is assigned only when the chat is still untitled.</Scenario>
+  <Scenario>Ownership failure rejects the mutation.</Scenario>
+  <Marker>[ChatDomain][setGeneratedTitleIfEmpty][BLOCK_ASSIGN_GENERATED_TITLE]</Marker>
 </V-M-CHATS>
 ```
 
@@ -84,6 +81,8 @@ logger.info("[ChatDomain][createChat][BLOCK_INSERT_CHAT] Chat created", {
 - **Phase level**: broader regression and integrity gates
 
 Execution packets in `grace-execute` should reuse these levels instead of inventing new checks ad hoc.
+
+Plan assertions use distinct evidence moments: `current` validates durable project state, selected `baseline` must pass before edits, and selected `target` must pass before apply/archive. `MustPassCommand` is deliberately opt-in through `--run-commands`; command execution is never implied by parsing a plan.
 
 ## Autonomy Gate
 

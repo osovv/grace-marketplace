@@ -8,13 +8,23 @@ grace lint --explain scope.observed-write-overlap
 
 Use this when a CI run or reviewer mentions a specific lint code and you want the built-in explanation plus remediation path.
 
-## Validate a Project With Remediation Output
+## Validate Current State and a Selected Change
 
 ```bash
-grace lint --path /path/to/project --remediate --fail-on warnings
+grace lint --path /path/to/project --assertions current --remediate --fail-on warnings
+grace lint --path /path/to/project --change C-ADD-AUTH --assertions baseline
+grace lint --path /path/to/project --change C-ADD-AUTH --assertions target --run-commands
 ```
 
-This is the fast preflight before parallel-safe execution. The `--remediate` flag expands each issue with explanation and fix hints.
+Current mode validates durable state. Baseline and target modes require one approved identity-matched active change. `MustPassCommand` remains unevaluated unless `--run-commands` is supplied.
+
+## Parallel-Safe Preflight
+
+```bash
+grace lint --path /path/to/project --parallel-preflight
+```
+
+Use this explicit gate before parallel-safe execution. It rejects unsupported scope syntax and conflicting approved-plan durable or observed scopes; ordinary lint still reports coexistence diagnostics without pretending that parallel execution was requested.
 
 ## Project Health With Module Summaries
 
@@ -33,3 +43,5 @@ grace verification show V-M-AUTH --path /path/to/project
 ```
 
 Use these commands when you want to narrow from project-level health to one module or one verification entry.
+
+Navigation loads Artifact Grammar and routed projections before returning records. JSON failures are a single stable error envelope on stdout; text failures are concise, actionable, stack-free messages with a nonzero exit code.

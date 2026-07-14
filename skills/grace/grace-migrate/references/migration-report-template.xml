@@ -1,6 +1,17 @@
-<GraceMigrationReport graceVersion="4.0">
-  <Source>GRACE 3 legacy docs</Source>
-  <GeneratedGrace4Layout>
+<GraceMigrationReport graceVersion="4.0" status="draft">
+  <SourceInventory complete="false">
+    <Source path="$LEGACY_SOURCE_PATH" disposition="$GRACE4_DESTINATION_OR_REASON" />
+  </SourceInventory>
+  <Backup restorable="false">
+    <Path>$BACKUP_PATH_OUTSIDE_CLEANUP_SET</Path>
+    <CreatedAt>$ISO_8601_TIMESTAMP</CreatedAt>
+    <Verification>$BACKUP_VERIFICATION_EVIDENCE</Verification>
+  </Backup>
+  <WriteApproval approved="false">
+    <ConfirmedBy>$CONFIRMER</ConfirmedBy>
+    <ConfirmedAt>$ISO_8601_TIMESTAMP</ConfirmedAt>
+  </WriteApproval>
+  <GeneratedGrace4Layout coverageVerified="false">
     <Context>.grace/context</Context>
     <Graph>.grace/graph</Graph>
     <Verification>.grace/verification</Verification>
@@ -10,14 +21,18 @@
     <Ambiguity>$AMBIGUITY</Ambiguity>
   </Ambiguities>
   <UnsupportedStructures>
-    <Unsupported>$UNSUPPORTED_STRUCTURE</Unsupported>
+    <Unsupported source="$LEGACY_SOURCE_PATH">$UNSUPPORTED_STRUCTURE</Unsupported>
   </UnsupportedStructures>
-  <ProposedCleanup>
-    <Item>$LEGACY_FILE_OR_ACTION</Item>
-  </ProposedCleanup>
-  <Validation>
-    <Command>grace lint --path $PROJECT_ROOT</Command>
-    <Command>grace status --path $PROJECT_ROOT</Command>
+  <Validation successful="false">
+    <Check command="grace lint --path $PROJECT_ROOT --assertions current" exitCode="$EXIT_CODE">$RESULT</Check>
+    <Check command="grace status --path $PROJECT_ROOT --json" exitCode="$EXIT_CODE">$RESULT</Check>
   </Validation>
-  <CleanupConfirmationRequired>true</CleanupConfirmationRequired>
+  <CleanupProposal approved="false">
+    <Item path="$EXACT_INVENTORIED_LEGACY_PATH" action="$ARCHIVE_OR_DELETE" />
+    <ConfirmedBy>$CONFIRMER</ConfirmedBy>
+    <ConfirmedAt>$ISO_8601_TIMESTAMP</ConfirmedAt>
+  </CleanupProposal>
+  <CleanupResults performed="false">
+    <Item path="$EXACT_INVENTORIED_LEGACY_PATH" action="$ARCHIVE_OR_DELETE" result="$RESULT" />
+  </CleanupResults>
 </GraceMigrationReport>
