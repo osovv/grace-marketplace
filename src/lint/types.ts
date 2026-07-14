@@ -78,6 +78,7 @@ export type LanguageAnalysis = {
   exports: Set<string>;
   valueExports: Set<string>;
   typeExports: Set<string>;
+  localSymbols: Set<string>;
   exportConfidence: "exact" | "heuristic";
   hasDefaultExport: boolean;
   hasWildcardReExport: boolean;

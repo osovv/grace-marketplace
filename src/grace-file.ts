@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 
 import { loadGraceArtifactIndex, resolveGovernedFile } from "./query/core";
+import { GraceCommandError, runQueryCommand } from "./query/errors";
 import { formatFileText } from "./query/render";
 import type { GraceArtifactIndex } from "./query/types";
 
@@ -12,7 +13,7 @@ function loadGrace4IndexOrThrow(root: string): GraceArtifactIndex {
 function resolveFormat(format: unknown, json: unknown) {
   const resolved = Boolean(json) ? "json" : String(format ?? "text");
   if (resolved !== "text" && resolved !== "json") {
-    throw new Error(`Unsupported format \`${resolved}\`. Use \`text\` or \`json\`.`);
+    throw new GraceCommandError("invalid-arguments", `Unsupported format \`${resolved}\`. Use \`text\` or \`json\`.`);
   }
 
   return resolved;
@@ -32,6 +33,7 @@ export const fileCommand = defineCommand({
       args: {
         target: {
           type: "positional",
+          required: false,
           description: "Governed file path",
         },
         path: {
@@ -63,21 +65,18 @@ export const fileCommand = defineCommand({
         },
       },
       async run(context) {
-        const format = resolveFormat(context.args.format, context.args.json);
-        const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
-        const fileRecord = resolveGovernedFile(index, String(context.args.target));
-
-        if (format === "json") {
-          process.stdout.write(`${JSON.stringify(fileRecord, null, 2)}\n`);
-          return;
-        }
-
-        process.stdout.write(
-          `${formatFileText(fileRecord, {
-            includeContracts: Boolean(context.args.contracts),
-            includeBlocks: Boolean(context.args.blocks),
-          })}\n`,
-        );
+        const errorFormat = Boolean(context.args.json) || context.args.format === "json" ? "json" : "text";
+        await runQueryCommand(errorFormat, () => {
+          const format = resolveFormat(context.args.format, context.args.json);
+          const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
+          const fileRecord = resolveGovernedFile(index, context.args.target == null ? "" : String(context.args.target));
+          process.stdout.write(format === "json"
+            ? `${JSON.stringify(fileRecord, null, 2)}\n`
+            : `${formatFileText(fileRecord, {
+              includeContracts: Boolean(context.args.contracts),
+              includeBlocks: Boolean(context.args.blocks),
+            })}\n`);
+        });
       },
     }),
   },

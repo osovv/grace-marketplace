@@ -50,8 +50,14 @@ function writeMinimalGrace4Project(root: string) {
     `// START_MODULE_CONTRACT
 //   PURPOSE: Example runtime.
 //   SCOPE: Small fixture.
+//   DEPENDS: none
 //   LINKS: M-EXAMPLE
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
 // END_MODULE_CONTRACT
+// START_MODULE_MAP
+//   run - Execute the example runtime.
+// END_MODULE_MAP
 export function run() {
   console.info("[Example][run][BLOCK_RUN] run");
   // START_BLOCK_RUN

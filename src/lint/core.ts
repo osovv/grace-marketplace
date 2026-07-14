@@ -8,7 +8,7 @@ import { buildGraphProjection, buildVerificationProjection, type GraphProjection
 import { collectActiveChangeScopes, createDurableOwnershipIndex, detectScopeOverlaps, detectUnsafeConcurrentExecution } from "../grace4/scope";
 import { ANCHOR_PATTERNS, type Grace4Issue, type Grace4ProjectPaths } from "../grace4/types";
 import { readGraceXmlArtifact } from "../grace4/xml";
-import { collectCodeFiles, hasGraceMarkers } from "../project-utils";
+import { analyzeGovernedFile, collectCodeFiles, hasGraceMarkers } from "../project-utils";
 import { withLintIssueGuide } from "./catalog";
 import { loadGraceLintConfig } from "./config";
 import type { LintIssue, LintOptions, LintProfile, LintResult } from "./types";
@@ -58,18 +58,27 @@ function finalizeResult(result: LintResult): LintResult {
   return result;
 }
 
-function countGovernedFiles(root: string) {
+function validateGovernedFiles(result: LintResult, root: string): void {
   const { config, issues } = loadGraceLintConfig(root);
+  for (const configIssue of issues) {
+    addIssue(result, configIssue);
+  }
   if (issues.some((issue) => issue.severity === "error")) {
-    return { filesChecked: 0, governedFiles: 0, configIssues: issues };
+    return;
   }
 
   const files = collectCodeFiles(root, [".grace", ...(config?.ignoredDirs ?? [])]);
-  return {
-    filesChecked: files.length,
-    governedFiles: files.filter((file) => hasGraceMarkers(readText(file))).length,
-    configIssues: issues,
-  };
+  result.filesChecked = files.length;
+  for (const file of files) {
+    const text = readText(file);
+    if (!hasGraceMarkers(text)) {
+      continue;
+    }
+    result.governedFiles += 1;
+    for (const issue of analyzeGovernedFile(root, file, text).issues) {
+      addIssue(result, issue);
+    }
+  }
 }
 
 function readText(file: string) {
@@ -223,12 +232,7 @@ export function lintGraceProject(projectRoot: string, options: LintOptions = {})
   const result = createResult(root, profile, options);
   const kind = detectGraceProjectKind(root);
 
-  const fileCounts = countGovernedFiles(root);
-  result.filesChecked = fileCounts.filesChecked;
-  result.governedFiles = fileCounts.governedFiles;
-  for (const configIssue of fileCounts.configIssues) {
-    addIssue(result, configIssue);
-  }
+  validateGovernedFiles(result, root);
 
   if (kind === "grace3") {
     addIssue(result, {

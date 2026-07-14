@@ -24,6 +24,12 @@ export const CODE_EXTENSIONS: ReadonlySet<string> = new Set([
   ".dart",
 ]);
 
+/** Extensions with a registered language adapter and export/local analysis support. */
+export const ADAPTER_BACKED_EXTENSIONS: ReadonlySet<string> = new Set([
+  ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts",
+  ".py", ".pyi", ".dart",
+]);
+
 /**
  * Language adapters registered with the linter, in order.
  * The first adapter whose supports() returns true for a given file is used.

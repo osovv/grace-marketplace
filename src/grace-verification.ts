@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 
 import { findVerifications, loadGraceArtifactIndex, resolveVerification } from "./query/core";
+import { GraceCommandError, runQueryCommand } from "./query/errors";
 import { formatVerificationFindTable, formatVerificationText } from "./query/render";
 import type { GraceArtifactIndex } from "./query/types";
 
@@ -12,7 +13,7 @@ function loadGrace4IndexOrThrow(root: string): GraceArtifactIndex {
 function resolveFormat(format: unknown, json: unknown, allowed: string[], defaultFormat: string) {
   const resolved = Boolean(json) ? "json" : String(format ?? defaultFormat);
   if (!allowed.includes(resolved)) {
-    throw new Error(`Unsupported format \`${resolved}\`. Use ${allowed.map((value) => `\`${value}\``).join(" or ")}.`);
+    throw new GraceCommandError("invalid-arguments", `Unsupported format \`${resolved}\`. Use ${allowed.map((value) => `\`${value}\``).join(" or ")}.`);
   }
 
   return resolved;
@@ -62,20 +63,17 @@ export const verificationCommand = defineCommand({
         },
       },
       async run(context) {
-        const format = resolveFormat(context.args.format, context.args.json, ["table", "json"], "table");
-        const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
-        const matches = findVerifications(index, {
-          query: context.args.query ? String(context.args.query) : undefined,
-          module: context.args.module ? String(context.args.module) : undefined,
-          priority: context.args.priority ? String(context.args.priority) : undefined,
+        const errorFormat = Boolean(context.args.json) || context.args.format === "json" ? "json" : "text";
+        await runQueryCommand(errorFormat, () => {
+          const format = resolveFormat(context.args.format, context.args.json, ["table", "json"], "table");
+          const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
+          const matches = findVerifications(index, {
+            query: context.args.query ? String(context.args.query) : undefined,
+            module: context.args.module ? String(context.args.module) : undefined,
+            priority: context.args.priority ? String(context.args.priority) : undefined,
+          });
+          process.stdout.write(format === "json" ? `${JSON.stringify(matches, null, 2)}\n` : `${formatVerificationFindTable(matches)}\n`);
         });
-
-        if (format === "json") {
-          process.stdout.write(`${JSON.stringify(matches, null, 2)}\n`);
-          return;
-        }
-
-        process.stdout.write(`${formatVerificationFindTable(matches)}\n`);
       },
     }),
     show: defineCommand({
@@ -86,6 +84,7 @@ export const verificationCommand = defineCommand({
       args: {
         target: {
           type: "positional",
+          required: false,
           description: "Verification id or module target",
         },
         path: {
@@ -107,16 +106,13 @@ export const verificationCommand = defineCommand({
         },
       },
       async run(context) {
-        const format = resolveFormat(context.args.format, context.args.json, ["text", "json"], "text");
-        const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
-        const match = resolveVerification(index, String(context.args.target));
-
-        if (format === "json") {
-          process.stdout.write(`${JSON.stringify(match, null, 2)}\n`);
-          return;
-        }
-
-        process.stdout.write(`${formatVerificationText(match)}\n`);
+        const errorFormat = Boolean(context.args.json) || context.args.format === "json" ? "json" : "text";
+        await runQueryCommand(errorFormat, () => {
+          const format = resolveFormat(context.args.format, context.args.json, ["text", "json"], "text");
+          const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
+          const match = resolveVerification(index, context.args.target == null ? "" : String(context.args.target));
+          process.stdout.write(format === "json" ? `${JSON.stringify(match, null, 2)}\n` : `${formatVerificationText(match)}\n`);
+        });
       },
     }),
   },

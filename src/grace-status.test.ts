@@ -49,8 +49,14 @@ function writeMinimalGrace4Project(root: string) {
     `// START_MODULE_CONTRACT
 //   PURPOSE: Example runtime.
 //   SCOPE: Small fixture.
+//   DEPENDS: none
 //   LINKS: M-EXAMPLE
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
 // END_MODULE_CONTRACT
+// START_MODULE_MAP
+//   run - Execute the example runtime.
+// END_MODULE_MAP
 export function run() {
   console.info("[Example][run][BLOCK_RUN] run");
   // START_BLOCK_RUN
@@ -65,11 +71,19 @@ export function run() {
 function writeChange(root: string, changeId: string, options: { location?: "active" | "archive"; specStatus: string; planStatus: string; file?: string; baselineAssertion?: string }) {
   const location = options.location ?? "active";
   const bundle = `.grace/changes/${location}/${changeId}`;
-  writeProjectFile(root, `${bundle}/spec.xml`, `<GraceChangeSpec graceVersion="4.0" status="${options.specStatus}"><${changeId}><Summary>Change.</Summary><Goals><Goal>Apply the change.</Goal></Goals><NonGoals><NonGoal>Unrelated work.</NonGoal></NonGoals><AcceptanceCriteria><Criterion>The change is verified.</Criterion></AcceptanceCriteria><AffectedAreas><M-EXAMPLE /></AffectedAreas><VerificationIntent><ExpectedCommand>bun test</ExpectedCommand><ExpectedEvidence>Passing tests.</ExpectedEvidence></VerificationIntent></${changeId}></GraceChangeSpec>`);
+  writeProjectFile(root, `${bundle}/spec.xml`, `<GraceChangeSpec graceVersion="4.0" status="${options.specStatus}"><${changeId}><Summary>Change.</Summary><Goals><Goal>Apply the change.</Goal></Goals><Constraints><Constraint>Preserve project validity.</Constraint></Constraints><NonGoals><NonGoal>Unrelated work.</NonGoal></NonGoals><AcceptanceCriteria><Criterion>The change is verified.</Criterion></AcceptanceCriteria><AffectedAreas><M-EXAMPLE /></AffectedAreas><VerificationIntent><ExpectedCommand>bun test</ExpectedCommand><ExpectedEvidence>Passing tests.</ExpectedEvidence></VerificationIntent></${changeId}></GraceChangeSpec>`);
   writeProjectFile(
     root,
     `${bundle}/plan.xml`,
-    `<GraceChangePlan graceVersion="4.0" status="${options.planStatus}"><${changeId}><IntentSummary>Apply the change.</IntentSummary><BaselineAssertions>${options.baselineAssertion ?? ""}</BaselineAssertions><TargetAssertions></TargetAssertions><DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>${options.file ?? "src/example.ts"}</File></ObservedWriteScope><ImplementationPlan><T-001><Title>Apply change</Title><AcceptanceCriteria><Criterion>The change is complete.</Criterion></AcceptanceCriteria><Verification><Command>bun test</Command></Verification></T-001></ImplementationPlan></${changeId}></GraceChangePlan>`,
+    `<GraceChangePlan graceVersion="4.0" status="${options.planStatus}"><${changeId}><IntentSummary>Apply the change.</IntentSummary><BaselineAssertions>${options.baselineAssertion ?? "<MustExist><Value>M-EXAMPLE</Value></MustExist>"}</BaselineAssertions><TargetAssertions><MustVerify><Module>M-EXAMPLE</Module></MustVerify></TargetAssertions><DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>${options.file ?? "src/example.ts"}</File></ObservedWriteScope><ImplementationPlan><T-001><Title>Apply change</Title><DependsOn></DependsOn><AcceptanceCriteria><Criterion>The change is complete.</Criterion></AcceptanceCriteria><Verification><Command>bun test</Command></Verification></T-001></ImplementationPlan></${changeId}></GraceChangePlan>`,
+  );
+}
+
+function writeSpecOnly(root: string, changeId: string, status: "draft" | "approved") {
+  writeProjectFile(
+    root,
+    `.grace/changes/active/${changeId}/spec.xml`,
+    `<GraceChangeSpec graceVersion="4.0" status="${status}"><${changeId}><Summary>Spec only.</Summary><Goals><Goal>Plan later.</Goal></Goals><Constraints><Constraint>Preserve validity.</Constraint></Constraints><NonGoals><NonGoal>Unrelated work.</NonGoal></NonGoals><AcceptanceCriteria><Criterion>The spec is tracked.</Criterion></AcceptanceCriteria><AffectedAreas><M-EXAMPLE /></AffectedAreas><VerificationIntent><ExpectedCommand>bun test</ExpectedCommand></VerificationIntent></${changeId}></GraceChangeSpec>`,
   );
 }
 
@@ -93,6 +107,7 @@ describe("grace status", () => {
     expect(result.summary.verificationEntries).toBe(1);
     expect(result.summary.readyModules).toBe(1);
     expect(result.nextAction).toContain("$grace-spec");
+    expect(result.observedDrift.available).toBe(false);
   });
 
   it("lists active and archived change bundles with statuses in JSON shape", () => {
@@ -158,8 +173,40 @@ describe("grace status", () => {
 
     const result = collectProjectStatus(root);
     expect(result.changes.find((change) => change.changeId === "C-STALE")?.derivedStates).toContain("stale-plan");
+    expect(result.changes.find((change) => change.changeId === "C-STALE")?.derivedStates).not.toContain("ready-to-execute");
     expect(result.derivedStates).toContain("stale-plan");
     expect(result.nextAction).toContain("Supersede and replan");
+  });
+
+  it("never marks an integrity-invalid approved plan ready to execute", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeChange(root, "C-INVALID", { specStatus: "approved", planStatus: "approved" });
+    const planFile = ".grace/changes/active/C-INVALID/plan.xml";
+    writeProjectFile(
+      root,
+      planFile,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-INVALID><IntentSummary>Invalid.</IntentSummary><BaselineAssertions><MustExist><Value>M-EXAMPLE</Value></MustExist></BaselineAssertions><TargetAssertions><MustVerify><Module>M-EXAMPLE</Module></MustVerify></TargetAssertions><DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>src/example.ts</File></ObservedWriteScope><ImplementationPlan><T-001><Title>Invalid task</Title><DependsOn></DependsOn><AcceptanceCriteria><Criterion>Never ready.</Criterion></AcceptanceCriteria><Verification /></T-001></ImplementationPlan></C-INVALID></GraceChangePlan>`,
+    );
+
+    const change = collectProjectStatus(root).changes.find((entry) => entry.changeId === "C-INVALID")!;
+    expect(change.derivedStates).toContain("integrity-issues");
+    expect(change.derivedStates).not.toContain("ready-to-execute");
+  });
+
+  it("treats approved spec-only bundles as needing planning and draft spec-only bundles as normal drafts", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeSpecOnly(root, "C-APPROVED-SPEC", "approved");
+    writeSpecOnly(root, "C-DRAFT-SPEC", "draft");
+
+    const result = collectProjectStatus(root);
+    const approved = result.changes.find((change) => change.changeId === "C-APPROVED-SPEC")!;
+    const draft = result.changes.find((change) => change.changeId === "C-DRAFT-SPEC")!;
+    expect(approved.derivedStates).toContain("needs-plan");
+    expect(approved.derivedStates).not.toContain("integrity-issues");
+    expect(draft.derivedStates).toContain("draft-spec");
+    expect(draft.derivedStates).not.toContain("integrity-issues");
   });
 
   it("distinguishes observed writes explained by approved scopes from unexplained git drift", () => {
@@ -182,6 +229,41 @@ describe("grace status", () => {
     expect(result.observedDrift.unexplainedFiles).toContain("unplanned.txt");
     expect(result.derivedStates).toContain("explained-observed-drift");
     expect(result.derivedStates).toContain("unexplained-observed-drift");
+  });
+
+  it("attributes graph drift only to the exact declared document or owning anchor route", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(root, ".grace/graph/index.xml", `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns><M-EXAMPLE /></Owns></GD-MAIN><GD-OTHER><Path>graph/other.xml</Path><Owns><M-OTHER /></Owns></GD-OTHER></GraphDocuments></GraceGraphIndex>`);
+    writeProjectFile(root, ".grace/graph/other.xml", `<GraceGraphDocument graceVersion="4.0"><GD-OTHER><M-OTHER><Summary>Other.</Summary></M-OTHER></GD-OTHER></GraceGraphDocument>`);
+    writeProjectFile(root, ".grace/verification/index.xml", `<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-EXAMPLE /></Owns></VD-MAIN><VD-OTHER><Path>verification/other.xml</Path><Owns><V-M-OTHER /></Owns></VD-OTHER></VerificationDocuments></GraceVerificationIndex>`);
+    writeProjectFile(root, ".grace/verification/other.xml", `<GraceVerificationDocument graceVersion="4.0"><VD-OTHER><V-M-OTHER><Scenario>Other works.</Scenario></V-M-OTHER></VD-OTHER></GraceVerificationDocument>`);
+    writeChange(root, "C-ROUTED-DRIFT", { specStatus: "approved", planStatus: "approved" });
+    runGit(root, ["init"]);
+    runGit(root, ["config", "user.email", "grace@example.test"]);
+    runGit(root, ["config", "user.name", "GRACE Test"]);
+    runGit(root, ["config", "commit.gpgsign", "false"]);
+    runGit(root, ["config", "core.hooksPath", "/dev/null"]);
+    runGit(root, ["add", "."]);
+    runGit(root, ["commit", "-m", "test: baseline"]);
+    writeProjectFile(root, ".grace/graph/main.xml", `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-EXAMPLE><Summary>Changed main.</Summary></M-EXAMPLE></GD-MAIN></GraceGraphDocument>`);
+    writeProjectFile(root, ".grace/graph/other.xml", `<GraceGraphDocument graceVersion="4.0"><GD-OTHER><M-OTHER><Summary>Changed other.</Summary></M-OTHER></GD-OTHER></GraceGraphDocument>`);
+
+    const drift = collectProjectStatus(root).observedDrift;
+    expect(drift.explainedFiles).toContain(".grace/graph/main.xml");
+    expect(drift.unexplainedFiles).toContain(".grace/graph/other.xml");
+  });
+
+  it("reports invalid projections through integrity without crashing or producing healthy module counts", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(root, ".grace/graph/main.xml", `<GraceRequirements graceVersion="4.0"><GD-MAIN /></GraceRequirements>`);
+
+    const result = collectProjectStatus(root, { includeModules: true });
+    expect(result.integrity.errors).toBeGreaterThan(0);
+    expect(result.integrity.topIssues.some((entry) => entry.includes("artifact.unexpected-root-tag"))).toBe(true);
+    expect(result.summary.readyModules).toBe(0);
+    expect(result.moduleHealthLoadError).toContain("GRACE artifacts are invalid");
   });
 
   it("reports GRACE 3 projects as migration candidates without loading docs as healthy", () => {

@@ -1,6 +1,12 @@
-import { describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { describe, expect, it, test } from "bun:test";
 
 import { createDartAdapter } from "./dart";
+
+const hasDart = (() => {
+  const result = spawnSync("dart", ["--version"], { stdio: "ignore" });
+  return !result.error && result.status === 0;
+})();
 
 describe("DartAdapter.supports", () => {
   const adapter = createDartAdapter();
@@ -46,5 +52,13 @@ describe("DartAdapter", () => {
       // Accept any meaningful error — either "not on PATH" or "no version" from asdf/mise
       expect(msg.length).toBeGreaterThan(0);
     }
+  });
+
+  test.skipIf(!hasDart)("runs a real temporary analyzer file when Dart is available", () => {
+    const result = adapter.analyze("example.dart", "class Greeting {}\nvoid greet() {}\n");
+    expect(result.adapterId).toBe("dart");
+    expect(result.exports.has("Greeting")).toBe(true);
+    expect(result.exports.has("greet")).toBe(true);
+    expect(result.exportConfidence).toBe("heuristic");
   });
 });

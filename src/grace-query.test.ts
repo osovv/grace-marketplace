@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "bun:test";
 
 import { findModules, findVerifications, loadGraceArtifactIndex, resolveGovernedFile, resolveModule, resolveVerification } from "./query/core";
+import { GraceCommandError } from "./query/errors";
 import { buildModuleHealth } from "./query/health";
 
 function createProject() {
@@ -17,7 +18,18 @@ function writeProjectFile(root: string, relativePath: string, contents: string) 
   writeFileSync(filePath, contents);
 }
 
+function writeProjectSkeleton(root: string) {
+  writeProjectFile(root, ".grace/context/requirements.xml", `<GraceRequirements graceVersion="4.0"><Summary>Required.</Summary></GraceRequirements>`);
+  writeProjectFile(root, ".grace/context/technology.xml", `<GraceTechnology graceVersion="4.0"><Runtime>Bun</Runtime></GraceTechnology>`);
+  writeProjectFile(root, ".grace/context/principles.xml", `<GracePrinciples graceVersion="4.0"><Principle>Safe.</Principle></GracePrinciples>`);
+  writeProjectFile(root, ".grace/context/deployment.xml", `<GraceDeployment graceVersion="4.0"><Applicability>applicable</Applicability></GraceDeployment>`);
+  writeProjectFile(root, ".grace/context/ux-guidelines.xml", `<GraceUXGuidelines graceVersion="4.0"><Applicability>applicable</Applicability></GraceUXGuidelines>`);
+  mkdirSync(path.join(root, ".grace", "changes", "active"), { recursive: true });
+  mkdirSync(path.join(root, ".grace", "changes", "archive"), { recursive: true });
+}
+
 function writeGrace4Artifacts(root: string) {
+  writeProjectSkeleton(root);
   writeProjectFile(
     root,
     ".grace/graph/index.xml",
@@ -31,12 +43,12 @@ function writeGrace4Artifacts(root: string) {
   writeProjectFile(
     root,
     ".grace/verification/index.xml",
-    `<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-PROVIDER-PERSIST /></Owns></VD-MAIN></VerificationDocuments></GraceVerificationIndex>`,
+    `<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-DB /><V-M-PROVIDER-PERSIST /></Owns></VD-MAIN></VerificationDocuments></GraceVerificationIndex>`,
   );
   writeProjectFile(
     root,
     ".grace/verification/main.xml",
-    `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-PROVIDER-PERSIST><Priority>high</Priority><Command>bun test src/provider/config-repo.test.ts</Command><Scenario>Reads and writes provider config records.</Scenario><Marker>[ProviderConfigPersistence][getProviderConfig][BLOCK_GET_PROVIDER_CONFIG]</Marker></V-M-PROVIDER-PERSIST></VD-MAIN></GraceVerificationDocument>`,
+    `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-DB><Scenario>Database client is available.</Scenario></V-M-DB><V-M-PROVIDER-PERSIST><Priority>high</Priority><Command>bun test src/provider/config-repo.test.ts</Command><Scenario>Reads and writes provider config records.</Scenario><Marker>[ProviderConfigPersistence][getProviderConfig][BLOCK_GET_PROVIDER_CONFIG]</Marker></V-M-PROVIDER-PERSIST></VD-MAIN></GraceVerificationDocument>`,
   );
 }
 
@@ -134,7 +146,7 @@ describe("grace query core", () => {
       "src/provider/config-repo.test.ts",
       "src/provider/config-repo.ts",
     ]);
-    expect(index.issues.map((issue) => issue.code)).toContain("projection.verification.missing-module-coverage");
+    expect(index.issues.filter((issue) => issue.severity === "error")).toHaveLength(0);
   });
 
   it("finds modules through projection fields, dependencies, verification ids, and file-local paths", () => {
@@ -188,6 +200,7 @@ describe("grace query core", () => {
 
   it("collects explicit TestFiles/File from verification entries into query model", () => {
     const root = createProject();
+    writeProjectSkeleton(root);
     writeProjectFile(
       root,
       ".grace/graph/index.xml",
@@ -204,10 +217,12 @@ describe("grace query core", () => {
       '<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-EXAMPLE /></Owns></VD-MAIN></VerificationDocuments></GraceVerificationIndex>',
     );
     // Verification has both a Command with a test file reference AND explicit TestFiles/File tags
+    writeProjectFile(root, "apps/web/src/module-explicit.test.ts", "test\n");
+    writeProjectFile(root, "apps/web/src/module-additional.test.ts", "test\n");
     writeProjectFile(
       root,
       ".grace/verification/main.xml",
-      '<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><Cwd>apps/web</Cwd><Command>bun test src/module.test.ts</Command><TestFiles><File>src/module-explicit.test.ts</File><File>src/module-additional.test.ts</File></TestFiles><Scenario>example works</Scenario><Marker>[Example]</Marker></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>',
+      '<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><Cwd>apps/web</Cwd><Command>bun test src/module.test.ts</Command><TestFiles><File>apps/web/src/module-explicit.test.ts</File><File>apps/web/src/module-additional.test.ts</File></TestFiles><Scenario>example works</Scenario><Marker>[Example]</Marker></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>',
     );
 
     const index = loadGraceArtifactIndex(root);
@@ -215,12 +230,13 @@ describe("grace query core", () => {
     expect(resolved.verification.cwd).toBe("apps/web");
     // Test files should include both inferred (from command) AND explicit (from TestFiles)
     expect(resolved.verification.testFiles).toContain("apps/web/src/module.test.ts");
-    expect(resolved.verification.testFiles).toContain("src/module-explicit.test.ts");
-    expect(resolved.verification.testFiles).toContain("src/module-additional.test.ts");
+    expect(resolved.verification.testFiles).toContain("apps/web/src/module-explicit.test.ts");
+    expect(resolved.verification.testFiles).toContain("apps/web/src/module-additional.test.ts");
   });
 
   it("uses verification Cwd when checking monorepo test command references", () => {
     const root = createProject();
+    writeProjectSkeleton(root);
     writeProjectFile(root, ".grace/graph/index.xml", '<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns><M-WEB /></Owns></GD-MAIN></GraphDocuments></GraceGraphIndex>');
     writeProjectFile(root, ".grace/graph/main.xml", '<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-WEB><Summary>Web workspace.</Summary></M-WEB></GD-MAIN></GraceGraphDocument>');
     writeProjectFile(root, ".grace/verification/index.xml", '<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-WEB /></Owns></VD-MAIN></VerificationDocuments></GraceVerificationIndex>');
@@ -246,7 +262,99 @@ describe("grace query core", () => {
 
     const dbHealth = buildModuleHealth(index, resolveModule(index, "M-DB"));
     expect(dbHealth.state).toBe("blocked");
-    expect(dbHealth.nextAction).toContain("$grace-verification");
+    expect(dbHealth.blockers.map((blocker) => blocker.code)).toContain("health.verification-missing-commands");
+  });
+
+  it("fails closed before returning records from invalid grammar or projections", () => {
+    const wrongRoot = createQueryProject();
+    writeProjectFile(wrongRoot, ".grace/graph/main.xml", `<GraceRequirements graceVersion="4.0"><GD-MAIN /></GraceRequirements>`);
+    expect(() => loadGraceArtifactIndex(wrongRoot)).toThrow(GraceCommandError);
+    try {
+      loadGraceArtifactIndex(wrongRoot);
+    } catch (error) {
+      expect((error as GraceCommandError).code).toBe("invalid-project");
+      expect((error as GraceCommandError).issues).toContain("artifact.unexpected-root-tag");
+    }
+
+    const duplicateOwns = createQueryProject();
+    writeProjectFile(
+      duplicateOwns,
+      ".grace/graph/index.xml",
+      `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns><M-DB /><M-DB /><M-PROVIDER-PERSIST /></Owns></GD-MAIN></GraphDocuments></GraceGraphIndex>`,
+    );
+    expect(() => loadGraceArtifactIndex(duplicateOwns)).toThrow(
+      expect.objectContaining({ code: "invalid-project", issues: expect.arrayContaining(["projection.graph.duplicate-route"]) }),
+    );
+  });
+
+  it("returns one structured JSON error and one concise text error without stack traces", () => {
+    const root = createQueryProject();
+    writeProjectFile(root, ".grace/graph/main.xml", `<GraceRequirements graceVersion="4.0"><GD-MAIN /></GraceRequirements>`);
+    const repoRoot = path.resolve(import.meta.dir, "..");
+
+    const jsonResult = Bun.spawnSync({
+      cmd: [process.execPath, "./src/grace.ts", "module", "find", "provider", "--path", root, "--json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(jsonResult.exitCode).not.toBe(0);
+    const stdout = Buffer.from(jsonResult.stdout).toString("utf8").trim();
+    const envelope = JSON.parse(stdout);
+    expect(envelope).toEqual(expect.objectContaining({ schemaVersion: "1.0.0", ok: false }));
+    expect(envelope.error.code).toBe("invalid-project");
+    expect(stdout.split("\n")).toHaveLength(1);
+
+    const textResult = Bun.spawnSync({
+      cmd: [process.execPath, "./src/grace.ts", "file", "show", "src/provider/config-repo.ts", "--path", root],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(textResult.exitCode).not.toBe(0);
+    const textError = Buffer.from(textResult.stderr).toString("utf8").trim();
+    expect(textError).toContain("GRACE artifacts are invalid");
+    expect(textError).not.toContain("GraceCommandError");
+    expect(textError).not.toMatch(/\n\s+at\s/);
+  });
+
+  it("uses nonzero typed failures for not-found and invalid-argument query commands", () => {
+    const root = createQueryProject();
+    const repoRoot = path.resolve(import.meta.dir, "..");
+    const notFound = Bun.spawnSync({
+      cmd: [process.execPath, "./src/grace.ts", "verification", "show", "V-M-MISSING", "--path", root, "--json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(notFound.exitCode).not.toBe(0);
+    expect(JSON.parse(Buffer.from(notFound.stdout).toString("utf8")).error.code).toBe("not-found");
+
+    const invalidArguments = Bun.spawnSync({
+      cmd: [process.execPath, "./src/grace.ts", "module", "show", "--path", root, "--json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(invalidArguments.exitCode).not.toBe(0);
+    expect(JSON.parse(Buffer.from(invalidArguments.stdout).toString("utf8")).error.code).toBe("invalid-arguments");
+  });
+
+  it("classifies tied path resolution as an ambiguous-target failure", () => {
+    const index = loadGraceArtifactIndex(createQueryProject());
+    const provider = resolveModule(index, "M-PROVIDER-PERSIST");
+    index.modules.push({
+      ...provider,
+      id: "M-PROVIDER-DUPLICATE",
+      graph: { ...provider.graph, id: "M-PROVIDER-DUPLICATE" },
+      localFiles: [],
+      verifications: [],
+      verification: null,
+    });
+
+    expect(() => resolveModule(index, "src/provider/config-repo.ts")).toThrow(
+      expect.objectContaining({ code: "ambiguous-target" }),
+    );
   });
 
   it("wires module, verification, health, and file query commands through the CLI", () => {

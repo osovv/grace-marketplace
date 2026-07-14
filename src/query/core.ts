@@ -1,16 +1,13 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { buildGraphProjection, buildVerificationProjection, type GraphAnchorRecord, type VerificationAnchorRecord } from "../grace4/projections";
+import { validateGrace4Project } from "../grace4/grammar";
 import { detectGraceProjectKind, formatGrace3MigrationGuidance, resolveGrace4Paths } from "../grace4/project";
-import { CODE_EXTENSIONS } from "../language-registry";
 import { loadGraceLintConfig } from "../lint/config";
+import { collectCodeFiles, hasGraceMarkers, parseGovernedFile, type FileMarkupRecord } from "../project-utils";
+import { GraceCommandError } from "./errors";
 import type {
-  FileBlockRecord,
-  FileContractRecord,
-  FileFieldSection,
-  FileListItem,
-  FileMarkupRecord,
   GraceArtifactIndex,
   Grace4ModuleRecord,
   ModuleFindOptions,
@@ -23,20 +20,8 @@ import type {
   VerificationMatch,
 } from "./types";
 
-const DEFAULT_IGNORED_DIRS = new Set([".git", "node_modules", "dist", "build", "coverage", ".next", ".turbo", ".cache", ".grace"]);
-
-type MarkupSection = {
-  content: string;
-  startLine: number;
-  endLine: number;
-};
-
 function toPosixPath(filePath: string) {
   return filePath.replaceAll(path.sep, "/");
-}
-
-function normalizeRelative(root: string, filePath: string) {
-  return toPosixPath(path.relative(root, filePath) || ".");
 }
 
 function normalizeInputPath(root: string, input: string) {
@@ -49,198 +34,20 @@ function normalizeInputPath(root: string, input: string) {
   return toPosixPath(input);
 }
 
-function lineNumberAt(text: string, index: number) {
-  return text.slice(0, index).split("\n").length;
-}
-
-function splitList(text?: string) {
-  if (!text) {
-    return [];
-  }
-
-  return text
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0 && item.toLowerCase() !== "none");
-}
-
-function stripQuotedStrings(text: string) {
-  let result = "";
-  let quote: '"' | "'" | "`" | null = null;
-  let escaped = false;
-
-  for (const char of text) {
-    if (!quote) {
-      if (char === '"' || char === "'" || char === "`") {
-        quote = char;
-        result += " ";
-        continue;
-      }
-
-      result += char;
-      continue;
-    }
-
-    if (escaped) {
-      escaped = false;
-      result += char === "\n" ? "\n" : " ";
-      continue;
-    }
-
-    if (char === "\\") {
-      escaped = true;
-      result += " ";
-      continue;
-    }
-
-    if (char === quote) {
-      quote = null;
-      result += " ";
-      continue;
-    }
-
-    result += char === "\n" ? "\n" : " ";
-  }
-
-  return result;
-}
-
-function hasGraceMarkers(text: string) {
-  const searchable = stripQuotedStrings(text);
-  return searchable.split("\n").some((line) => /^\s*(\/\/|#|--|;+|\*)\s*(START_MODULE_CONTRACT|START_MODULE_MAP|START_CONTRACT:|START_BLOCK_|START_CHANGE_SUMMARY)/.test(line));
-}
-
-function collectCodeFiles(root: string, ignoredDirs: string[], currentDir = root): string[] {
-  const files: string[] = [];
-  const ignoredDirSet = new Set([...DEFAULT_IGNORED_DIRS, ...ignoredDirs]);
-  const entries = readdirSync(currentDir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      if (ignoredDirSet.has(entry.name)) {
-        continue;
-      }
-      files.push(...collectCodeFiles(root, ignoredDirs, path.join(currentDir, entry.name)));
-      continue;
-    }
-    if (!entry.isFile()) {
-      continue;
-    }
-
-    const filePath = path.join(currentDir, entry.name);
-    if (CODE_EXTENSIONS.has(path.extname(filePath))) {
-      files.push(filePath);
-    }
-  }
-
-  return files;
-}
-
-function stripCommentPrefix(line: string) {
-  return line.replace(/^\s*(\/\/|#|--|;+|\*)?\s*/, "");
-}
-
-function findSection(text: string, startMarker: string, endMarker: string) {
-  const startIndex = text.indexOf(startMarker);
-  const endIndex = text.indexOf(endMarker);
-  if (startIndex === -1 || endIndex === -1 || startIndex > endIndex) {
-    return null;
-  }
-
-  return {
-    content: text.slice(startIndex + startMarker.length, endIndex),
-    startLine: lineNumberAt(text, startIndex),
-    endLine: lineNumberAt(text, endIndex),
-  } satisfies MarkupSection;
-}
-
-function parseFieldSection(section: MarkupSection | null): FileFieldSection | null {
-  if (!section) {
-    return null;
-  }
-
-  const fields: Record<string, string> = {};
-  for (const line of section.content.split("\n")) {
-    const cleaned = stripCommentPrefix(line).trim();
-    if (!cleaned) {
-      continue;
-    }
-
-    const match = cleaned.match(/^([A-Z_]+):\s*(.+)$/);
-    if (match) {
-      fields[match[1]] = match[2].trim();
-    }
-  }
-
-  return { fields, startLine: section.startLine, endLine: section.endLine };
-}
-
-function parseListSection(section: MarkupSection | null) {
-  if (!section) {
-    return [] as FileListItem[];
-  }
-
-  return section.content
-    .split("\n")
-    .map((line, index) => ({ label: stripCommentPrefix(line).trim(), line: section.startLine + index }))
-    .filter((item) => item.label.length > 0);
-}
-
-function parseScopedFieldSections(text: string) {
-  const sections: FileContractRecord[] = [];
-  for (const match of text.matchAll(/START_CONTRACT:\s*([A-Za-z0-9_$.\-]+)([\s\S]*?)END_CONTRACT:\s*\1/g)) {
-    const startIndex = match.index ?? 0;
-    const endIndex = startIndex + match[0].length;
-    const section = parseFieldSection({
-      content: match[2] ?? "",
-      startLine: lineNumberAt(text, startIndex),
-      endLine: lineNumberAt(text, endIndex),
-    });
-    sections.push({ name: match[1], fields: section?.fields ?? {}, startLine: lineNumberAt(text, startIndex), endLine: lineNumberAt(text, endIndex) });
-  }
-  return sections;
-}
-
-function parseBlocks(text: string) {
-  const blocks: FileBlockRecord[] = [];
-  for (const match of text.matchAll(/START_BLOCK_([A-Za-z0-9_]+)([\s\S]*?)END_BLOCK_\1/g)) {
-    const startIndex = match.index ?? 0;
-    const endIndex = startIndex + match[0].length;
-    blocks.push({ name: match[1], startLine: lineNumberAt(text, startIndex), endLine: lineNumberAt(text, endIndex) });
-  }
-  return blocks;
-}
-
-function extractLinkedModuleIds(moduleContract: FileFieldSection | null) {
-  return splitList(moduleContract?.fields.LINKS).filter((item) => /^M-[A-Za-z0-9-]+$/.test(item));
-}
-
-function parseGovernedFile(root: string, filePath: string): FileMarkupRecord {
-  const text = readFileSync(filePath, "utf8");
-  const moduleContract = parseFieldSection(findSection(text, "START_MODULE_CONTRACT", "END_MODULE_CONTRACT"));
-  return {
-    path: normalizeRelative(root, filePath),
-    moduleContract,
-    moduleMap: parseListSection(findSection(text, "START_MODULE_MAP", "END_MODULE_MAP")),
-    changeSummary: parseFieldSection(findSection(text, "START_CHANGE_SUMMARY", "END_CHANGE_SUMMARY")),
-    contracts: parseScopedFieldSections(text),
-    blocks: parseBlocks(text),
-    linkedModuleIds: extractLinkedModuleIds(moduleContract),
-  };
-}
-
 function loadGovernedFiles(root: string) {
   const { config, issues } = loadGraceLintConfig(root);
   const configErrors = issues.filter((issue) => issue.severity === "error");
   if (configErrors.length > 0) {
-    throw new Error(configErrors.map((issue) => issue.message).join("\n"));
+    throw new GraceCommandError("invalid-project", "GRACE query configuration is invalid. Run `grace lint --path PROJECT` for details.", {
+      issues: configErrors.map((issue) => issue.code),
+    });
   }
 
   const files: FileMarkupRecord[] = [];
   for (const filePath of collectCodeFiles(root, config?.ignoredDirs ?? [])) {
     const text = readFileSync(filePath, "utf8");
     if (hasGraceMarkers(text)) {
-      files.push(parseGovernedFile(root, filePath));
+      files.push(parseGovernedFile(root, filePath, text));
     }
   }
   return files.sort((left, right) => left.path.localeCompare(right.path));
@@ -274,15 +81,24 @@ export function loadGraceArtifactIndex(projectRoot: string): GraceArtifactIndex 
   const root = path.resolve(projectRoot);
   const kind = detectGraceProjectKind(root);
   if (kind === "grace3") {
-    throw new Error(formatGrace3MigrationGuidance(root));
+    throw new GraceCommandError("invalid-project", formatGrace3MigrationGuidance(root), { issues: ["project.grace3-detected"] });
   }
   if (kind !== "grace4") {
-    throw new Error("No .grace directory found.");
+    throw new GraceCommandError("invalid-project", "No .grace directory found. Run the grace-init skill before querying this project.", { issues: ["project.missing-grace"] });
   }
 
   const paths = resolveGrace4Paths(root);
+  const validation = validateGrace4Project(root);
+  const validationErrors = validation.issues.filter((issue) => issue.severity === "error");
+  if (validationErrors.length > 0) {
+    throw invalidProjectError(validationErrors.map((issue) => issue.code));
+  }
   const graph = buildGraphProjection(paths);
   const verification = buildVerificationProjection(paths, graph);
+  const projectionErrors = [...graph.issues, ...verification.issues].filter((issue) => issue.severity === "error");
+  if (projectionErrors.length > 0) {
+    throw invalidProjectError(projectionErrors.map((issue) => issue.code));
+  }
   const governedFiles = loadGovernedFiles(root);
   const verifications = [...verification.entries.values()].map(toModuleVerificationRecord).sort((left, right) => left.id.localeCompare(right.id));
 
@@ -305,7 +121,15 @@ export function loadGraceArtifactIndex(projectRoot: string): GraceArtifactIndex 
       } satisfies Grace4ModuleRecord;
     });
 
-  return { root, graph, verification, modules, verifications, files: governedFiles, issues: [...graph.issues, ...verification.issues] };
+  return { root, graph, verification, modules, verifications, files: governedFiles, issues: [...validation.issues, ...graph.issues, ...verification.issues] };
+}
+
+function invalidProjectError(issueCodes: string[]): GraceCommandError {
+  return new GraceCommandError(
+    "invalid-project",
+    "GRACE artifacts are invalid; no navigation records were returned. Run `grace lint --path PROJECT` for details.",
+    { issues: [...new Set(issueCodes)].sort() },
+  );
 }
 
 function toModuleGraphRecord(record: GraphAnchorRecord): ModuleGraphRecord {
@@ -457,6 +281,9 @@ export function findModules(index: GraceArtifactIndex, options: ModuleFindOption
 
 export function resolveModule(index: GraceArtifactIndex, target: string) {
   const normalizedTarget = target.trim();
+  if (!normalizedTarget) {
+    throw new GraceCommandError("invalid-arguments", "A module id or path target is required.");
+  }
   const exactId = index.modules.find((moduleRecord) => moduleRecord.id.toLowerCase() === normalizedTarget.toLowerCase());
   if (exactId) {
     return exactId;
@@ -469,21 +296,25 @@ export function resolveModule(index: GraceArtifactIndex, target: string) {
     .sort((left, right) => right.score - left.score || left.module.id.localeCompare(right.module.id));
 
   if (candidates.length === 0) {
-    throw new Error(`No module found for \`${target}\`. Use \`grace module find ${target}\` to inspect candidates.`);
+    throw new GraceCommandError("not-found", `No module found for \`${target}\`. Use \`grace module find ${target}\` to inspect candidates.`);
   }
   const topScore = candidates[0].score;
   const tiedCandidates = candidates.filter((candidate) => candidate.score === topScore);
   if (tiedCandidates.length > 1) {
-    throw new Error(`Path \`${target}\` is ambiguous. Matching modules: ${tiedCandidates.map((candidate) => candidate.module.id).join(", ")}.`);
+    throw new GraceCommandError("ambiguous-target", `Path \`${target}\` is ambiguous. Matching modules: ${tiedCandidates.map((candidate) => candidate.module.id).join(", ")}.`);
   }
   return candidates[0].module;
 }
 
 export function resolveGovernedFile(index: GraceArtifactIndex, target: string) {
-  const normalizedTarget = normalizeInputPath(index.root, target.trim());
+  const trimmedTarget = target.trim();
+  if (!trimmedTarget) {
+    throw new GraceCommandError("invalid-arguments", "A governed file path is required.");
+  }
+  const normalizedTarget = normalizeInputPath(index.root, trimmedTarget);
   const fileRecord = index.files.find((record) => record.path === normalizedTarget);
   if (!fileRecord) {
-    throw new Error(`No governed file found for \`${target}\`.`);
+    throw new GraceCommandError("not-found", `No governed file found for \`${target}\`.`);
   }
   return fileRecord;
 }
@@ -536,7 +367,11 @@ export function findVerifications(index: GraceArtifactIndex, options: Verificati
 }
 
 export function resolveVerification(index: GraceArtifactIndex, target: string) {
-  const normalizedTarget = target.trim().toLowerCase();
+  const trimmedTarget = target.trim();
+  if (!trimmedTarget) {
+    throw new GraceCommandError("invalid-arguments", "A verification id or module target is required.");
+  }
+  const normalizedTarget = trimmedTarget.toLowerCase();
   const exact = index.verifications.find((entry) => entry.id.toLowerCase() === normalizedTarget);
   if (exact) {
     return { verification: exact, module: exact.moduleId ? index.modules.find((module) => module.id === exact.moduleId) ?? null : null, score: 100, matchedBy: ["id"] } satisfies VerificationMatch;
@@ -548,13 +383,13 @@ export function resolveVerification(index: GraceArtifactIndex, target: string) {
       return { verification: moduleRecord.verifications[0], module: moduleRecord, score: 90, matchedBy: ["module"] } satisfies VerificationMatch;
     }
     if (moduleRecord.verifications.length > 1) {
-      throw new Error(`Module \`${moduleRecord.id}\` has multiple verification entries (${moduleRecord.verifications.map((entry) => entry.id).join(", ")}). Use \`grace verification find ${target}\` to inspect candidates.`);
+      throw new GraceCommandError("ambiguous-target", `Module \`${moduleRecord.id}\` has multiple verification entries (${moduleRecord.verifications.map((entry) => entry.id).join(", ")}). Use \`grace verification find ${target}\` to inspect candidates.`);
     }
-    throw new Error(`Module \`${moduleRecord.id}\` has no verification entries.`);
+    throw new GraceCommandError("not-found", `Module \`${moduleRecord.id}\` has no verification entries.`);
   } catch (error) {
-    if (!(error instanceof Error) || !error.message.startsWith("No module found for")) {
+    if (!(error instanceof GraceCommandError) || error.code !== "not-found") {
       throw error;
     }
   }
-  throw new Error(`No verification found for \`${target}\`. Use \`grace verification find ${target}\` to inspect candidates.`);
+  throw new GraceCommandError("not-found", `No verification found for \`${target}\`. Use \`grace verification find ${target}\` to inspect candidates.`);
 }

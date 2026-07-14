@@ -8,7 +8,8 @@ import { defineCommand, type CommandDef, runMain } from "citty";
 import { lintGraceProject } from "./lint/core";
 import type { LintIssue } from "./lint/types";
 import { detectGraceProjectKind, formatGrace3MigrationGuidance, resolveGrace4Paths } from "./grace4/project";
-import { collectActiveChangeScopes, detectScopeOverlaps, detectUnsafeConcurrentExecution, observedWriteScopeContains, type ActiveChangeScope } from "./grace4/scope";
+import { buildGraphProjection, buildVerificationProjection, type GraphProjection, type VerificationProjection } from "./grace4/projections";
+import { collectActiveChangeScopes, createDurableOwnershipIndex, detectScopeOverlaps, detectUnsafeConcurrentExecution, observedWriteScopeContains, type ActiveChangeScope } from "./grace4/scope";
 import { readGraceXmlArtifact } from "./grace4/xml";
 import { collectModuleHealth } from "./query/health";
 import { loadGraceArtifactIndex } from "./query/core";
@@ -64,6 +65,21 @@ export type StatusResult = {
   moduleHealthLoadError?: string;
 };
 
+/** Bundle-local facts used to derive mutually safe execution readiness. */
+type ChangeBundleFacts = {
+  location: "active" | "archive";
+  specStatus?: string;
+  planStatus?: string;
+  integrityErrors: number;
+  baselineFailures: number;
+};
+
+/** Route ownership needed to explain changed GRACE graph and verification documents exactly. */
+type DriftRouteIndex = {
+  graphFiles: Map<string, { document: string; anchors: Set<string> }>;
+  verificationFiles: Map<string, { document: string; anchors: Set<string> }>;
+};
+
 function topIssues(issues: LintIssue[]) {
   return issues.slice(0, 5).map((issue) => `${issue.code}: ${issue.file}${issue.line ? `:${issue.line}` : ""} ${issue.message}`);
 }
@@ -91,35 +107,56 @@ function collectChangeBundleStatuses(root: string, location: "active" | "archive
     const specStatus = existsSync(specFile) ? readRootStatus(specFile) : undefined;
     const planStatus = existsSync(planFile) ? readRootStatus(planFile) : undefined;
     const relativeBundlePath = path.relative(root, bundlePath) || ".";
-    const derivedStates: string[] = [];
-
-    if (!specStatus) derivedStates.push("missing-spec-status");
-    if (!planStatus) derivedStates.push("missing-plan-status");
-    if (location === "active" && [specStatus, planStatus].some((status) => status && !["draft", "approved"].includes(status))) {
-      derivedStates.push("invalid-active-status");
-    }
-    if (location === "archive" && [specStatus, planStatus].some((status) => status && !["applied", "rejected", "cancelled", "superseded"].includes(status))) {
-      derivedStates.push("invalid-archive-status");
-    }
-    if (specStatus === "approved" && planStatus === "draft") derivedStates.push("needs-plan-approval");
-    if (specStatus === "approved" && planStatus === "approved") derivedStates.push("ready-to-execute");
-
     const bundleLintIssues = lintIssues.filter((issue) => {
       const resolvedIssue = path.resolve(issue.file);
       return resolvedIssue === path.resolve(bundlePath) || resolvedIssue.startsWith(path.resolve(bundlePath) + path.sep);
     });
-    if (bundleLintIssues.length > 0) derivedStates.push("integrity-issues");
-    if (
-      location === "active"
-      && specStatus === "approved"
-      && planStatus === "approved"
-      && bundleLintIssues.some((issue) => /^assertion\.Must/.test(issue.code))
-    ) {
-      derivedStates.push("stale-plan");
-    }
+    const derivedStates = deriveChangeStates({
+      location,
+      specStatus,
+      planStatus,
+      integrityErrors: bundleLintIssues.filter((issue) => issue.severity === "error").length,
+      baselineFailures: bundleLintIssues.filter((issue) => /^assertion\.(?:Must|command-not-evaluated)/.test(issue.code)).length,
+    });
 
     return { changeId, location, specStatus, planStatus, derivedStates: [...new Set(derivedStates)], path: relativeBundlePath } satisfies ChangeBundleStatus;
   });
+}
+
+/** Derives bundle states with readiness last so stale or invalid plans are never ready. */
+function deriveChangeStates(facts: ChangeBundleFacts): string[] {
+  const states: string[] = [];
+  if (!facts.specStatus) {
+    states.push("missing-spec-status");
+  }
+  if (facts.location === "active" && [facts.specStatus, facts.planStatus].some((status) => status && !["draft", "approved"].includes(status))) {
+    states.push("invalid-active-status");
+  }
+  if (facts.location === "archive" && [facts.specStatus, facts.planStatus].some((status) => status && !["applied", "rejected", "cancelled", "superseded"].includes(status))) {
+    states.push("invalid-archive-status");
+  }
+  if (facts.integrityErrors > 0) {
+    states.push("integrity-issues");
+  }
+  if (facts.baselineFailures > 0) {
+    states.push("stale-plan");
+  }
+  if (facts.location === "active" && facts.specStatus === "draft" && !facts.planStatus) {
+    states.push("draft-spec");
+  } else if (facts.location === "active" && facts.specStatus === "approved" && !facts.planStatus) {
+    states.push("needs-plan");
+  } else if (facts.location === "active" && facts.specStatus === "approved" && facts.planStatus === "draft") {
+    states.push("needs-plan-approval");
+  } else if (
+    facts.location === "active"
+    && facts.specStatus === "approved"
+    && facts.planStatus === "approved"
+    && facts.integrityErrors === 0
+    && facts.baselineFailures === 0
+  ) {
+    states.push("ready-to-execute");
+  }
+  return [...new Set(states)];
 }
 
 function chooseNextAction(result: Omit<StatusResult, "nextAction">) {
@@ -130,6 +167,7 @@ function chooseNextAction(result: Omit<StatusResult, "nextAction">) {
   if (result.derivedStates.includes("unexplained-observed-drift")) return "Use $grace-refresh to reconcile unexplained repository changes through a new GraceChangeSpec and GraceChangePlan.";
   if (result.derivedStates.includes("scope-overlap")) return "Review active change scope overlaps; replan or execute sequentially before parallel-safe work.";
   if (result.changes.some((change) => change.derivedStates.includes("ready-to-execute"))) return "Run $grace-execute for approved active changes.";
+  if (result.changes.some((change) => change.derivedStates.includes("needs-plan"))) return "Run $grace-plan for the approved GraceChangeSpec.";
   if (result.changes.some((change) => change.derivedStates.includes("needs-plan-approval"))) return "Review and approve the draft GraceChangePlan, or replan if stale.";
   if (result.summary.activeChanges === 0) return "Create a change with $grace-spec, then plan it with $grace-plan.";
   return "Project is healthy. Continue with the next approved GRACE 4 workflow step.";
@@ -178,11 +216,12 @@ export function collectProjectStatus(projectRoot: string, options: { includeModu
   const integrityErrors = lint.issues.filter((issue) => issue.severity === "error");
   const integrityWarnings = lint.issues.filter((issue) => issue.severity === "warning");
   // Load index once — reused by module health and status fields
-  const index = loadGraceArtifactIndex(root);
-  const { graph, verification } = index;
+  const graph = buildGraphProjection(paths);
+  const verification = buildVerificationProjection(paths, graph);
   const activeScopes = collectActiveChangeScopes(paths);
-  const overlapIssues = detectScopeOverlaps(activeScopes);
-  const unsafeIssues = detectUnsafeConcurrentExecution(activeScopes);
+  const ownership = createDurableOwnershipIndex(graph, verification);
+  const overlapIssues = detectScopeOverlaps(activeScopes, ownership);
+  const unsafeIssues = detectUnsafeConcurrentExecution(activeScopes, ownership);
   const changes = [
     ...collectChangeBundleStatuses(root, "active", paths.changesActiveDir, lint.issues),
     ...collectChangeBundleStatuses(root, "archive", paths.changesArchiveDir, lint.issues),
@@ -193,18 +232,19 @@ export function collectProjectStatus(projectRoot: string, options: { includeModu
   for (const change of changes) {
     for (const state of change.derivedStates) derivedStates.add(state);
   }
-  const observedDrift = collectObservedDrift(root, activeScopes);
+  const observedDrift = collectObservedDrift(root, activeScopes, buildDriftRouteIndex(root, graph, verification));
   if (observedDrift.explainedFiles.length > 0) derivedStates.add("explained-observed-drift");
   if (observedDrift.unexplainedFiles.length > 0) derivedStates.add("unexplained-observed-drift");
 
   let modules: ModuleHealthRecord[] | undefined;
   let moduleHealthLoadError: string | undefined;
-  if (options.includeModules) {
-    try {
+  try {
+    const index = loadGraceArtifactIndex(root);
+    if (options.includeModules) {
       modules = collectModuleHealth(index);
-    } catch (error) {
-      moduleHealthLoadError = error instanceof Error ? error.message : String(error);
     }
+  } catch (error) {
+    moduleHealthLoadError = error instanceof Error ? error.message : String(error);
   }
 
   const contextArtifacts = [
@@ -289,7 +329,7 @@ export function formatStatusText(result: StatusResult) {
   return lines.join("\n");
 }
 
-function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[]): StatusResult["observedDrift"] {
+function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[], routes: DriftRouteIndex): StatusResult["observedDrift"] {
   const gitRootResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { cwd: root, encoding: "utf8" });
   if (gitRootResult.status !== 0 || !gitRootResult.stdout.trim()) {
     return { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] };
@@ -322,7 +362,7 @@ function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[]): 
     .sort();
 
   const approvedScopes = activeScopes.filter((scope) => scope.specStatus === "approved" && scope.planStatus === "approved");
-  const explainedFiles = changedFiles.filter((file) => approvedScopes.some((scope) => activeScopeExplainsFile(root, scope, file)));
+  const explainedFiles = changedFiles.filter((file) => approvedScopes.some((scope) => activeScopeExplainsFile(root, scope, file, routes)));
   const explained = new Set(explainedFiles);
   return {
     available: true,
@@ -332,7 +372,7 @@ function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[]): 
   };
 }
 
-function activeScopeExplainsFile(root: string, scope: ActiveChangeScope, file: string): boolean {
+function activeScopeExplainsFile(root: string, scope: ActiveChangeScope, file: string, routes: DriftRouteIndex): boolean {
   if (observedWriteScopeContains(scope.observedWrites, file)) {
     return true;
   }
@@ -347,12 +387,39 @@ function activeScopeExplainsFile(root: string, scope: ActiveChangeScope, file: s
     return scope.durable.contextArtifacts.some((artifact) => artifact === contextFile || artifact.endsWith(`/${contextFile}`));
   }
   if (file.startsWith(".grace/graph/")) {
-    return scope.durable.graphAnchors.length > 0 || scope.durable.graphDocuments.length > 0;
+    const route = routes.graphFiles.get(file);
+    return Boolean(route && (
+      scope.durable.graphDocuments.includes(route.document)
+      || scope.durable.graphAnchors.some((anchor) => route.anchors.has(anchor))
+    ));
   }
   if (file.startsWith(".grace/verification/")) {
-    return scope.durable.verificationAnchors.length > 0 || scope.durable.verificationDocuments.length > 0;
+    const route = routes.verificationFiles.get(file);
+    return Boolean(route && (
+      scope.durable.verificationDocuments.includes(route.document)
+      || scope.durable.verificationAnchors.some((anchor) => route.anchors.has(anchor))
+    ));
   }
   return false;
+}
+
+function buildDriftRouteIndex(root: string, graph: GraphProjection, verification: VerificationProjection): DriftRouteIndex {
+  const routes: DriftRouteIndex = { graphFiles: new Map(), verificationFiles: new Map() };
+  for (const [document, file] of graph.documents) {
+    const relativeFile = path.relative(root, file).replaceAll(path.sep, "/");
+    const anchors = new Set(
+      [...graph.modules.values(), ...graph.dataFlows.values()]
+        .filter((record) => record.owner === document)
+        .map((record) => record.id),
+    );
+    routes.graphFiles.set(relativeFile, { document, anchors });
+  }
+  for (const [document, file] of verification.documents) {
+    const relativeFile = path.relative(root, file).replaceAll(path.sep, "/");
+    const anchors = new Set([...verification.entries.values()].filter((record) => record.owner === document).map((record) => record.id));
+    routes.verificationFiles.set(relativeFile, { document, anchors });
+  }
+  return routes;
 }
 
 function resolveFormat(format: unknown, json: unknown) {

@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type { LanguageAdapter, LanguageAnalysis } from "../types";
 
@@ -107,6 +109,7 @@ void main(List<String> args) {
     'exports': exports,
     'valueExports': exports,
     'typeExports': <String>[],
+    'localSymbols': exports,
     'exportConfidence': confidence,
     'hasDefaultExport': false,
     'hasWildcardReExport': hasWildcardReexport,
@@ -125,6 +128,7 @@ function createEmptyAnalysis(): LanguageAnalysis {
     exports: new Set<string>(),
     valueExports: new Set<string>(),
     typeExports: new Set<string>(),
+    localSymbols: new Set<string>(),
     exportConfidence: "heuristic",
     hasDefaultExport: false,
     hasWildcardReExport: false,
@@ -141,6 +145,7 @@ function normalizeResult(output: string): LanguageAnalysis {
     exports: string[];
     valueExports: string[];
     typeExports: string[];
+    localSymbols: string[];
     exportConfidence: "exact" | "heuristic";
     hasDefaultExport: boolean;
     hasWildcardReExport: boolean;
@@ -155,6 +160,7 @@ function normalizeResult(output: string): LanguageAnalysis {
   analysis.exports = new Set(parsed.exports ?? []);
   analysis.valueExports = new Set(parsed.valueExports ?? []);
   analysis.typeExports = new Set(parsed.typeExports ?? []);
+  analysis.localSymbols = new Set(parsed.localSymbols ?? []);
   analysis.exportConfidence = parsed.exportConfidence ?? "heuristic";
   analysis.hasDefaultExport = Boolean(parsed.hasDefaultExport);
   analysis.hasWildcardReExport = Boolean(parsed.hasWildcardReExport);
@@ -167,33 +173,34 @@ function normalizeResult(output: string): LanguageAnalysis {
 }
 
 function runDartAnalyzer(filePath: string, text: string): LanguageAnalysis {
-  for (const binary of DART_BINARIES) {
-    const run = spawnSync(binary, ["run", "--enable-asserts", "-e", DART_ANALYZER_SCRIPT, filePath], {
-      input: text,
-      encoding: "utf8",
-      maxBuffer: 1024 * 1024,
-    });
+  const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "grace-dart-analyzer-"));
+  const analyzerFile = path.join(temporaryDirectory, "analyzer.dart");
+  writeFileSync(analyzerFile, DART_ANALYZER_SCRIPT, "utf8");
+  try {
+    for (const binary of DART_BINARIES) {
+      const run = spawnSync(binary, ["run", analyzerFile, filePath], {
+        input: Buffer.from(text, "utf8"),
+        encoding: "utf8",
+        maxBuffer: 1024 * 1024,
+      });
 
-    if (run.error) {
-      const code = (run.error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT") {
-        continue;
+      if (run.error) {
+        const code = (run.error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") {
+          continue;
+        }
+        throw run.error;
       }
-      throw run.error;
-    }
 
-    if (run.status === 0) {
-      try {
+      if (run.status === 0) {
         return normalizeResult(run.stdout);
-      } catch {
-        return createEmptyAnalysis();
       }
+      throw new Error(run.stderr.trim() || run.stdout.trim() || `Dart analyzer failed via ${binary}.`);
     }
-    // Match Python adapter: throw on non-zero exit to surface script failures
-    throw new Error(run.stderr.trim() || run.stdout.trim() || `Dart analyzer failed via ${binary}.`);
+    throw new Error("Dart adapter requires `dart` on PATH when linting Dart files.");
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
   }
-
-  throw new Error("Dart adapter requires `dart` on PATH when linting Dart files.");
 }
 
 export function createDartAdapter(): LanguageAdapter {

@@ -73,6 +73,7 @@ export function createTypeScriptAdapter(): LanguageAdapter {
         exports: new Set<string>(),
         valueExports: new Set<string>(),
         typeExports: new Set<string>(),
+        localSymbols: new Set<string>(),
         exportConfidence: "exact",
         hasDefaultExport: false,
         hasWildcardReExport: false,
@@ -84,6 +85,25 @@ export function createTypeScriptAdapter(): LanguageAdapter {
       };
 
       for (const statement of sourceFile.statements) {
+        if (ts.isVariableStatement(statement)) {
+          for (const declaration of statement.declarationList.declarations) {
+            if (ts.isIdentifier(declaration.name)) {
+              analysis.localSymbols.add(declaration.name.text);
+            }
+          }
+        } else if (
+          (ts.isFunctionDeclaration(statement)
+            || ts.isClassDeclaration(statement)
+            || ts.isInterfaceDeclaration(statement)
+            || ts.isTypeAliasDeclaration(statement)
+            || ts.isEnumDeclaration(statement))
+          && statement.name
+        ) {
+          analysis.localSymbols.add(statement.name.text);
+        } else if (ts.isModuleDeclaration(statement)) {
+          analysis.localSymbols.add(statement.name.getText(sourceFile));
+        }
+
         if (ts.isImportDeclaration(statement)) {
           const importSource = ts.isStringLiteral(statement.moduleSpecifier)
             ? statement.moduleSpecifier.text

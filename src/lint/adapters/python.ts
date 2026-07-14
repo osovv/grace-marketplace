@@ -167,6 +167,7 @@ print(json.dumps({
     "exports": export_names,
     "valueExports": export_names,
     "typeExports": [],
+    "localSymbols": sorted(local_public),
     "exportConfidence": export_confidence,
     "hasDefaultExport": False,
     "hasWildcardReExport": has_wildcard_reexport,
@@ -184,6 +185,7 @@ function createEmptyAnalysis(): LanguageAnalysis {
     exports: new Set<string>(),
     valueExports: new Set<string>(),
     typeExports: new Set<string>(),
+    localSymbols: new Set<string>(),
     exportConfidence: "heuristic",
     hasDefaultExport: false,
     hasWildcardReExport: false,
@@ -200,6 +202,7 @@ function normalizeResult(output: string) {
     exports: string[];
     valueExports: string[];
     typeExports: string[];
+    localSymbols: string[];
     exportConfidence: "exact" | "heuristic";
     hasDefaultExport: boolean;
     hasWildcardReExport: boolean;
@@ -214,6 +217,7 @@ function normalizeResult(output: string) {
   analysis.exports = new Set(parsed.exports ?? []);
   analysis.valueExports = new Set(parsed.valueExports ?? []);
   analysis.typeExports = new Set(parsed.typeExports ?? []);
+  analysis.localSymbols = new Set(parsed.localSymbols ?? []);
   analysis.exportConfidence = parsed.exportConfidence ?? "heuristic";
   analysis.hasDefaultExport = Boolean(parsed.hasDefaultExport);
   analysis.hasWildcardReExport = Boolean(parsed.hasWildcardReExport);
@@ -228,8 +232,9 @@ function normalizeResult(output: string) {
 function runPythonAnalyzer(filePath: string, text: string) {
   for (const binary of PYTHON_BINARIES) {
     const run = spawnSync(binary, ["-c", PYTHON_ANALYZER_SCRIPT, filePath], {
-      input: text,
+      input: Buffer.from(text, "utf8"),
       encoding: "utf8",
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
       maxBuffer: 1024 * 1024,
     });
 

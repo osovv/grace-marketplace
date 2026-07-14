@@ -1,5 +1,8 @@
 import type { Grace4Issue } from "../grace4/types";
 import type { GraphAnchorRecord, GraphProjection, VerificationProjection } from "../grace4/projections";
+import type { FileMarkupRecord } from "../project-utils";
+
+export type { FileBlockRecord, FileContractRecord, FileFieldSection, FileListItem, FileMarkupRecord } from "../project-utils";
 
 export type ModuleInterfaceItem = {
   tag: string;
@@ -25,40 +28,6 @@ export type ModuleVerificationRecord = {
   requiredTraceAssertions: string[];
   waveFollowUp?: string;
   phaseFollowUp?: string;
-};
-
-export type FileFieldSection = {
-  fields: Record<string, string>;
-  startLine: number;
-  endLine: number;
-};
-
-export type FileListItem = {
-  label: string;
-  line: number;
-};
-
-export type FileContractRecord = {
-  name: string;
-  fields: Record<string, string>;
-  startLine: number;
-  endLine: number;
-};
-
-export type FileBlockRecord = {
-  name: string;
-  startLine: number;
-  endLine: number;
-};
-
-export type FileMarkupRecord = {
-  path: string;
-  moduleContract: FileFieldSection | null;
-  moduleMap: FileListItem[];
-  changeSummary: FileFieldSection | null;
-  contracts: FileContractRecord[];
-  blocks: FileBlockRecord[];
-  linkedModuleIds: string[];
 };
 
 export type ModuleGraphRecord = GraphAnchorRecord & {

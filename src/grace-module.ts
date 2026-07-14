@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 
 import { findModules, loadGraceArtifactIndex, resolveModule } from "./query/core";
+import { GraceCommandError, runQueryCommand } from "./query/errors";
 import { buildModuleHealth, resolveModuleHealth } from "./query/health";
 import { formatModuleFindTable, formatModuleHealthText, formatModuleText } from "./query/render";
 import type { GraceArtifactIndex } from "./query/types";
@@ -13,7 +14,7 @@ function loadGrace4IndexOrThrow(root: string): GraceArtifactIndex {
 function resolveFormat(format: unknown, json: unknown, allowed: string[], defaultFormat: string) {
   const resolved = Boolean(json) ? "json" : String(format ?? defaultFormat);
   if (!allowed.includes(resolved)) {
-    throw new Error(`Unsupported format \`${resolved}\`. Use ${allowed.map((value) => `\`${value}\``).join(" or ")}.`);
+    throw new GraceCommandError("invalid-arguments", `Unsupported format \`${resolved}\`. Use ${allowed.map((value) => `\`${value}\``).join(" or ")}.`);
   }
 
   return resolved;
@@ -63,20 +64,17 @@ export const moduleCommand = defineCommand({
         },
       },
       async run(context) {
-        const format = resolveFormat(context.args.format, context.args.json, ["table", "json"], "table");
-        const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
-        const matches = findModules(index, {
-          query: context.args.query ? String(context.args.query) : undefined,
-          type: context.args.type ? String(context.args.type) : undefined,
-          dependsOn: context.args.dependsOn ? String(context.args.dependsOn) : undefined,
+        const errorFormat = Boolean(context.args.json) || context.args.format === "json" ? "json" : "text";
+        await runQueryCommand(errorFormat, () => {
+          const format = resolveFormat(context.args.format, context.args.json, ["table", "json"], "table");
+          const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
+          const matches = findModules(index, {
+            query: context.args.query ? String(context.args.query) : undefined,
+            type: context.args.type ? String(context.args.type) : undefined,
+            dependsOn: context.args.dependsOn ? String(context.args.dependsOn) : undefined,
+          });
+          process.stdout.write(format === "json" ? `${JSON.stringify(matches, null, 2)}\n` : `${formatModuleFindTable(matches)}\n`);
         });
-
-        if (format === "json") {
-          process.stdout.write(`${JSON.stringify(matches, null, 2)}\n`);
-          return;
-        }
-
-        process.stdout.write(`${formatModuleFindTable(matches)}\n`);
       },
     }),
     show: defineCommand({
@@ -87,6 +85,7 @@ export const moduleCommand = defineCommand({
       args: {
         target: {
           type: "positional",
+          required: false,
           description: "Module id or file/path target",
         },
         path: {
@@ -113,23 +112,19 @@ export const moduleCommand = defineCommand({
         },
       },
       async run(context) {
-        const format = resolveFormat(context.args.format, context.args.json, ["text", "json"], "text");
-        const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
-        const moduleRecord = resolveModule(index, String(context.args.target));
-        const withValues = String(context.args.with ?? "")
-          .split(",")
-          .map((value) => value.trim().toLowerCase())
-          .filter(Boolean);
-        const includeVerification = withValues.includes("verification");
-        const includeHealth = withValues.includes("health");
-        const health = includeHealth ? buildModuleHealth(index, moduleRecord) : null;
-
-        if (format === "json") {
-          process.stdout.write(`${JSON.stringify(includeHealth ? { module: moduleRecord, health } : moduleRecord, null, 2)}\n`);
-          return;
-        }
-
-        process.stdout.write(`${formatModuleText(moduleRecord, { withVerification: includeVerification, health })}\n`);
+        const errorFormat = Boolean(context.args.json) || context.args.format === "json" ? "json" : "text";
+        await runQueryCommand(errorFormat, () => {
+          const format = resolveFormat(context.args.format, context.args.json, ["text", "json"], "text");
+          const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
+          const moduleRecord = resolveModule(index, context.args.target == null ? "" : String(context.args.target));
+          const withValues = String(context.args.with ?? "").split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+          const includeVerification = withValues.includes("verification");
+          const includeHealth = withValues.includes("health");
+          const health = includeHealth ? buildModuleHealth(index, moduleRecord) : null;
+          process.stdout.write(format === "json"
+            ? `${JSON.stringify(includeHealth ? { module: moduleRecord, health } : moduleRecord, null, 2)}\n`
+            : `${formatModuleText(moduleRecord, { withVerification: includeVerification, health })}\n`);
+        });
       },
     }),
     health: defineCommand({
@@ -140,6 +135,7 @@ export const moduleCommand = defineCommand({
       args: {
         target: {
           type: "positional",
+          required: false,
           description: "Module id or file/path target",
         },
         path: {
@@ -161,16 +157,13 @@ export const moduleCommand = defineCommand({
         },
       },
       async run(context) {
-        const format = resolveFormat(context.args.format, context.args.json, ["text", "json"], "text");
-        const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
-        const health = resolveModuleHealth(index, String(context.args.target));
-
-        if (format === "json") {
-          process.stdout.write(`${JSON.stringify(health, null, 2)}\n`);
-          return;
-        }
-
-        process.stdout.write(`${formatModuleHealthText(health)}\n`);
+        const errorFormat = Boolean(context.args.json) || context.args.format === "json" ? "json" : "text";
+        await runQueryCommand(errorFormat, () => {
+          const format = resolveFormat(context.args.format, context.args.json, ["text", "json"], "text");
+          const index = loadGrace4IndexOrThrow(String(context.args.path ?? "."));
+          const health = resolveModuleHealth(index, context.args.target == null ? "" : String(context.args.target));
+          process.stdout.write(format === "json" ? `${JSON.stringify(health, null, 2)}\n` : `${formatModuleHealthText(health)}\n`);
+        });
       },
     }),
   },
