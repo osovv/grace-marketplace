@@ -14,10 +14,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  verify:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -30,15 +35,29 @@ jobs:
         with:
           bun-version: 1.3.8
 
-      - name: Verify tag matches package version
+      - name: Verify tag, package version, and stable ancestry
+        id: release
         run: |
+          git fetch origin main --tags
           TAG="${GITHUB_REF_NAME}"
           PKG_VERSION="$(node -p "require('./package.json').version")"
           if [ "v${PKG_VERSION}" != "${TAG}" ]; then
             echo "Tag ${TAG} does not match package.json version v${PKG_VERSION}"
             exit 1
           fi
-          echo "Tag ${TAG} matches package.json version v${PKG_VERSION}"
+          TAG_COMMIT="$(git rev-parse "${TAG}^{commit}")"
+          ORIGIN_MAIN="$(git rev-parse origin/main)"
+          if [[ "${PKG_VERSION}" == *-* ]]; then
+            PRERELEASE=true
+          else
+            PRERELEASE=false
+            if [ "${TAG_COMMIT}" != "${ORIGIN_MAIN}" ]; then
+              echo "Stable tag ${TAG} commit ${TAG_COMMIT} does not equal origin/main ${ORIGIN_MAIN}"
+              exit 1
+            fi
+          fi
+          echo "version=${PKG_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "prerelease=${PRERELEASE}" >> "${GITHUB_OUTPUT}"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -58,35 +77,100 @@ jobs:
       - name: Marketplace validation
         run: bun run validate:marketplace
 
-      - name: Publish to npm
-        run: |
-          PKG_VERSION="$(node -p "require('./package.json').version")"
-          if [[ "${PKG_VERSION}" == *-* ]]; then
-            PRERELEASE_TAG="${PKG_VERSION#*-}"
-            DIST_TAG="${PRERELEASE_TAG%%.*}"
-            echo "Publishing prerelease ${PKG_VERSION} with npm dist-tag ${DIST_TAG}"
-            npm publish --access public --tag "${DIST_TAG}"
-          else
-            echo "Publishing stable ${PKG_VERSION} with npm default dist-tag"
-            npm publish --access public
-          fi
+      - name: Packed CLI validation
+        run: bun run validate:packed
 
-      - name: Extract changelog entry for release
-        id: changelog
+  publish-prerelease:
+    needs: verify
+    if: needs.verify.outputs.prerelease == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.8
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Publish prerelease to npm
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          awk -v ver="$VERSION" '
+          PKG_VERSION="${{ needs.verify.outputs.version }}"
+          PRERELEASE_TAG="${PKG_VERSION#*-}"
+          DIST_TAG="${PRERELEASE_TAG%%.*}"
+          npm publish --access public --tag "${DIST_TAG}"
+
+      - name: Extract changelog entry
+        run: |
+          VERSION="${{ needs.verify.outputs.version }}"
+          awk -v ver="${VERSION}" '
             $0 ~ "^## " && $0 ~ ver { found=1; print; next }
             found && /^## / { exit }
             found { print }
           ' CHANGELOG.md > /tmp/release-body.md
 
-      - name: Create GitHub Release
+      - name: Create prerelease GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           body_path: /tmp/release-body.md
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: true
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-stable:
+    needs: verify
+    if: needs.verify.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    environment: stable-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.8
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Publish stable to npm latest
+        run: npm publish --access public
+
+      - name: Extract changelog entry
+        run: |
+          VERSION="${{ needs.verify.outputs.version }}"
+          awk -v ver="${VERSION}" '
+            $0 ~ "^## " && $0 ~ ver { found=1; print; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > /tmp/release-body.md
+
+      - name: Create stable GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          body_path: /tmp/release-body.md
+          prerelease: false
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

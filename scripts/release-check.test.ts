@@ -1,5 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { collectReleaseConsistencyErrors } from "./release-check.ts";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import {
+  collectPackedContentErrors,
+  collectReleaseConsistencyErrors,
+  collectReleaseStateErrors,
+  expectedNpmDistTag,
+} from "./release-check.ts";
 
 const EXAMPLE_MARKETPLACE = JSON.stringify(
   {
@@ -326,5 +333,89 @@ Valid summary.
       null, // missing changelog
     );
     expect(errors.length).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe("release state and packed content", () => {
+  it("resolves stable and prerelease npm channels", () => {
+    expect(expectedNpmDistTag("4.0.0")).toBe("latest");
+    expect(expectedNpmDistTag("4.0.0-rc.2")).toBe("rc");
+    expect(expectedNpmDistTag("4.0.0-beta.1")).toBe("beta");
+  });
+
+  it("accepts valid prerelease and stable release states", () => {
+    expect(collectReleaseStateErrors({
+      version: "4.0.0-rc.2",
+      expectedTag: "v4.0.0-rc.2",
+      branch: "grace-v4",
+      head: "new-work",
+      originMain: "published-main",
+      tagCommit: "published-rc",
+      packedFiles: ["package.json", "README.md", "LICENSE", "src/grace.ts", "src/grace4/paths.ts"],
+      npmDistTags: { latest: "3.11.0", rc: "4.0.0-rc.2" },
+      githubRelease: { tagName: "v4.0.0-rc.2", isPrerelease: true },
+    })).toEqual([]);
+
+    expect(collectReleaseStateErrors({
+      version: "4.0.0",
+      expectedTag: "v4.0.0",
+      branch: "main",
+      head: "stable-commit",
+      originMain: "stable-commit",
+      tagCommit: "stable-commit",
+      packedFiles: ["package.json", "README.md", "LICENSE", "src/grace.ts", "src/query/index.ts"],
+      npmDistTags: { latest: "4.0.0", rc: "4.0.0-rc.2" },
+      githubRelease: { tagName: "v4.0.0", isPrerelease: false },
+    })).toEqual([]);
+  });
+
+  it("rejects off-main or mismatched stable state and wrong publication channels", () => {
+    const errors = collectReleaseStateErrors({
+      version: "4.0.0",
+      expectedTag: "vwrong",
+      branch: "feature",
+      head: "head",
+      originMain: "main",
+      tagCommit: "tag",
+      packedFiles: ["scripts/release-bump.ts", "src/grace-lint.test.ts", "src/grace4/test-fixtures.ts"],
+      npmDistTags: { latest: "3.11.0" },
+      githubRelease: { tagName: "vwrong", isPrerelease: true },
+    });
+    expect(errors.some((error) => error.includes("does not match package version"))).toBe(true);
+    expect(errors.some((error) => error.includes("collected from main"))).toBe(true);
+    expect(errors.some((error) => error.includes("does not equal origin/main"))).toBe(true);
+    expect(errors.some((error) => error.includes("npm dist-tag latest"))).toBe(true);
+    expect(errors.some((error) => error.includes("prerelease flag"))).toBe(true);
+    expect(errors.some((error) => error.includes("forbidden"))).toBe(true);
+    expect(errors.some((error) => error.includes("unrelated"))).toBe(true);
+  });
+
+  it("parses actual npm pack JSON shape and rejects tests, fixtures, temporary files, and unrelated files", () => {
+    const valid = JSON.stringify([{ files: [
+      { path: "package.json" },
+      { path: "README.md" },
+      { path: "LICENSE" },
+      { path: "src/grace.ts" },
+      { path: "src/grace4/paths.ts" },
+    ] }]);
+    expect(collectPackedContentErrors(valid)).toEqual([]);
+
+    const invalid = JSON.stringify([{ files: [
+      { path: "src/grace-lint.test.ts" },
+      { path: "src/grace4/test-fixtures.ts" },
+      { path: "src/lint/temporary-analyzer.dart" },
+      { path: "tmp-project/.grace/context.xml" },
+      { path: "scripts/release-bump.ts" },
+    ] }]);
+    const errors = collectPackedContentErrors(invalid);
+    expect(errors.filter((error) => error.includes("forbidden"))).toHaveLength(4);
+    expect(errors.filter((error) => error.includes("unrelated"))).toHaveLength(1);
+  });
+
+  it("records rc.0 as an unpublished historical candidate without removing its changelog block", () => {
+    const changelog = readFileSync(path.resolve(import.meta.dir, "../CHANGELOG.md"), "utf8");
+    expect(changelog).toContain("## <small>4.0.0-rc.0");
+    expect(changelog).toContain("v4.0.0-rc.0 was not published to npm");
+    expect(changelog).toContain("tag is retained");
   });
 });

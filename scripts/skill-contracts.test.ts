@@ -58,6 +58,7 @@ describe("GRACE lifecycle skill contracts", () => {
     expect(cli).toContain('"schemaVersion": "1.0.0"');
     expect(cli).toContain('"ok": false');
     expect(cli).toContain("analysis.adapter-failed");
+    expect(read("skills/grace/grace-explainer/references/semantic-markup.md")).toContain("analysis.heuristic-confidence");
     expect(status).toContain("needs-plan-approval");
     expect(status).toContain("stale-plan");
     expect(status).toContain("integrity-issues");
@@ -72,14 +73,19 @@ describe("GRACE migration cleanup contract", () => {
     const checklist = read("skills/grace/grace-migrate/references/migration-checklist.md");
     const report = read("skills/grace/grace-migrate/references/migration-report-template.xml");
 
-    for (const requirement of ["complete inventory", "restorable backup", "successful current lint", "verified generated coverage", "separate explicit cleanup approval"]) {
+    for (const requirement of ["complete inventory", "restorable backup", "successful current lint", "verified generated coverage", "git availability/worktree inspection", "separate explicit cleanup approval", "dirty or non-git risk acknowledgement"]) {
       expect(skill).toContain(requirement);
     }
     expect(skill).toContain("no cleanup");
+    expect(skill).toContain("git status --porcelain --untracked-files=all");
+    expect(skill).toContain("Legacy GRACE 3 artifacts remain untouched unless the failure output explicitly lists a completed move.");
+    expect(skill).toContain("Never retry destructive cleanup automatically");
     expect(checklist).toContain("no broad glob or unreviewed recursive deletion");
     expect(report).toContain('<Backup restorable="false">');
     expect(report).toContain('<Validation successful="false">');
+    expect(report).toContain('<GitPreflight available="false" inWorktree="false" dirty="false">');
     expect(report).toContain('<CleanupProposal approved="false">');
+    expect(report).toContain('<DirtyOrNonGitRiskAcknowledgement required="false" approved="false">');
     expect(report).toContain('<CleanupResults performed="false">');
   });
 });

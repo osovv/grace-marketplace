@@ -17,8 +17,17 @@ function createDirectory(prefix: string): string {
 
 describe("GRACE 4 contained project paths", () => {
   it("rejects portable absolute and traversal forms before filesystem resolution", () => {
-    for (const authoredPath of ["/tmp/x", "C:\\x", "C:x", "\\\\server\\share", "../x", "a/../../x", "a\\..\\x"]) {
-      expect(() => normalizeProjectRelativePath(authoredPath), authoredPath).toThrow(ProjectPathError);
+    const cases = ["/tmp/x", "C:\\x", "C:x", "\\\\server\\share", "../x", "a/../../x", "a\\..\\x"] as const;
+    for (const authoredPath of cases) {
+      try {
+        normalizeProjectRelativePath(authoredPath);
+        throw new Error(`Expected ${authoredPath} to fail.`);
+      } catch (error) {
+        expect(error).toBeInstanceOf(ProjectPathError);
+        const code = (error as ProjectPathError).code;
+        if (authoredPath.includes("..")) expect(code).toBe("path.traversal");
+        else expect(["path.absolute", "path.invalid-drive"]).toContain(code);
+      }
     }
   });
 

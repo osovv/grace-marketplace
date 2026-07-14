@@ -325,6 +325,9 @@ function validateGrace4Dependencies(errors: string[]): void {
   if (typeof scripts["validate:release"] !== "string" || !scripts["validate:release"].includes("validate:cli")) {
     errors.push("package.json: validate:release must invoke validate:cli");
   }
+  if (typeof scripts["validate:packed"] !== "string" || !scripts["validate:release"]?.includes("validate:packed")) {
+    errors.push("package.json: validate:release must invoke the validate:packed package smoke gate");
+  }
 }
 
 function validate(): ValidationResult {

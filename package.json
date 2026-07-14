@@ -56,12 +56,13 @@
     "validate:cli": "bun test --timeout=120000 src/grace-lint.test.ts src/grace-status.test.ts src/grace-query.test.ts",
     "validate:ci": "bun run typecheck && bun run test && bun run validate:cli && bun run ./scripts/validate-marketplace.ts",
     "validate:marketplace": "bun run ./scripts/validate-marketplace.ts",
-    "validate:release": "bun run typecheck && bun run test && bun run validate:cli && bun run release:check && bun run ./scripts/validate-marketplace.ts",
+    "validate:release": "bun run typecheck && bun run test && bun run validate:cli && bun run release:check && bun run ./scripts/validate-marketplace.ts && bun run validate:packed",
+    "validate:packed": "bun run ./scripts/packed-cli-smoke.ts",
     "release:check": "bun run scripts/release-check.ts",
     "release:bump": "bun run scripts/release-bump.ts",
     "release:checklist": "bun run ./scripts/release-checklist.ts",
     "prepublishOnly": "bun run validate:release",
-    "prepare": "lefthook install --force"
+    "hooks:install": "lefthook install --force"
   },
   "bin": {
     "grace": "src/grace.ts"

@@ -15,7 +15,7 @@ bun run release:bump 4.0.0 # promote an approved RC line to stable
 
 `release:bump` will:
 
-1. Verify required tools, clean working tree, checked-out branch, target tag absence, and target changelog-block absence.
+1. Verify required tools, clean working tree, checked-out branch, target tag absence, and target changelog-block absence. Stable targets additionally fetch `origin/main` and tags, require branch `main`, and require `HEAD == origin/main`.
 2. Run the full current `validate:release` suite before mutating release files.
 3. Resolve the target version and run `npm version --no-git-tag-version` with the given target.
 4. Generate a conventional-changelog entry from git history.
@@ -62,6 +62,8 @@ Future `release:bump` runs generate changelog and summary context from that late
 
 Stable promotion refuses an existing `v4.0.0` tag or existing `4.0.0` changelog block before mutation. The successful `4.0.0-rc.*` to `4.0.0` path prepends one stable block while preserving the RC history below it.
 
+The publish workflow fetches full history. Stable tags must resolve to the exact fetched `origin/main` commit, and the stable npm/GitHub job requires approval through the protected `stable-release` environment. Prerelease tags remain on their explicit npm identifier channel such as `rc` and create GitHub prereleases.
+
 Before running `release:bump`, ensure CI passes:
 
 ```bash
@@ -84,9 +86,15 @@ When a tag matching `v*` is pushed, the `publish.yml` GitHub Actions workflow:
 
 1. Verifies the tag matches `package.json` version.
 2. Runs `bun install --frozen-lockfile`.
-3. Runs `release:check`, `typecheck`, `test`, `validate:cli`, and `validate:marketplace`.
+3. Runs `release:check`, `typecheck`, `test`, `validate:cli`, `validate:marketplace`, and the packed CLI smoke gate.
 4. Publishes stable versions to npm with the default dist-tag, and prerelease versions with the prerelease identifier as the dist-tag (for example, `4.0.0-rc.0` publishes with `--tag rc`).
 5. Creates a GitHub Release with the matching changelog block as body.
+
+## Partial Publication Recovery
+
+- **npm publish succeeded, GitHub Release creation failed:** do not rerun `release:bump` or republish the immutable npm version. Verify the existing tag and npm dist-tag, then create the missing release with `gh release create <tag> --verify-tag --notes-file <release-body>` (add `--prerelease` only for prerelease tags).
+- **GitHub Release exists, npm publish failed or never ran:** verify that the package version is absent from npm, correct the authentication/channel issue, and run the exact `npm publish --access public` command for stable or `npm publish --access public --tag <identifier>` for a prerelease. Do not recreate or retag the GitHub Release.
+- **Both publication steps report success but channel state is wrong:** stop. Run `bun run release:checklist`, inspect npm dist-tags and the GitHub prerelease flag, and correct only the channel metadata; never rewrite an existing git tag or duplicate a changelog block.
 
 ## Commit Message Convention
 

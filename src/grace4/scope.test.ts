@@ -112,6 +112,10 @@ describe("GRACE 4 scope detector", () => {
     expect(scopeGlobsOverlap(windowsStyle, parseScopeGlob("src/**/auth-file.ts"), true)).toBe(false);
   });
 
+  (process.platform === "win32" ? it : it.skip)("uses Windows case-insensitive collision semantics on Windows", () => {
+    expect(scopeGlobsOverlap(parseScopeGlob("SRC/**/Auth*.TS"), parseScopeGlob("src/**/auth-file.ts"), false)).toBe(true);
+  });
+
   it("blocks file-to-glob and nested glob overlaps while allowing disjoint areas", () => {
     const root = createProject();
     writeChange(root, "C-FILE", { graphAnchor: "M-FILE", file: "src/auth/session.ts" });

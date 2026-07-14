@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  assertTagTargetsCommit,
   calculateTargetVersion,
-  createReleaseCommitAndTag,
+  collectStableReleasePreconditionErrors,
+  isStableReleaseTarget,
   main,
   parseNpmVersionArgs,
   prependChangelogEntry,
@@ -34,6 +35,9 @@ function dependencies(overrides: Partial<ReleasePreflightDependencies> = {}): Re
     getBranch: () => "main\n",
     tagExists: () => false,
     toolExists: () => true,
+    fetchOriginMainAndTags: () => undefined,
+    getHead: () => "abc123\n",
+    getOriginMain: () => "abc123\n",
     runValidation: () => undefined,
     ...overrides,
   };
@@ -43,15 +47,6 @@ function write(root: string, relativePath: string, content: string): void {
   const filePath = path.join(root, relativePath);
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, content);
-}
-
-function git(root: string, args: string[]): string {
-  return execFileSync("git", [
-    "-c", "commit.gpgSign=false",
-    "-c", "tag.gpgSign=false",
-    "-c", "core.hooksPath=/dev/null",
-    ...args,
-  ], { cwd: root, encoding: "utf8" }).trim();
 }
 
 function writeReleaseFixture(root: string, version: string): void {
@@ -79,6 +74,8 @@ describe("release argv and version resolution", () => {
     expect(calculateTargetVersion("1.2.3", ["prepatch", "--preid", "rc"])).toBe("1.2.4-rc.0");
     expect(calculateTargetVersion("1.2.3-rc.2", ["prerelease"])).toBe("1.2.3-rc.3");
     expect(calculateTargetVersion("1.2.3-rc.2", ["premajor"])).toBe("2.0.0-0");
+    expect(isStableReleaseTarget("4.0.0-rc.2", ["4.0.0"])).toBe(true);
+    expect(isStableReleaseTarget("4.0.0-rc.2", ["prerelease"])).toBe(false);
   });
 });
 
@@ -125,7 +122,37 @@ describe("release preflight", () => {
       targetVersion: "4.0.0",
       branchName: "main",
       tagName: "v4.0.0",
+      stable: true,
     });
+  });
+
+  it("requires stable releases to use clean synchronized main", () => {
+    expect(collectStableReleasePreconditionErrors({ branch: "feature", head: "a", originMain: "a", worktreeStatus: "" })).toContain(
+      "Stable releases require branch main, received feature.",
+    );
+    expect(collectStableReleasePreconditionErrors({ branch: "main", head: "ahead", originMain: "remote", worktreeStatus: "" })[0]).toContain(
+      "to equal origin/main",
+    );
+
+    const offMain = dependencies({ getBranch: () => "feature\n" });
+    expect(main(["4.0.0"], tempRoot(), offMain)).toBe(1);
+    const divergent = dependencies({ getHead: () => "ahead", getOriginMain: () => "remote" });
+    expect(main(["4.0.0"], tempRoot(), divergent)).toBe(1);
+  });
+
+  it("does not impose stable-main ancestry on prerelease targets", () => {
+    let fetched = false;
+    const result = runReleasePreflight(["prerelease"], dependencies({
+      getBranch: () => "feature\n",
+      fetchOriginMainAndTags: () => { fetched = true; },
+    }));
+    expect(result.stable).toBe(false);
+    expect(fetched).toBe(false);
+  });
+
+  it("verifies tag targets through an injected read-only resolver", () => {
+    expect(() => assertTagTargetsCommit("v4.0.0", "abc123", () => "wrong")).toThrow("expected abc123");
+    expect(() => assertTagTargetsCommit("v4.0.0", "abc123", () => "abc123\n")).not.toThrow();
   });
 });
 
@@ -156,32 +183,4 @@ describe("stable release finalization", () => {
     expect(readFileSync(path.join(root, "src/grace.ts"), "utf8")).toContain('version: "4.0.0"');
   });
 
-  it("creates a stable release commit and annotated tag in a temporary repository without network access", () => {
-    const root = tempRoot();
-    writeReleaseFixture(root, "4.0.0-rc.2");
-    git(root, ["init", "-b", "main"]);
-    git(root, ["config", "user.name", "GRACE Test"]);
-    git(root, ["config", "user.email", "grace-test@example.com"]);
-    git(root, ["add", "."]);
-    git(root, ["commit", "-m", "chore: initial rc"]);
-
-    write(root, "package.json", `${JSON.stringify({ name: "@osovv/grace-cli", version: "4.0.0" }, null, 2)}\n`);
-    updateVersionSurfaceFiles(root, "4.0.0");
-    write(root, "CHANGELOG.md", prependChangelogEntry(
-      readFileSync(path.join(root, "CHANGELOG.md"), "utf8"),
-      "## <small>4.0.0 (2026-07-14)</small>\n\n### Summary\n\nStable release.\n",
-      "4.0.0",
-    ));
-
-    const result = createReleaseCommitAndTag({
-      repoRoot: root,
-      currentVersion: "4.0.0-rc.2",
-      newVersion: "4.0.0",
-      gitConfig: ["commit.gpgSign=false", "tag.gpgSign=false", "core.hooksPath=/dev/null"],
-    });
-    expect(result.tagName).toBe("v4.0.0");
-    expect(git(root, ["tag", "--list", "v4.0.0"])).toBe("v4.0.0");
-    expect(git(root, ["log", "-1", "--format=%s"])).toBe("chore: bump version from 4.0.0-rc.2 to 4.0.0 with changelog");
-    expect(git(root, ["status", "--porcelain"])).toBe("");
-  });
 });

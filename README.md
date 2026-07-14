@@ -32,7 +32,7 @@ GRACE 4 does not dual-validate legacy GRACE 3 project docs as current state. Exi
 
 Verification commands run from the project root by default. A `V-M-*` entry may declare one contained project-relative `<Cwd>packages/example</Cwd>` while keeping `<TestFiles><File>...</File></TestFiles>` paths project-root-relative. Absolute paths, `..` escapes, and symlink escapes fail closed.
 
-TypeScript/JavaScript semantic analysis is bundled. Governed Python and Dart files require their respective runtimes on `PATH`; a missing or failed adapter emits `analysis.adapter-failed` rather than claiming exact `MODULE_MAP` parity.
+TypeScript/JavaScript semantic analysis is bundled and compiler-backed. Governed Python and Dart files require their respective runtimes on `PATH`; Python analysis remains explicitly heuristic (`analysis.heuristic-confidence`), while a missing or failed runtime adapter emits `analysis.adapter-failed`. Neither state is presented as exact `MODULE_MAP` parity.
 
 ## Install
 
@@ -88,6 +88,8 @@ For a new GRACE 4 project:
 9. Before apply/archive, run selected target assertions; add `--run-commands` when the plan declares `MustPassCommand`.
 
 Existing GRACE 3 projects should run `$grace-migrate` and review the migration report before writing `.grace` artifacts.
+
+Migration cleanup is separately gated: successful current lint, fresh status proving GRACE 4 with no integrity errors, git/worktree inspection, exact cleanup paths, and explicit cleanup confirmation are mandatory. Dirty or non-git cleanup requires an additional acknowledgement naming that risk; any cleanup failure stops without automatic destructive retry.
 
 ## Skills Overview
 
@@ -178,7 +180,10 @@ Common anchors:
 ```bash
 bun test
 bun run ./scripts/validate-marketplace.ts
+bun run validate:packed
 bun run validate:release
 ```
 
 For CLI changes, keep tests in `src/grace-lint.test.ts`, `src/grace-status.test.ts`, and `src/grace-query.test.ts` aligned with the GRACE 4 `.grace` fixture model.
+
+Stable releases are stricter than prereleases. Before any stable version mutation, `release:bump` fetches `origin/main` and tags, requires a clean checked-out `main`, and requires `HEAD == origin/main`. CI independently checks the stable tag commit against fetched `origin/main` and gates npm `latest` publication through the protected `stable-release` environment.

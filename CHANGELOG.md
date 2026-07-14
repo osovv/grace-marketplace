@@ -24,6 +24,8 @@ This release candidate stabilizes the release automation pipeline for the GRACE 
 
 This release candidate introduces the GRACE 4 artifact model, replacing the legacy shared-doc approach with a `.grace` project structure that uses parser-backed XML validation, deterministic graph and verification projections, a machine-checkable assertion vocabulary, and controlled active/archive change lifecycle bundles with `GraceChangeSpec` and `GraceChangePlan` artifacts. The CLI has been rewritten to validate only the `.grace` current state, with new `grace-spec` and `grace-migrate` skills joining the published surface, while `grace-multiagent-execute` is removed in favor of a unified `grace-execute` that offers both sequential and parallel-safe modes. An automated release workflow with conventional commits, changelog generation, and CI publishing has been added, along with a language-registry module, a Dart language adapter, CWD-aware verification utilities, and comprehensive test coverage across grammar projections, assertions, scope conflicts, and marketplace packaging.
 
+> Historical candidate note: v4.0.0-rc.0 was not published to npm after its release workflow failed. Its git tag is retained as immutable history; v4.0.0-rc.1 is the first published GRACE 4 release candidate.
+
 * chore(release): add automated release workflow ([8b036e7](https://github.com/osovv/grace-marketplace/commit/8b036e7))
 * fix: address review findings — trailing slash guard, wire check-references utility, Dart adapter thr ([73f2b20](https://github.com/osovv/grace-marketplace/commit/73f2b20))
 * fix(grace4): finish release review cleanup ([fd72a91](https://github.com/osovv/grace-marketplace/commit/fd72a91))
