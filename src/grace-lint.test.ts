@@ -63,6 +63,26 @@ export function run() {
   writeProjectFile(root, "src/example.test.ts", `import { expect, test } from "bun:test";\ntest("example", () => expect(1).toBe(1));\n`);
 }
 
+function writeApprovedChange(
+  root: string,
+  changeId: string,
+  baselineAssertions: string,
+  targetAssertions: string,
+  status: "draft" | "approved" = "approved",
+) {
+  const bundle = `.grace/changes/active/${changeId}`;
+  writeProjectFile(
+    root,
+    `${bundle}/spec.xml`,
+    `<GraceChangeSpec graceVersion="4.0" status="approved"><${changeId}><Summary>Selected change.</Summary><Goals><Goal>Exercise assertions.</Goal></Goals><Constraints><Constraint>Preserve fixture validity.</Constraint></Constraints><NonGoals><NonGoal>Unrelated behavior.</NonGoal></NonGoals><AcceptanceCriteria><Criterion>Assertions are evaluated.</Criterion></AcceptanceCriteria><AffectedAreas><M-EXAMPLE /></AffectedAreas><VerificationIntent><ExpectedCommand>bun test</ExpectedCommand></VerificationIntent></${changeId}></GraceChangeSpec>`,
+  );
+  writeProjectFile(
+    root,
+    `${bundle}/plan.xml`,
+    `<GraceChangePlan graceVersion="4.0" status="${status}"><${changeId}><IntentSummary>Evaluate selected assertions.</IntentSummary><BaselineAssertions>${baselineAssertions}</BaselineAssertions><TargetAssertions>${targetAssertions}</TargetAssertions><DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>src/example.ts</File></ObservedWriteScope><ImplementationPlan><T-001><Title>Verify assertions</Title><DependsOn></DependsOn><AcceptanceCriteria><Criterion>Assertions pass.</Criterion></AcceptanceCriteria><Verification><Command>bun test</Command></Verification></T-001></ImplementationPlan></${changeId}></GraceChangePlan>`,
+  );
+}
+
 describe("lintGraceProject", () => {
   it("passes a valid GRACE 4 .grace project", () => {
     const root = createProject();
@@ -216,6 +236,86 @@ describe("lintGraceProject", () => {
     const result = lintGraceProject(root);
     // TargetAssertion MustVerify for M-MISSING should NOT fire
     expect(result.issues.filter((issue) => issue.code === "assertion.MustVerify")).toHaveLength(0);
+  });
+
+  it("requires one approved identity-matched active change for selected assertion modes", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+
+    expect(lintGraceProject(root, { assertionMode: "target" }).issues.map((issue) => issue.code)).toContain("assertion.change-required");
+    expect(lintGraceProject(root, { assertionMode: "baseline", changeId: "not-a-change" }).issues.map((issue) => issue.code)).toContain("assertion.invalid-change-id");
+
+    writeApprovedChange(
+      root,
+      "C-DRAFT",
+      `<MustExist><Value>M-EXAMPLE</Value></MustExist>`,
+      `<MustVerify><Module>M-EXAMPLE</Module></MustVerify>`,
+      "draft",
+    );
+    expect(lintGraceProject(root, { assertionMode: "target", changeId: "C-DRAFT" }).issues.map((issue) => issue.code)).toContain("assertion.change-not-approved");
+  });
+
+  it("evaluates only the selected baseline or target section", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeApprovedChange(
+      root,
+      "C-SELECTED",
+      `<MustExist><Value>M-EXAMPLE</Value></MustExist>`,
+      `<MustVerify><Module>M-MISSING</Module></MustVerify>`,
+    );
+
+    const baseline = lintGraceProject(root, { assertionMode: "baseline", changeId: "C-SELECTED" });
+    expect(baseline.issues.filter((issue) => issue.code === "assertion.MustVerify")).toHaveLength(0);
+    expect(baseline.assertionMode).toBe("baseline");
+    expect(baseline.changeId).toBe("C-SELECTED");
+
+    const target = lintGraceProject(root, { assertionMode: "target", changeId: "C-SELECTED" });
+    expect(target.issues.filter((issue) => issue.code === "assertion.MustVerify")).toHaveLength(1);
+  });
+
+  it("requires explicit command opt-in and exposes selected assertion CLI flags", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeApprovedChange(
+      root,
+      "C-COMMAND",
+      `<MustExist><Value>M-EXAMPLE</Value></MustExist>`,
+      `<MustPassCommand><Command>exit 0</Command></MustPassCommand>`,
+    );
+
+    const skipped = lintGraceProject(root, { assertionMode: "target", changeId: "C-COMMAND" });
+    expect(skipped.issues.map((issue) => issue.code)).toContain("assertion.command-not-evaluated");
+
+    const executed = lintGraceProject(root, { assertionMode: "target", changeId: "C-COMMAND", runCommands: true });
+    expect(executed.issues.map((issue) => issue.code)).not.toContain("assertion.command-not-evaluated");
+    expect(executed.commandsEnabled).toBe(true);
+
+    const repoRoot = path.resolve(import.meta.dir, "..");
+    const cli = Bun.spawnSync({
+      cmd: [process.execPath, "./src/grace.ts", "lint", "--path", root, "--change", "C-COMMAND", "--assertions", "target", "--run-commands", "--format", "json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(cli.exitCode).toBe(0);
+    expect(JSON.parse(Buffer.from(cli.stdout).toString("utf8")).assertionMode).toBe("target");
+  });
+
+  it("reserves blocking overlap diagnostics for explicit parallel preflight", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeApprovedChange(root, "C-ONE", `<MustExist><Value>M-EXAMPLE</Value></MustExist>`, `<MustVerify><Module>M-EXAMPLE</Module></MustVerify>`);
+    writeApprovedChange(root, "C-TWO", `<MustExist><Value>M-EXAMPLE</Value></MustExist>`, `<MustVerify><Module>M-EXAMPLE</Module></MustVerify>`);
+
+    const ordinaryCodes = lintGraceProject(root).issues.map((issue) => issue.code);
+    expect(ordinaryCodes).toContain("scope.durable-overlap");
+    expect(ordinaryCodes).not.toContain("scope.parallel-durable-overlap");
+    expect(ordinaryCodes).not.toContain("scope.observed-write-overlap");
+
+    const preflightCodes = lintGraceProject(root, { parallelPreflight: true }).issues.map((issue) => issue.code);
+    expect(preflightCodes).toContain("scope.parallel-durable-overlap");
+    expect(preflightCodes).toContain("scope.observed-write-overlap");
   });
 
   it("does not evaluate BaselineAssertions for active draft plans", () => {

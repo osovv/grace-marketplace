@@ -4,13 +4,14 @@ import { defineCommand, type CommandDef, runMain } from "citty";
 
 import { formatLintExplanation, getLintIssueGuide } from "./lint/catalog";
 import { formatTextReport, isValidTextFormat, lintGraceProject } from "./lint/core";
-import type { LintOptions, LintProfile, LintResult } from "./lint/types";
+import type { LintAssertionMode, LintOptions, LintProfile, LintResult } from "./lint/types";
 
 export type {
   GraceLintConfig,
   LanguageAdapter,
   LanguageAnalysis,
   LintIssue,
+  LintAssertionMode,
   LintOptions,
   LintProfile,
   LintResult,
@@ -46,6 +47,14 @@ function resolveFailOn(value: unknown) {
   }
 
   return failOn;
+}
+
+function resolveAssertionMode(value: unknown): LintAssertionMode {
+  const mode = String(value ?? "current");
+  if (mode !== "current" && mode !== "baseline" && mode !== "target") {
+    throw new Error(`Unsupported assertion mode \`${mode}\`. Use \`current\`, \`baseline\`, or \`target\`.`);
+  }
+  return mode;
 }
 
 function shouldFail(result: LintResult, failOn: string) {
@@ -97,11 +106,31 @@ export const lintCommand = defineCommand({
       description: "Exit policy: errors, warnings, or never",
       default: "errors",
     },
+    change: {
+      type: "string",
+      description: "Active C-* bundle selected for baseline or target assertion evaluation",
+    },
+    assertions: {
+      type: "string",
+      description: "Assertion mode: current, baseline, or target",
+      default: "current",
+    },
+    runCommands: {
+      type: "boolean",
+      description: "Execute MustPassCommand assertions for the selected change",
+      default: false,
+    },
+    parallelPreflight: {
+      type: "boolean",
+      description: "Treat active-plan scope overlap as a parallel-execution blocker",
+      default: false,
+    },
   },
   async run(context) {
     const format = String(context.args.format ?? "text");
     const profile = resolveProfile(context.args.profile);
     const failOn = resolveFailOn(context.args.failOn);
+    const assertionMode = resolveAssertionMode(context.args.assertions);
     if (!isValidTextFormat(format)) {
       throw new Error(`Unsupported format \`${format}\`. Use \`text\` or \`json\`.`);
     }
@@ -119,6 +148,10 @@ export const lintCommand = defineCommand({
 
     const result = lintGraceProject(String(context.args.path ?? "."), {
       profile,
+      assertionMode,
+      changeId: context.args.change ? String(context.args.change) : undefined,
+      runCommands: Boolean(context.args.runCommands),
+      parallelPreflight: Boolean(context.args.parallelPreflight),
     });
 
     if (format === "json") {

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import type { Grace4Issue } from "./types";
+import { ProjectPathError, resolveContainedProjectPath } from "./paths";
 import type { GraphAnchorRecord, GraphProjection, VerificationProjection } from "./projections";
 import { readGraceXmlArtifact, walkNodes, type GraceXmlNode } from "./xml";
 
@@ -37,6 +38,25 @@ export type AssertionExtractionResult = {
   issues: Grace4Issue[];
 };
 
+/** Exact child-field schema for one assertion kind. */
+export type AssertionSchema = {
+  fields: readonly string[];
+  fileField?: string;
+  allowManyValues?: boolean;
+};
+
+/** Machine-checkable schema for every assertion kind. */
+export const ASSERTION_SCHEMAS: Record<AssertionKind, AssertionSchema> = {
+  MustExist: { fields: ["Value"], allowManyValues: true },
+  MustNotExist: { fields: ["Value"], allowManyValues: true },
+  MustOwn: { fields: ["Owner", "Anchor"] },
+  MustLink: { fields: ["From", "To"] },
+  MustVerify: { fields: ["Module"], allowManyValues: true },
+  MustPassCommand: { fields: ["Command"], allowManyValues: true },
+  MustContain: { fields: ["File", "Text"], fileField: "File" },
+  MustNotContain: { fields: ["File", "Text"], fileField: "File" },
+};
+
 const ASSERTION_KINDS = new Set<AssertionKind>([
   "MustExist",
   "MustNotExist",
@@ -52,9 +72,9 @@ const ASSERTION_KINDS = new Set<AssertionKind>([
 export function evaluateAssertion(assertion: GraceAssertion, context: AssertionContext): Grace4Issue[] {
   switch (assertion.kind) {
     case "MustExist":
-      return assertion.values.flatMap((value) => (existsInContext(value, context) ? [] : [assertionIssue(assertion, `Expected ${value} to exist.`)]));
+      return assertion.values.flatMap((value) => evaluateExistence(assertion, value, context, true));
     case "MustNotExist":
-      return assertion.values.flatMap((value) => (!existsInContext(value, context) ? [] : [assertionIssue(assertion, `Expected ${value} not to exist.`)]));
+      return assertion.values.flatMap((value) => evaluateExistence(assertion, value, context, false));
     case "MustOwn":
       return evaluateMustOwn(assertion, context);
     case "MustLink":
@@ -94,10 +114,14 @@ export function extractAssertionsWithIssues(
         issues.push(issue("error", "assertion.unknown-kind", planFile, `${node.tag} is not an approved GRACE 4 assertion kind.`));
         continue;
       }
+      const extraction = extractAssertionNode(planFile, node, node.tag as AssertionKind);
+      issues.push(...extraction.issues);
+      if (!extraction.assertion) {
+        continue;
+      }
       assertions.push({
-        kind: node.tag as AssertionKind,
+        ...extraction.assertion,
         file: planFile,
-        values: assertionValues(node),
       });
     }
   }
@@ -154,12 +178,15 @@ function evaluateMustVerify(assertion: GraceAssertion, context: AssertionContext
 
 function evaluateMustPassCommand(assertion: GraceAssertion, context: AssertionContext): Grace4Issue[] {
   if (!context.runCommands) {
-    return [];
+    return [issue("error", "assertion.command-not-evaluated", assertion.file, "MustPassCommand requires explicit command execution opt-in.")];
   }
 
   return assertion.values.flatMap((command) => {
+    const shellCommand = process.platform === "win32"
+      ? ["cmd.exe", "/d", "/s", "/c", command]
+      : [process.env.SHELL || "sh", "-lc", command];
     const result = Bun.spawnSync({
-      cmd: ["/bin/sh", "-lc", command],
+      cmd: shellCommand,
       cwd: context.root,
       stdout: "pipe",
       stderr: "pipe",
@@ -180,7 +207,12 @@ function evaluateTextContainment(assertion: GraceAssertion, context: AssertionCo
     return [assertionIssue(assertion, `${assertion.kind} requires file and text values.`)];
   }
 
-  const file = resolveProjectPath(context.root, fileValue);
+  let file: string;
+  try {
+    file = resolveAssertionPath(context.root, fileValue);
+  } catch (error) {
+    return [invalidPathIssue(assertion, fileValue, error)];
+  }
   if (!existsSync(file)) {
     return [assertionIssue(assertion, `${fileValue} does not exist.`)];
   }
@@ -203,29 +235,118 @@ function existsInContext(value: string, context: AssertionContext): boolean {
   if (value.startsWith("M-") && context.verification.entries.has(`V-${value}`)) {
     return true;
   }
-  return existsSync(resolveProjectPath(context.root, value));
+  return existsSync(resolveAssertionPath(context.root, value));
 }
 
 function graphRecord(value: string, graph: GraphProjection): GraphAnchorRecord | undefined {
   return graph.modules.get(value) ?? graph.dataFlows.get(value);
 }
 
-function assertionValues(node: GraceXmlNode): string[] {
-  const values: string[] = [];
-  if (node.text.trim()) {
-    values.push(node.text.trim());
+function extractAssertionNode(
+  planFile: string,
+  node: GraceXmlNode,
+  kind: AssertionKind,
+): { assertion?: Omit<GraceAssertion, "file">; issues: Grace4Issue[] } {
+  const issues: Grace4Issue[] = [];
+  const schema = ASSERTION_SCHEMAS[kind];
+  const allowedFields = new Set(schema.fields);
+
+  if (node.text.trim() || Object.keys(node.attributes).length > 0) {
+    issues.push(issue("error", "assertion.invalid-shape", planFile, `${kind} must contain only its declared child fields.`));
   }
 
   for (const child of node.children) {
-    const text = child.text.trim();
-    values.push(text || child.tag);
+    if (!allowedFields.has(child.tag)) {
+      issues.push(issue("error", "assertion.invalid-shape", planFile, `${kind} does not allow child <${child.tag}>.`));
+    }
+    if (child.children.length > 0 || Object.keys(child.attributes).length > 0) {
+      issues.push(issue("error", "assertion.invalid-shape", planFile, `${kind}/${child.tag} must be a plain text field.`));
+    }
   }
 
-  return values;
+  const values: string[] = [];
+  if (schema.allowManyValues) {
+    const field = schema.fields[0]!;
+    const matches = node.children.filter((child) => child.tag === field);
+    if (matches.length === 0) {
+      issues.push(issue("error", "assertion.invalid-shape", planFile, `${kind} requires at least one <${field}> field.`));
+    }
+    for (const match of matches) {
+      const value = match.text.trim();
+      if (!value) {
+        issues.push(issue("error", "assertion.invalid-shape", planFile, `${kind}/${field} must not be empty.`));
+      } else {
+        values.push(value);
+      }
+    }
+  } else {
+    for (const field of schema.fields) {
+      const matches = node.children.filter((child) => child.tag === field);
+      if (matches.length !== 1) {
+        issues.push(issue("error", "assertion.invalid-shape", planFile, `${kind} requires exactly one <${field}> field.`));
+        continue;
+      }
+      const value = matches[0]!.text.trim();
+      if (!value) {
+        issues.push(issue("error", "assertion.invalid-shape", planFile, `${kind}/${field} must not be empty.`));
+      } else {
+        values.push(value);
+      }
+    }
+  }
+
+  if (schema.fileField) {
+    const fileIndex = schema.fields.indexOf(schema.fileField);
+    const fileValue = values[fileIndex];
+    if (fileValue) {
+      try {
+        resolveContainedProjectPath(inferProjectRoot(planFile), fileValue, { mode: "output" });
+      } catch (error) {
+        issues.push(invalidPathIssue({ kind, file: planFile, values }, fileValue, error));
+      }
+    }
+  }
+
+  return issues.length > 0 ? { issues } : { assertion: { kind, values }, issues };
 }
 
-function resolveProjectPath(root: string, value: string) {
-  return path.isAbsolute(value) ? value : path.join(root, value);
+function evaluateExistence(
+  assertion: GraceAssertion,
+  value: string,
+  context: AssertionContext,
+  shouldExist: boolean,
+): Grace4Issue[] {
+  let exists: boolean;
+  try {
+    exists = existsInContext(value, context);
+  } catch (error) {
+    return [invalidPathIssue(assertion, value, error)];
+  }
+  if (exists === shouldExist) {
+    return [];
+  }
+  return [assertionIssue(assertion, shouldExist ? `Expected ${value} to exist.` : `Expected ${value} not to exist.`)];
+}
+
+function inferProjectRoot(planFile: string): string {
+  const resolvedPlan = path.resolve(planFile);
+  let current = path.dirname(resolvedPlan);
+  while (path.dirname(current) !== current) {
+    if (path.basename(current) === ".grace") {
+      return path.dirname(current);
+    }
+    current = path.dirname(current);
+  }
+  return path.dirname(resolvedPlan);
+}
+
+function resolveAssertionPath(root: string, value: string): string {
+  return resolveContainedProjectPath(root, value, { mode: "output" }).absolutePath;
+}
+
+function invalidPathIssue(assertion: GraceAssertion, value: string, error: unknown): Grace4Issue {
+  const detail = error instanceof ProjectPathError ? `${error.code}: ${error.message}` : String(error);
+  return issue("error", "assertion.invalid-path", assertion.file, `Invalid assertion path ${JSON.stringify(value)}: ${detail}`);
 }
 
 function assertionIssue(assertion: GraceAssertion, message: string): Grace4Issue {

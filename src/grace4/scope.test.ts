@@ -4,7 +4,16 @@ import path from "node:path";
 import { describe, expect, it } from "bun:test";
 
 import { resolveGrace4Paths } from "./project";
-import { collectActiveChangeScopes, detectScopeOverlaps, detectUnsafeConcurrentExecution } from "./scope";
+import {
+  collectActiveChangeScopes,
+  detectScopeOverlaps,
+  detectUnsafeConcurrentExecution,
+  durableOverlaps,
+  parseScopeGlob,
+  scopeGlobsOverlap,
+  type DurableOwnershipIndex,
+  type DurableScope,
+} from "./scope";
 
 function createProject() {
   const root = path.join(os.tmpdir(), `grace4-scope-${crypto.randomUUID()}`);
@@ -18,21 +27,21 @@ function writeProjectFile(root: string, relativePath: string, contents: string) 
   writeFileSync(filePath, contents);
 }
 
-function writeChange(root: string, changeId: string, options: { graphAnchor: string; file: string; glob?: string; status?: string }) {
+function writeChange(root: string, changeId: string, options: { graphAnchor: string; file: string; glob?: string; status?: string; contextArtifact?: string }) {
   const status = options.status ?? "approved";
   const bundle = `.grace/changes/active/${changeId}`;
   writeProjectFile(root, `${bundle}/spec.xml`, `<GraceChangeSpec graceVersion="4.0" status="${status}"><${changeId} /></GraceChangeSpec>`);
   writeProjectFile(
     root,
     `${bundle}/plan.xml`,
-    `<GraceChangePlan graceVersion="4.0" status="${status}"><${changeId}><DurableScope><GraphAnchors><${options.graphAnchor} /></GraphAnchors><ContextArtifact>requirements.xml</ContextArtifact></DurableScope><ObservedWriteScope><File>${options.file}</File>${options.glob ? `<Glob>${options.glob}</Glob>` : ""}</ObservedWriteScope></${changeId}></GraceChangePlan>`,
+    `<GraceChangePlan graceVersion="4.0" status="${status}"><${changeId}><DurableScope><GraphAnchors><${options.graphAnchor} /></GraphAnchors>${options.contextArtifact ? `<ContextArtifact>${options.contextArtifact}</ContextArtifact>` : ""}</DurableScope><ObservedWriteScope><File>${options.file}</File>${options.glob ? `<Glob>${options.glob}</Glob>` : ""}</ObservedWriteScope></${changeId}></GraceChangePlan>`,
   );
 }
 
 describe("GRACE 4 scope detector", () => {
   it("collects active change scopes from approved and draft plans", () => {
     const root = createProject();
-    writeChange(root, "C-ONE", { graphAnchor: "M-AUTH-SESSION", file: "src/auth.ts" });
+    writeChange(root, "C-ONE", { graphAnchor: "M-AUTH-SESSION", file: "src/auth.ts", contextArtifact: "requirements.xml" });
     writeChange(root, "C-TWO", { graphAnchor: "M-PROFILE", file: "src/profile.ts", status: "draft" });
 
     const scopes = collectActiveChangeScopes(resolveGrace4Paths(root));
@@ -54,8 +63,53 @@ describe("GRACE 4 scope detector", () => {
 
     expect(durableIssues[0]?.severity).toBe("warning");
     expect(durableIssues[0]?.code).toBe("scope.durable-overlap");
-    expect(concurrentIssues[0]?.severity).toBe("error");
-    expect(concurrentIssues[0]?.code).toBe("scope.observed-write-overlap");
+    expect(concurrentIssues.every((issue) => issue.severity === "error")).toBe(true);
+    expect(concurrentIssues.map((issue) => issue.code)).toContain("scope.parallel-durable-overlap");
+    expect(concurrentIssues.map((issue) => issue.code)).toContain("scope.observed-write-overlap");
+  });
+
+  it("expands durable document ownership to anchor conflicts", () => {
+    const emptyScope = (): DurableScope => ({
+      graphAnchors: [],
+      verificationAnchors: [],
+      contextArtifacts: [],
+      graphDocuments: [],
+      verificationDocuments: [],
+    });
+    const left = emptyScope();
+    left.graphDocuments.push("GD-MAIN");
+    const right = emptyScope();
+    right.graphAnchors.push("M-AUTH-SESSION");
+    const ownership: DurableOwnershipIndex = {
+      graphDocuments: new Map([["GD-MAIN", new Set(["M-AUTH-SESSION"])]]),
+      verificationDocuments: new Map(),
+    };
+
+    expect(durableOverlaps(left, right, ownership)).toEqual(["graph:GD-MAIN↔M-AUTH-SESSION"]);
+  });
+
+  it("proves differing extension globs disjoint and auth-prefixed globs overlapping", () => {
+    expect(scopeGlobsOverlap(parseScopeGlob("src/**/*.ts"), parseScopeGlob("src/**/*.md"), true)).toBe(false);
+    expect(scopeGlobsOverlap(parseScopeGlob("src/**/*.ts"), parseScopeGlob("src/**/auth*.ts"), true)).toBe(true);
+    expect(scopeGlobsOverlap(parseScopeGlob("src/**/nested/*.ts"), parseScopeGlob("src/*/nested/a?.ts"), true)).toBe(true);
+  });
+
+  it("rejects unsupported, absolute, traversal, and malformed glob syntax as plan errors", () => {
+    const root = createProject();
+    writeChange(root, "C-BAD-GLOB", { graphAnchor: "M-BAD", file: "src/example.ts", glob: "src/{one,two}/**" });
+    const scopes = collectActiveChangeScopes(resolveGrace4Paths(root));
+    expect(scopes[0]?.issues.map((issue) => issue.code)).toContain("scope.unsupported-glob");
+
+    for (const invalid of ["/tmp/**", "../src/**", "C:\\src\\**", "src/**x/file.ts", "src/[ab].ts", "!src/**"]) {
+      expect(() => parseScopeGlob(invalid), invalid).toThrow();
+    }
+  });
+
+  it("normalizes backslashes and follows explicit case semantics", () => {
+    const windowsStyle = parseScopeGlob("SRC\\**\\Auth*.TS");
+    expect(windowsStyle.normalizedPattern).toBe("SRC/**/Auth*.TS");
+    expect(scopeGlobsOverlap(windowsStyle, parseScopeGlob("src/**/auth-file.ts"), false)).toBe(true);
+    expect(scopeGlobsOverlap(windowsStyle, parseScopeGlob("src/**/auth-file.ts"), true)).toBe(false);
   });
 
   it("blocks file-to-glob and nested glob overlaps while allowing disjoint areas", () => {

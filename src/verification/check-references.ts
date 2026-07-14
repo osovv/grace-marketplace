@@ -18,24 +18,25 @@ export function checkModuleCheckReferences(
   cwd?: string,
 ): boolean {
   // Normalize CWD: strip trailing slashes to avoid silent false positives
-  const normalizedCwd = cwd ? cwd.replace(/\/+$/, "") : cwd;
+  const normalizedCwd = cwd ? cwd.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+$/, "") : cwd;
   if (testFiles.length === 0) {
     return true;
   }
 
   for (const testFile of testFiles) {
-    let normalized = testFile;
+    let normalized = testFile.replaceAll("\\", "/").replace(/^\.\//, "");
 
     // If cwd is provided and testFile starts with "cwd/", strip the prefix.
     // cwd="" or cwd="." are treated as absent (no normalization).
-    if (normalizedCwd && normalizedCwd !== "." && normalizedCwd !== "" && testFile.startsWith(normalizedCwd + "/")) {
-      normalized = testFile.slice(normalizedCwd.length + 1);
+    if (normalizedCwd && normalizedCwd !== "." && normalizedCwd !== "" && normalized.startsWith(normalizedCwd + "/")) {
+      normalized = normalized.slice(normalizedCwd.length + 1);
     }
 
     const dir = path.dirname(normalized);
     const found = moduleChecks.some((check) => {
+      const normalizedCheck = check.replaceAll("\\", "/");
       // Full path match: the check string contains the test file path
-      if (check.includes(normalized)) {
+      if (normalizedCheck.includes(normalized)) {
         return true;
       }
 
@@ -45,7 +46,7 @@ export function checkModuleCheckReferences(
       if (dir === ".") {
         return false;
       }
-      const tokens = check.split(/\s+/);
+      const tokens = normalizedCheck.split(/\s+/);
       return tokens.some(
         (token) => token === dir || token === dir + "/",
       );

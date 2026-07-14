@@ -1,6 +1,7 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
+import { ProjectPathError, resolveContainedProjectPath } from "./paths";
 import { ANCHOR_PATTERNS, type Grace4Issue, type Grace4ProjectPaths } from "./types";
 import { childNodes, childText, readGraceXmlArtifact, walkNodes, type GraceXmlNode } from "./xml";
 
@@ -45,8 +46,10 @@ export type VerificationProjection = {
 
 type OwnerRoute = {
   owner: string;
+  authoredPath: string;
   file: string;
   owns: string[];
+  valid: boolean;
 };
 
 /** Builds and validates the logical graph projection from .grace/graph. */
@@ -67,14 +70,13 @@ export function buildGraphProjection(paths: Grace4ProjectPaths): GraphProjection
     if (projection.documents.has(route.owner)) {
       projection.issues.push(issue("error", "projection.graph.duplicate-document-route", paths.graphIndex, `${route.owner} appears more than once in the graph index.`));
     }
-    projection.documents.set(route.owner, route.file);
     for (const anchor of route.owns) {
-      const previousOwner = expectedAnchors.get(anchor);
-      if (previousOwner && previousOwner !== route.owner) {
-        projection.issues.push(issue("error", "projection.graph.duplicate-route", paths.graphIndex, `${anchor} is routed by both ${previousOwner} and ${route.owner}.`));
-      }
-      expectedAnchors.set(anchor, route.owner);
+      registerOwnedAnchor(expectedAnchors, anchor, route.owner, paths.graphIndex, "graph", projection.issues);
     }
+    if (!route.valid) {
+      continue;
+    }
+    projection.documents.set(route.owner, route.file);
 
     const artifact = readGraceXmlArtifact(route.file);
     projection.issues.push(...artifact.issues);
@@ -171,16 +173,13 @@ export function buildVerificationProjection(paths: Grace4ProjectPaths, graph: Gr
     if (projection.documents.has(route.owner)) {
       projection.issues.push(issue("error", "projection.verification.duplicate-document-route", paths.verificationIndex, `${route.owner} appears more than once in the verification index.`));
     }
-    projection.documents.set(route.owner, route.file);
     for (const anchor of route.owns) {
-      const previousOwner = expectedAnchors.get(anchor);
-      if (previousOwner && previousOwner !== route.owner) {
-        projection.issues.push(
-          issue("error", "projection.verification.duplicate-route", paths.verificationIndex, `${anchor} is routed by both ${previousOwner} and ${route.owner}.`),
-        );
-      }
-      expectedAnchors.set(anchor, route.owner);
+      registerOwnedAnchor(expectedAnchors, anchor, route.owner, paths.verificationIndex, "verification", projection.issues);
     }
+    if (!route.valid) {
+      continue;
+    }
+    projection.documents.set(route.owner, route.file);
 
     const artifact = readGraceXmlArtifact(route.file);
     projection.issues.push(...artifact.issues);
@@ -242,11 +241,11 @@ export function buildVerificationProjection(paths: Grace4ProjectPaths, graph: Gr
         owner: route.owner,
         file: route.file,
         priority: collectPriority(node),
-        cwd: collectCwd(node, route.file, projection.issues),
-        commands: collectTextByTag(node, /command/i),
-        scenarios: collectTextByTag(node, /scenario/i),
-        markers: collectTextByTag(node, /marker/i),
-        testFiles: collectTestFiles(node),
+        cwd: collectCwd(node, paths.root, route.file, projection.issues),
+        commands: collectExactEvidence(node, "Command"),
+        scenarios: collectExactEvidence(node, "Scenario"),
+        markers: collectExactEvidence(node, "Marker"),
+        testFiles: collectTestFiles(node, paths.root, route.file, projection.issues),
       });
     }
   }
@@ -305,10 +304,18 @@ function routeFromOwnerNode(
     issues.push(issue("error", "projection.index.duplicate-path", indexFile, `${node.tag} route must contain exactly one Path.`));
   }
 
-  const resolvedPath = rawPath ? resolveArtifactPath(graceDir, rawPath) : null;
-  const safePath = resolvedPath && !isPortableAbsolutePath(rawPath!) && isInsideDir(allowedDir, resolvedPath) && path.extname(resolvedPath) === ".xml";
-  if (rawPath && !safePath) {
-    issues.push(issue("error", "projection.index.path-outside-area", indexFile, `${node.tag} Path '${rawPath}' must be a relative XML path inside ${path.basename(allowedDir)}/.`));
+  let resolvedPath: string | null = null;
+  if (rawPath) {
+    try {
+      resolvedPath = resolveContainedProjectPath(graceDir, rawPath, {
+        allowedRoot: allowedDir,
+        mode: "existing",
+        extension: ".xml",
+      }).absolutePath;
+    } catch (error) {
+      const detail = error instanceof ProjectPathError ? `${error.code}: ${error.message}` : String(error);
+      issues.push(issue("error", "projection.index.invalid-path", indexFile, `${node.tag} Path ${JSON.stringify(rawPath)} is invalid: ${detail}`));
+    }
   }
 
   const owns = node.children
@@ -318,9 +325,34 @@ function routeFromOwnerNode(
 
   return {
     owner: node.tag,
-    file: safePath && resolvedPath ? resolvedPath : path.join(graceDir, "__invalid-route__", `${node.tag}.xml`),
+    authoredPath: rawPath ?? "",
+    file: resolvedPath ?? path.join(graceDir, "__invalid-route__", `${node.tag}.xml`),
     owns,
+    valid: resolvedPath !== null,
   };
+}
+
+function registerOwnedAnchor(
+  expectedAnchors: Map<string, string>,
+  anchor: string,
+  owner: string,
+  indexFile: string,
+  kind: "graph" | "verification",
+  issues: Grace4Issue[],
+): void {
+  const previousOwner = expectedAnchors.get(anchor);
+  if (previousOwner) {
+    issues.push(
+      issue(
+        "error",
+        `projection.${kind}.duplicate-route`,
+        indexFile,
+        `${anchor} is declared more than once under ${previousOwner === owner ? owner : `${previousOwner} and ${owner}`}.`,
+      ),
+    );
+    return;
+  }
+  expectedAnchors.set(anchor, owner);
 }
 
 function graphAnchorsInWrapper(wrapper: GraceXmlNode): Array<{ node: GraceXmlNode; kind: GraphAnchorRecord["kind"] }> {
@@ -379,9 +411,9 @@ function validateModuleVerificationCoverage(graph: GraphProjection, verification
   }
 }
 
-function collectTextByTag(node: GraceXmlNode, tagPattern: RegExp): string[] {
+function collectExactEvidence(node: GraceXmlNode, tag: "Command" | "Scenario" | "Marker"): string[] {
   return [...walkNodes(node)]
-    .filter((candidate) => candidate !== node && tagPattern.test(candidate.tag))
+    .filter((candidate) => candidate !== node && candidate.tag === tag)
     .map((candidate) => aggregateNodeText(candidate).trim())
     .filter(Boolean);
 }
@@ -403,37 +435,48 @@ function collectPriority(node: GraceXmlNode): string | undefined {
   return priority || undefined;
 }
 
-function collectCwd(node: GraceXmlNode, file: string, issues: Grace4Issue[]): string | undefined {
+function collectCwd(node: GraceXmlNode, projectRoot: string, file: string, issues: Grace4Issue[]): string | undefined {
   const cwdNodes = childNodes(node, "Cwd");
   if (cwdNodes.length > 1) {
     issues.push(issue("error", "projection.verification.duplicate-cwd", file, `${node.tag} must contain at most one direct Cwd.`));
   }
-  const cwd = cwdNodes[0]?.text.trim().replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/$/, "");
-  if (!cwd || cwd === ".") {
+  const authoredCwd = cwdNodes[0]?.text.trim();
+  if (!authoredCwd || authoredCwd === ".") {
     return undefined;
   }
-  if (isPortableAbsolutePath(cwd) || cwd === ".." || cwd.startsWith("../") || cwd.includes("/../")) {
-    issues.push(issue("error", "projection.verification.invalid-cwd", file, `${node.tag} Cwd '${cwd}' must be project-relative and must not escape the project root.`));
+  try {
+    const cwd = resolveContainedProjectPath(projectRoot, authoredCwd, { mode: "existing" });
+    if (!statSync(cwd.absolutePath).isDirectory()) {
+      issues.push(issue("error", "projection.verification.invalid-cwd", file, `${node.tag} Cwd ${JSON.stringify(authoredCwd)} must resolve to a directory.`));
+      return undefined;
+    }
+    return cwd.relativePath;
+  } catch (error) {
+    const detail = error instanceof ProjectPathError ? `${error.code}: ${error.message}` : String(error);
+    issues.push(issue("error", "projection.verification.invalid-cwd", file, `${node.tag} Cwd ${JSON.stringify(authoredCwd)} is invalid: ${detail}`));
     return undefined;
   }
-  return cwd;
 }
 
-function collectTestFiles(node: GraceXmlNode): string[] {
+function collectTestFiles(node: GraceXmlNode, projectRoot: string, file: string, issues: Grace4Issue[]): string[] {
   const result: string[] = [];
   for (const tfNode of childNodes(node, "TestFiles")) {
     for (const child of tfNode.children) {
-      if (/^file$/i.test(child.tag)) {
+      if (child.tag === "File") {
         const text = aggregateNodeText(child).trim();
-        if (text) result.push(text);
+        if (!text) {
+          continue;
+        }
+        try {
+          result.push(resolveContainedProjectPath(projectRoot, text, { mode: "existing" }).relativePath);
+        } catch (error) {
+          const detail = error instanceof ProjectPathError ? `${error.code}: ${error.message}` : String(error);
+          issues.push(issue("error", "projection.verification.invalid-test-file", file, `${node.tag} TestFiles/File ${JSON.stringify(text)} is invalid: ${detail}`));
+        }
       }
     }
   }
   return result;
-}
-
-function resolveArtifactPath(graceDir: string, artifactPath: string) {
-  return path.resolve(graceDir, artifactPath);
 }
 
 function reportUnindexedDocuments(
@@ -443,7 +486,7 @@ function reportUnindexedDocuments(
   kind: "graph" | "verification",
   issues: Grace4Issue[],
 ): void {
-  const routedFiles = new Set(routes.map((route) => path.resolve(route.file)));
+  const routedFiles = new Set(routes.filter((route) => route.valid).map((route) => path.resolve(route.file)));
   for (const file of listXmlFiles(directory)) {
     if (path.resolve(file) === path.resolve(indexFile) || routedFiles.has(path.resolve(file))) {
       continue;
@@ -469,15 +512,6 @@ function listXmlFiles(directory: string): string[] {
     }
     return entry.isFile() && entry.name.endsWith(".xml") ? [entryPath] : [];
   }).sort();
-}
-
-function isInsideDir(parentDir: string, targetPath: string): boolean {
-  const relative = path.relative(parentDir, targetPath);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
-function isPortableAbsolutePath(value: string): boolean {
-  return path.isAbsolute(value) || /^[A-Za-z]:\//.test(value) || value.startsWith("//");
 }
 
 function issue(severity: Grace4Issue["severity"], code: string, file: string, message: string): Grace4Issue {

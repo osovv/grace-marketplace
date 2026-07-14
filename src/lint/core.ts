@@ -5,8 +5,9 @@ import { evaluateAssertion, extractAssertionsWithIssues } from "../grace4/assert
 import { validateGrace4Project } from "../grace4/grammar";
 import { detectGraceProjectKind, formatGrace3MigrationGuidance, resolveGrace4Paths } from "../grace4/project";
 import { buildGraphProjection, buildVerificationProjection, type GraphProjection, type VerificationProjection } from "../grace4/projections";
-import { collectActiveChangeScopes, detectScopeOverlaps, detectUnsafeConcurrentExecution } from "../grace4/scope";
-import type { Grace4Issue } from "../grace4/types";
+import { collectActiveChangeScopes, createDurableOwnershipIndex, detectScopeOverlaps, detectUnsafeConcurrentExecution } from "../grace4/scope";
+import { ANCHOR_PATTERNS, type Grace4Issue, type Grace4ProjectPaths } from "../grace4/types";
+import { readGraceXmlArtifact } from "../grace4/xml";
 import { collectCodeFiles, hasGraceMarkers } from "../project-utils";
 import { withLintIssueGuide } from "./catalog";
 import { loadGraceLintConfig } from "./config";
@@ -14,13 +15,16 @@ import type { LintIssue, LintOptions, LintProfile, LintResult } from "./types";
 
 const TEXT_FORMAT_OPTIONS = new Set(["text", "json"]);
 
-function createResult(root: string, profile: LintProfile): LintResult {
+function createResult(root: string, profile: LintProfile, options: LintOptions): LintResult {
   return {
     schemaVersion: "1.0.0",
     tool: "grace-lint",
     generatedAt: new Date().toISOString(),
     root,
     profile,
+    assertionMode: options.assertionMode ?? "current",
+    changeId: options.changeId,
+    commandsEnabled: options.runCommands ?? false,
     filesChecked: 0,
     governedFiles: 0,
     xmlFilesChecked: 0,
@@ -95,14 +99,22 @@ function readPlanStatus(planFile: string): string | null {
   }
 }
 
-function validateAssertions(result: LintResult, planFilesActive: string[], planFilesArchived: string[], graph: GraphProjection, verification: VerificationProjection, root: string) {
-  const context = { root, graph, verification };
+function validateAssertions(
+  result: LintResult,
+  paths: Grace4ProjectPaths,
+  planFilesActive: string[],
+  planFilesArchived: string[],
+  graph: GraphProjection,
+  verification: VerificationProjection,
+  root: string,
+  options: LintOptions,
+) {
+  const context = { root, graph, verification, runCommands: options.runCommands };
+  const assertionMode = options.assertionMode ?? "current";
 
   for (const planFile of planFilesActive) {
     const status = readPlanStatus(planFile);
-    // BaselineAssertions: syntax always, semantic only for active approved
-    evaluateSection(result, planFile, "BaselineAssertions", context, status === "approved");
-    // TargetAssertions: syntax always, never semantic in general lint
+    evaluateSection(result, planFile, "BaselineAssertions", context, assertionMode === "current" && status === "approved");
     evaluateSection(result, planFile, "TargetAssertions", context, false);
   }
 
@@ -111,12 +123,38 @@ function validateAssertions(result: LintResult, planFilesActive: string[], planF
     evaluateSection(result, planFile, "BaselineAssertions", context, false);
     evaluateSection(result, planFile, "TargetAssertions", context, false);
   }
+
+  if (assertionMode === "current") {
+    return;
+  }
+
+  const selectedPlan = resolveSelectedApprovedPlan(result, paths, options.changeId);
+  if (!selectedPlan) {
+    return;
+  }
+  evaluateSection(
+    result,
+    selectedPlan,
+    assertionMode === "baseline" ? "BaselineAssertions" : "TargetAssertions",
+    context,
+    true,
+    false,
+  );
 }
 
-function evaluateSection(result: LintResult, planFile: string, section: "BaselineAssertions" | "TargetAssertions", context: { root: string; graph: GraphProjection; verification: VerificationProjection }, evaluateSemantically: boolean) {
+function evaluateSection(
+  result: LintResult,
+  planFile: string,
+  section: "BaselineAssertions" | "TargetAssertions",
+  context: { root: string; graph: GraphProjection; verification: VerificationProjection; runCommands?: boolean },
+  evaluateSemantically: boolean,
+  includeExtractionIssues = true,
+) {
   const extraction = extractAssertionsWithIssues(planFile, section);
-  for (const issue of extraction.issues) {
-    addGrace4Issue(result, issue);
+  if (includeExtractionIssues) {
+    for (const issue of extraction.issues) {
+      addGrace4Issue(result, issue);
+    }
   }
   if (evaluateSemantically) {
     for (const assertion of extraction.assertions) {
@@ -126,11 +164,63 @@ function evaluateSection(result: LintResult, planFile: string, section: "Baselin
     }
   }
 }
+
+function resolveSelectedApprovedPlan(
+  result: LintResult,
+  paths: Grace4ProjectPaths,
+  changeId: string | undefined,
+): string | null {
+  if (!changeId) {
+    addIssue(result, {
+      severity: "error",
+      code: "assertion.change-required",
+      file: paths.changesActiveDir,
+      message: "Selected baseline or target assertion evaluation requires one --change C-* identifier.",
+    });
+    return null;
+  }
+  if (!ANCHOR_PATTERNS.change.test(changeId)) {
+    addIssue(result, {
+      severity: "error",
+      code: "assertion.invalid-change-id",
+      file: paths.changesActiveDir,
+      message: `Selected change '${changeId}' must be a canonical C-* identifier.`,
+    });
+    return null;
+  }
+
+  const bundleDir = path.join(paths.changesActiveDir, changeId);
+  const specFile = path.join(bundleDir, "spec.xml");
+  const planFile = path.join(bundleDir, "plan.xml");
+  const spec = readGraceXmlArtifact(specFile);
+  const plan = readGraceXmlArtifact(planFile);
+  const specWrapper = spec.root?.children.filter((child) => ANCHOR_PATTERNS.change.test(child.tag));
+  const planWrapper = plan.root?.children.filter((child) => ANCHOR_PATTERNS.change.test(child.tag));
+  const approved = spec.root?.tag === "GraceChangeSpec"
+    && spec.root.attributes.status === "approved"
+    && specWrapper?.length === 1
+    && specWrapper[0]?.tag === changeId
+    && plan.root?.tag === "GraceChangePlan"
+    && plan.root.attributes.status === "approved"
+    && planWrapper?.length === 1
+    && planWrapper[0]?.tag === changeId;
+
+  if (!approved) {
+    addIssue(result, {
+      severity: "error",
+      code: "assertion.change-not-approved",
+      file: bundleDir,
+      message: `Selected change ${changeId} must name one active bundle whose spec.xml and plan.xml are both approved and identity-matched.`,
+    });
+    return null;
+  }
+  return planFile;
+}
 /** Lints the current GRACE 4 .grace document state and file-local semantic markup. */
 export function lintGraceProject(projectRoot: string, options: LintOptions = {}): LintResult {
   const root = path.resolve(projectRoot);
   const profile = options.profile ?? "standard";
-  const result = createResult(root, profile);
+  const result = createResult(root, profile, options);
   const kind = detectGraceProjectKind(root);
 
   const fileCounts = countGovernedFiles(root);
@@ -174,13 +264,17 @@ export function lintGraceProject(projectRoot: string, options: LintOptions = {})
   }
 
   const activeScopes = collectActiveChangeScopes(paths);
-  for (const issue of [...detectScopeOverlaps(activeScopes), ...detectUnsafeConcurrentExecution(activeScopes)]) {
+  const ownership = createDurableOwnershipIndex(graph, verification);
+  const scopeIssues = activeScopes.flatMap((scope) => scope.issues);
+  const overlapIssues = detectScopeOverlaps(activeScopes, ownership);
+  const parallelIssues = options.parallelPreflight ? detectUnsafeConcurrentExecution(activeScopes, ownership) : [];
+  for (const issue of [...scopeIssues, ...overlapIssues, ...parallelIssues]) {
     addGrace4Issue(result, issue);
   }
 
   const planFilesActive = [...listPlanFiles(paths.changesActiveDir)];
   const planFilesArchived = [...listPlanFiles(paths.changesArchiveDir)];
-  validateAssertions(result, planFilesActive, planFilesArchived, graph, verification, root);
+  validateAssertions(result, paths, planFilesActive, planFilesArchived, graph, verification, root, options);
 
   return finalizeResult(result);
 }

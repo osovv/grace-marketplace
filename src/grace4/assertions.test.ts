@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "bun:test";
@@ -59,7 +59,7 @@ describe("GRACE 4 assertions", () => {
     const planFile = path.join(root, "plan.xml");
     writeFileSync(
       planFile,
-      `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><BaselineAssertions><MustExist><Value>M-AUTH-SESSION</Value></MustExist><MustNotExist><Path>tmp/missing</Path></MustNotExist><MustOwn><Owner>GD-MAIN</Owner><Anchor>M-AUTH-SESSION</Anchor></MustOwn><MustLink><From>M-AUTH-SESSION</From><To>M-USER-PROFILE</To></MustLink><MustVerify><Module>M-AUTH-SESSION</Module></MustVerify><MustPassCommand><Command>bun --version</Command></MustPassCommand><MustContain><File>src/example.ts</File><Text>fresh</Text></MustContain><MustNotContain><File>src/example.ts</File><Text>stale</Text></MustNotContain><UnknownAssertion /></BaselineAssertions></C-EXAMPLE></GraceChangePlan>`,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><BaselineAssertions><MustExist><Value>M-AUTH-SESSION</Value></MustExist><MustNotExist><Value>tmp/missing</Value></MustNotExist><MustOwn><Owner>GD-MAIN</Owner><Anchor>M-AUTH-SESSION</Anchor></MustOwn><MustLink><From>M-AUTH-SESSION</From><To>M-USER-PROFILE</To></MustLink><MustVerify><Module>M-AUTH-SESSION</Module></MustVerify><MustPassCommand><Command>bun --version</Command></MustPassCommand><MustContain><File>src/example.ts</File><Text>fresh</Text></MustContain><MustNotContain><File>src/example.ts</File><Text>stale</Text></MustNotContain><UnknownAssertion /></BaselineAssertions></C-EXAMPLE></GraceChangePlan>`,
     );
 
     const result = extractAssertionsWithIssues(planFile, "BaselineAssertions");
@@ -90,8 +90,38 @@ describe("GRACE 4 assertions", () => {
     expect(evaluateAssertion(assertion("MustVerify", ["M-AUTH-SESSION"]), ctx)).toHaveLength(0);
     expect(evaluateAssertion(assertion("MustContain", ["src/example.ts", "fresh"]), ctx)).toHaveLength(0);
     expect(evaluateAssertion(assertion("MustNotContain", ["src/example.ts", "stale"]), ctx)).toHaveLength(0);
-    expect(evaluateAssertion(assertion("MustPassCommand", ["exit 99"]), ctx)).toHaveLength(0);
+    expect(evaluateAssertion(assertion("MustPassCommand", ["exit 99"]), ctx)[0]?.code).toBe("assertion.command-not-evaluated");
     expect(evaluateAssertion(assertion("MustPassCommand", ["exit 99"]), { ...ctx, runCommands: true })).toHaveLength(1);
+  });
+
+  it("rejects missing, extra, duplicate, nested, and empty assertion fields", () => {
+    const root = createProject();
+    const planFile = path.join(root, "plan.xml");
+    writeFileSync(
+      planFile,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><BaselineAssertions><MustOwn><Owner>GD-MAIN</Owner><Owner>GD-OTHER</Owner><Anchor /></MustOwn><MustLink><From>M-A</From><To>M-B</To><Extra>x</Extra></MustLink><MustVerify><Module><Nested /></Module></MustVerify><MustContain>text<File>src/example.ts</File></MustContain></BaselineAssertions></C-EXAMPLE></GraceChangePlan>`,
+    );
+
+    const result = extractAssertionsWithIssues(planFile, "BaselineAssertions");
+    expect(result.assertions).toHaveLength(0);
+    expect(result.issues.filter((item) => item.code === "assertion.invalid-shape").length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("rejects absolute, traversal, and escaping-symlink File fields during extraction", () => {
+    const root = createProject();
+    const outside = createProject();
+    writeFileSync(path.join(outside, "secret.txt"), "secret\n");
+    symlinkSync(path.join(outside, "secret.txt"), path.join(root, "escape.txt"));
+    const planFile = path.join(root, ".grace", "changes", "active", "C-PATHS", "plan.xml");
+    mkdirSync(path.dirname(planFile), { recursive: true });
+    writeFileSync(
+      planFile,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-PATHS><TargetAssertions><MustContain><File>/tmp/absolute</File><Text>x</Text></MustContain><MustContain><File>../traversal</File><Text>x</Text></MustContain><MustContain><File>escape.txt</File><Text>secret</Text></MustContain></TargetAssertions></C-PATHS></GraceChangePlan>`,
+    );
+
+    const result = extractAssertionsWithIssues(planFile, "TargetAssertions");
+    expect(result.assertions).toHaveLength(0);
+    expect(result.issues.filter((item) => item.code === "assertion.invalid-path")).toHaveLength(3);
   });
 
   it("reports failed assertions", () => {

@@ -20,6 +20,11 @@ describe("checkModuleCheckReferences", () => {
     expect(checkModuleCheckReferences(["packages/auth/src/auth.test.ts"], ["bun test other.test.ts"], "packages/auth")).toBe(false);
   });
 
+  test("normalizes Windows separators before Cwd-relative comparison", () => {
+    expect(checkModuleCheckReferences(["packages\\auth\\src\\auth.test.ts"], ["bun test src/auth.test.ts"], "packages\\auth")).toBe(true);
+    expect(checkModuleCheckReferences(["packages\\auth\\src\\auth.test.ts"], ["bun test src\\auth.test.ts"], "packages\\auth")).toBe(true);
+  });
+
   test("with cwd that does not match testFile prefix, no stripping", () => {
     expect(checkModuleCheckReferences(["packages/web/src/test.ts"], ["bun test packages/web/src/test.ts"], "packages/auth")).toBe(true);
     expect(checkModuleCheckReferences(["packages/web/src/test.ts"], ["bun test other.test.ts"], "packages/auth")).toBe(false);

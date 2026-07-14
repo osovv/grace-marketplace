@@ -2,6 +2,9 @@ export type LintSeverity = "error" | "warning";
 
 export type LintProfile = "standard";
 
+/** Selected assertion section evaluated by grace lint. */
+export type LintAssertionMode = "current" | "baseline" | "target";
+
 export type ModuleRole = "RUNTIME" | "TEST" | "BARREL" | "CONFIG" | "TYPES" | "SCRIPT";
 export type MapMode = "EXPORTS" | "LOCALS" | "SUMMARY" | "NONE";
 
@@ -22,6 +25,9 @@ export type LintResult = {
   generatedAt: string;
   root: string;
   profile: LintProfile;
+  assertionMode: LintAssertionMode;
+  changeId?: string;
+  commandsEnabled: boolean;
   filesChecked: number;
   governedFiles: number;
   xmlFilesChecked: number;
@@ -35,6 +41,10 @@ export type LintResult = {
 
 export type LintOptions = {
   profile?: LintProfile;
+  assertionMode?: LintAssertionMode;
+  changeId?: string;
+  runCommands?: boolean;
+  parallelPreflight?: boolean;
 };
 
 export type GraceLintConfig = {

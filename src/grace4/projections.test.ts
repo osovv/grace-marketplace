@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "bun:test";
@@ -182,7 +182,39 @@ describe("GRACE 4 graph and verification projections", () => {
     );
 
     const graph = buildGraphProjection(resolveGrace4Paths(root));
-    expect(issueCodes(graph.issues).filter((code) => code === "projection.index.path-outside-area")).toHaveLength(3);
+    expect(issueCodes(graph.issues).filter((code) => code === "projection.index.invalid-path")).toHaveLength(3);
+  });
+
+  it("rejects projection routes that escape through symlinks without reading the target", () => {
+    const root = createProject();
+    const outside = createProject();
+    writeProjectFile(outside, "outside.xml", `<not-valid`);
+    mkdirSync(path.join(root, ".grace", "graph"), { recursive: true });
+    symlinkSync(path.join(outside, "outside.xml"), path.join(root, ".grace", "graph", "escape.xml"));
+    writeProjectFile(
+      root,
+      ".grace/graph/index.xml",
+      `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-ESCAPE><Path>graph/escape.xml</Path><Owns><M-ESCAPE /></Owns></GD-ESCAPE></GraphDocuments></GraceGraphIndex>`,
+    );
+
+    const graph = buildGraphProjection(resolveGrace4Paths(root));
+    expect(issueCodes(graph.issues)).toContain("projection.index.invalid-path");
+    expect(issueCodes(graph.issues)).not.toContain("xml.parse");
+    expect(graph.documents.has("GD-ESCAPE")).toBe(false);
+  });
+
+  it("rejects repeated Owns declarations under the same or different owners", () => {
+    const root = createProject();
+    writeProjectFile(
+      root,
+      ".grace/graph/index.xml",
+      `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-ONE><Path>graph/one.xml</Path><Owns><M-EXAMPLE /><M-EXAMPLE /></Owns></GD-ONE><GD-TWO><Path>graph/two.xml</Path><Owns><M-EXAMPLE /></Owns></GD-TWO></GraphDocuments></GraceGraphIndex>`,
+    );
+    writeProjectFile(root, ".grace/graph/one.xml", `<GraceGraphDocument graceVersion="4.0"><GD-ONE><M-EXAMPLE /></GD-ONE></GraceGraphDocument>`);
+    writeProjectFile(root, ".grace/graph/two.xml", `<GraceGraphDocument graceVersion="4.0"><GD-TWO /></GraceGraphDocument>`);
+
+    const graph = buildGraphProjection(resolveGrace4Paths(root));
+    expect(issueCodes(graph.issues).filter((code) => code === "projection.graph.duplicate-route")).toHaveLength(2);
   });
 
   it("produces equivalent projections for monolithic and segmented storage", () => {
@@ -292,6 +324,7 @@ describe("GRACE 4 graph and verification projections", () => {
 
   it("collects testFiles only from <TestFiles><File> and excludes naked <File> siblings", () => {
     const root = createProject();
+    writeProjectFile(root, "apps/web/src/example.test.ts", "test\n");
     writeProjectFile(
       root,
       ".grace/graph/index.xml",
@@ -310,7 +343,7 @@ describe("GRACE 4 graph and verification projections", () => {
     writeProjectFile(
       root,
       ".grace/verification/main.xml",
-      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><Cwd>apps/web</Cwd><TestFiles><File>src/example.test.ts</File></TestFiles><File>src/metadata.ts</File><Command>bun test example</Command></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>`
+      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><Cwd>apps/web</Cwd><TestFiles><File>apps/web/src/example.test.ts</File></TestFiles><File>src/metadata.ts</File><Command>bun test example</Command><CommandNotes>ignored command</CommandNotes><ScenarioNotes>ignored scenario</ScenarioNotes><MarkerNotes>ignored marker</MarkerNotes></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>`
     );
 
     const paths = resolveGrace4Paths(root);
@@ -320,9 +353,12 @@ describe("GRACE 4 graph and verification projections", () => {
     expect(verification.issues).toHaveLength(0);
     const entry = verification.entries.get("V-M-EXAMPLE")!;
     expect(entry.cwd).toBe("apps/web");
-    expect(entry.testFiles).toEqual(["src/example.test.ts"]);
+    expect(entry.testFiles).toEqual(["apps/web/src/example.test.ts"]);
     // src/metadata.ts under a naked <File> (outside <TestFiles>) must NOT appear
     expect(entry.testFiles).not.toContain("src/metadata.ts");
+    expect(entry.commands).toEqual(["bun test example"]);
+    expect(entry.scenarios).toEqual([]);
+    expect(entry.markers).toEqual([]);
   });
 
   it("rejects verification cwd values that escape the project root", () => {
@@ -339,5 +375,25 @@ describe("GRACE 4 graph and verification projections", () => {
     const verification = buildVerificationProjection(paths, graph);
     expect(issueCodes(verification.issues).filter((code) => code === "projection.verification.invalid-cwd")).toHaveLength(2);
     expect(verification.entries.get("V-M-AUTH-SESSION")?.cwd).toBeUndefined();
+  });
+
+  it("rejects Cwd and TestFiles that escape through traversal or symlinks", () => {
+    const root = createProject();
+    const outside = createProject();
+    writeProjectFile(outside, "outside.test.ts", "test\n");
+    writeMonolithicProject(root);
+    symlinkSync(outside, path.join(root, "escaped-cwd"), "dir");
+    symlinkSync(path.join(outside, "outside.test.ts"), path.join(root, "escaped.test.ts"));
+    writeProjectFile(
+      root,
+      ".grace/verification/main.xml",
+      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-AUTH-SESSION><Cwd>escaped-cwd</Cwd><TestFiles><File>../outside.test.ts</File></TestFiles></V-M-AUTH-SESSION><V-M-USER-PROFILE><TestFiles><File>escaped.test.ts</File></TestFiles></V-M-USER-PROFILE></VD-MAIN></GraceVerificationDocument>`,
+    );
+
+    const paths = resolveGrace4Paths(root);
+    const graph = buildGraphProjection(paths);
+    const verification = buildVerificationProjection(paths, graph);
+    expect(issueCodes(verification.issues)).toContain("projection.verification.invalid-cwd");
+    expect(issueCodes(verification.issues).filter((code) => code === "projection.verification.invalid-test-file")).toHaveLength(2);
   });
 });
