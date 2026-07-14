@@ -57,6 +57,22 @@ export const ANCHOR_PATTERNS = {
   task: /^T-[0-9]{3}$/,
 } as const;
 
+/** Canonical semantic-anchor family recognized by Artifact Grammar. */
+export type SemanticAnchorFamily =
+  | "graph-document"
+  | "verification-document"
+  | "change"
+  | "module"
+  | "verification"
+  | "data-flow"
+  | "task";
+
+/** Result of classifying any XML tag that resembles a semantic anchor. */
+export type SemanticAnchorClassification =
+  | { kind: "canonical"; family: SemanticAnchorFamily }
+  | { kind: "malformed"; family: SemanticAnchorFamily }
+  | { kind: "ordinary" };
+
 /** Current-state validation issue emitted by GRACE 4 validators. */
 export type Grace4Issue = {
   severity: "error" | "warning";

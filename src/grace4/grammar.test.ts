@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "bun:test";
@@ -29,6 +29,18 @@ function writeProjectFile(root: string, relativePath: string, contents: string) 
 
 function codes(result: { issues: { code: string }[] }) {
   return result.issues.map((issue) => issue.code);
+}
+
+function validSpec(changeId = "C-EXAMPLE", overrides = ""): string {
+  return `<GraceChangeSpec graceVersion="4.0" status="approved"><${changeId}><Summary>Summary.</Summary><Goals><Goal>Goal.</Goal></Goals><Constraints><Constraint>Constraint.</Constraint></Constraints><NonGoals><NonGoal>Non-goal.</NonGoal></NonGoals><AcceptanceCriteria><Criterion>Accepted.</Criterion></AcceptanceCriteria><AffectedAreas><M-EXAMPLE /></AffectedAreas><VerificationIntent><ExpectedCommand>bun test</ExpectedCommand></VerificationIntent>${overrides}</${changeId}></GraceChangeSpec>`;
+}
+
+function validPlan(tasks: string, overrides = "", changeId = "C-EXAMPLE"): string {
+  return `<GraceChangePlan graceVersion="4.0" status="approved"><${changeId}><IntentSummary>Intent.</IntentSummary><BaselineAssertions><MustExist><Value>M-EXAMPLE</Value></MustExist></BaselineAssertions><TargetAssertions><MustVerify><Module>M-EXAMPLE</Module></MustVerify></TargetAssertions><DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>src/example.ts</File></ObservedWriteScope>${overrides}<ImplementationPlan>${tasks}</ImplementationPlan></${changeId}></GraceChangePlan>`;
+}
+
+function task(id: string, dependencies = ""): string {
+  return `<${id}><Title>${id} title</Title><DependsOn>${dependencies}</DependsOn><AcceptanceCriteria><Criterion>${id} accepted.</Criterion></AcceptanceCriteria><Verification><Command>bun test</Command></Verification></${id}>`;
 }
 
 describe("GRACE 4 Artifact Grammar", () => {
@@ -149,7 +161,7 @@ describe("GRACE 4 Artifact Grammar", () => {
       parseGraceXmlArtifact("requirements.xml", `<GraceRequirements graceVersion="4.0" status="approved" />`),
     );
     const change = validateArtifactRoot(
-      parseGraceXmlArtifact("spec.xml", `<GraceChangeSpec graceVersion="4.0" status="approved"><C-EXAMPLE /></GraceChangeSpec>`),
+      parseGraceXmlArtifact("spec.xml", validSpec()),
     );
 
     expect(codes(context)).toContain("artifact.forbidden-status-attribute");
@@ -165,6 +177,97 @@ describe("GRACE 4 Artifact Grammar", () => {
     expect(codes({ issues: validateSemanticAnchorDiscipline("graph.xml", artifact.root!) })).toContain(
       "artifact.semantic-anchor-attribute",
     );
+  });
+
+  it("rejects malformed semantic-anchor tags across every anchor family", () => {
+    const artifact = parseGraceXmlArtifact(
+      "anchors.xml",
+      `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-bad /><GD-bad /><VD-bad /><C-bad /><V-M-bad /><DF-bad /><T-bad /></GD-MAIN></GraceGraphDocument>`,
+    );
+
+    const resultCodes = codes({ issues: validateSemanticAnchorDiscipline("anchors.xml", artifact.root!) });
+    expect(resultCodes.filter((code) => code === "artifact.malformed-semantic-anchor")).toHaveLength(7);
+  });
+
+  it("rejects attributes on canonical anchors and anchor-like attribute names or values", () => {
+    const artifact = parseGraceXmlArtifact(
+      "anchors.xml",
+      `<GraceGraphDocument graceVersion="4.0"><GD-MAIN role="owner"><Node M-bad="yes" ref="VD-bad" /></GD-MAIN></GraceGraphDocument>`,
+    );
+
+    const resultCodes = codes({ issues: validateSemanticAnchorDiscipline("anchors.xml", artifact.root!) });
+    expect(resultCodes).toContain("artifact.semantic-anchor-has-attributes");
+    expect(resultCodes.filter((code) => code === "artifact.semantic-anchor-attribute")).toHaveLength(2);
+  });
+
+  it("requires canonical active and archive change directories", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    rmSync(path.join(root, ".grace", "changes", "active"), { recursive: true });
+    rmSync(path.join(root, ".grace", "changes", "archive"), { recursive: true });
+
+    expect(codes(validateGrace4Project(root)).filter((code) => code === "project.missing-change-directory")).toHaveLength(2);
+  });
+
+  it("rejects missing, duplicate, and empty required change sections", () => {
+    const missingConstraints = validateChangeArtifact(
+      parseGraceXmlArtifact("spec.xml", validSpec().replace(/<Constraints>.*?<\/Constraints>/, "")),
+      "active",
+    );
+    expect(codes(missingConstraints)).toContain("change.spec-missing-section");
+
+    const duplicateSummary = validateChangeArtifact(
+      parseGraceXmlArtifact("spec.xml", validSpec("C-EXAMPLE", "<Summary>Duplicate.</Summary>")),
+      "active",
+    );
+    expect(codes(duplicateSummary)).toContain("change.spec-duplicate-section");
+
+    const emptyConstraints = validateChangeArtifact(
+      parseGraceXmlArtifact("spec.xml", validSpec().replace("<Constraints><Constraint>Constraint.</Constraint></Constraints>", "<Constraints />")),
+      "active",
+    );
+    expect(codes(emptyConstraints)).toContain("change.empty-section");
+  });
+
+  it("requires meaningful approved-plan assertions, scopes, acceptance, and verification", () => {
+    const emptyPlan = validateChangeArtifact(
+      parseGraceXmlArtifact(
+        "plan.xml",
+        validPlan(task("T-001"))
+          .replace("<BaselineAssertions><MustExist><Value>M-EXAMPLE</Value></MustExist></BaselineAssertions>", "<BaselineAssertions />")
+          .replace("<TargetAssertions><MustVerify><Module>M-EXAMPLE</Module></MustVerify></TargetAssertions>", "<TargetAssertions />")
+          .replace("<DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope>", "<DurableScope />")
+          .replace("<ObservedWriteScope><File>src/example.ts</File></ObservedWriteScope>", "<ObservedWriteScope />")
+          .replace("<AcceptanceCriteria><Criterion>T-001 accepted.</Criterion></AcceptanceCriteria>", "<AcceptanceCriteria />")
+          .replace("<Verification><Command>bun test</Command></Verification>", "<Verification />"),
+      ),
+      "active",
+    );
+    const resultCodes = codes(emptyPlan);
+    expect(resultCodes.filter((code) => code === "change.empty-section")).toHaveLength(4);
+    expect(resultCodes).toContain("change.task-empty-acceptance");
+    expect(resultCodes).toContain("change.task-empty-verification");
+  });
+
+  it("rejects duplicate tasks, invalid dependencies, self-dependencies, unknown dependencies, and cycles", () => {
+    const plan = validPlan([
+      task("T-001", "<Task>T-002</Task>"),
+      task("T-002", "<Task>T-001</Task>"),
+      task("T-002"),
+      task("T-003", "<Task>T-003</Task><Task>T-999</Task><Task>bad</Task>"),
+    ].join(""));
+    const resultCodes = codes(validateChangeArtifact(parseGraceXmlArtifact("plan.xml", plan), "active"));
+
+    expect(resultCodes).toContain("change.duplicate-task-id");
+    expect(resultCodes).toContain("change.task-self-dependency");
+    expect(resultCodes).toContain("change.task-unknown-dependency");
+    expect(resultCodes).toContain("change.task-invalid-dependency");
+    expect(resultCodes).toContain("change.task-dependency-cycle");
+  });
+
+  it("accepts a unique acyclic task dependency graph", () => {
+    const plan = validPlan(task("T-001") + task("T-002", "<Task>T-001</Task>"));
+    expect(validateChangeArtifact(parseGraceXmlArtifact("plan.xml", plan), "active").issues).toHaveLength(0);
   });
 
   it("rejects invalid active and archive change statuses", () => {

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { detectGraceProjectKind, formatGrace3MigrationGuidance, resolveGrace4Paths } from "./project";
@@ -13,6 +13,8 @@ import {
   GRACE4_VERSION,
   type Grace4Issue,
   type Grace4ProjectPaths,
+  type SemanticAnchorClassification,
+  type SemanticAnchorFamily,
 } from "./types";
 import { childText, readGraceXmlArtifact, walkNodes, type GraceXmlNode, type ParsedGraceXmlArtifact } from "./xml";
 
@@ -25,6 +27,7 @@ const CHANGE_ROOT_METADATA_ATTRIBUTES = new Set(["graceVersion", "status"]);
 const SPEC_REQUIRED_SECTIONS = [
   "Summary",
   "Goals",
+  "Constraints",
   "NonGoals",
   "AcceptanceCriteria",
   "AffectedAreas",
@@ -38,7 +41,21 @@ const PLAN_REQUIRED_SECTIONS = [
   "ObservedWriteScope",
   "ImplementationPlan",
 ] as const;
-const TASK_REQUIRED_SECTIONS = ["Title", "AcceptanceCriteria", "Verification"] as const;
+const TASK_REQUIRED_SECTIONS = ["Title", "DependsOn", "AcceptanceCriteria", "Verification"] as const;
+
+const ANCHOR_FAMILIES: readonly {
+  family: SemanticAnchorFamily;
+  prefix: string;
+  pattern: RegExp;
+}[] = [
+  { family: "verification", prefix: "V-M-", pattern: ANCHOR_PATTERNS.verification },
+  { family: "graph-document", prefix: "GD-", pattern: ANCHOR_PATTERNS.graphDocument },
+  { family: "verification-document", prefix: "VD-", pattern: ANCHOR_PATTERNS.verificationDocument },
+  { family: "data-flow", prefix: "DF-", pattern: ANCHOR_PATTERNS.dataFlow },
+  { family: "change", prefix: "C-", pattern: ANCHOR_PATTERNS.change },
+  { family: "module", prefix: "M-", pattern: ANCHOR_PATTERNS.module },
+  { family: "task", prefix: "T-", pattern: ANCHOR_PATTERNS.task },
+];
 
 const CONTEXT_ARTIFACTS = [
   { file: "requirements.xml", rootTag: "GraceRequirements" },
@@ -120,13 +137,49 @@ export function validateArtifactRoot(artifact: ParsedGraceXmlArtifact): Artifact
   return result;
 }
 
-/** Validates that semantic anchors appear only as tags and never as attributes. */
+/** Classifies exact canonical anchors and malformed anchor-like tags. */
+export function classifySemanticAnchorTag(tag: string): SemanticAnchorClassification {
+  for (const { family, prefix, pattern } of ANCHOR_FAMILIES) {
+    if (pattern.test(tag)) {
+      return { kind: "canonical", family };
+    }
+    if (tag.startsWith(prefix)) {
+      return { kind: "malformed", family };
+    }
+  }
+  return { kind: "ordinary" };
+}
+
+/** Validates that semantic anchors are canonical attribute-free tags and never attributes. */
 export function validateSemanticAnchorDiscipline(file: string, root: GraceXmlNode): Grace4Issue[] {
   const issues: Grace4Issue[] = [];
 
   for (const node of walkNodes(root)) {
+    const tagClassification = classifySemanticAnchorTag(node.tag);
+    if (tagClassification.kind === "malformed") {
+      issues.push(
+        issue(
+          "error",
+          "artifact.malformed-semantic-anchor",
+          file,
+          `<${node.tag}> resembles a ${tagClassification.family} semantic anchor but is not canonical.`,
+        ),
+      );
+    }
+    if (tagClassification.kind === "canonical" && Object.keys(node.attributes).length > 0) {
+      issues.push(
+        issue(
+          "error",
+          "artifact.semantic-anchor-has-attributes",
+          file,
+          `Semantic anchor <${node.tag}> must not declare attributes.`,
+        ),
+      );
+    }
+
     for (const [attribute, value] of Object.entries(node.attributes)) {
-      const anchor = findSemanticAnchorInAttribute(value);
+      const attributeClassification = classifySemanticAnchorTag(attribute);
+      const anchor = attributeClassification.kind === "ordinary" ? findSemanticAnchorInAttribute(value) : attribute;
       if (!anchor) {
         continue;
       }
@@ -142,6 +195,24 @@ export function validateSemanticAnchorDiscipline(file: string, root: GraceXmlNod
     }
   }
 
+  return issues;
+}
+
+/** Validates canonical change directories before artifact enumeration. */
+export function validateGrace4ProjectLayout(paths: Grace4ProjectPaths): Grace4Issue[] {
+  const issues: Grace4Issue[] = [];
+  for (const directory of [paths.changesActiveDir, paths.changesArchiveDir]) {
+    if (!existsSync(directory) || !statSync(directory).isDirectory()) {
+      issues.push(
+        issue(
+          "error",
+          "project.missing-change-directory",
+          directory,
+          `Required GRACE 4 change directory is missing: ${directory}`,
+        ),
+      );
+    }
+  }
   return issues;
 }
 
@@ -202,9 +273,25 @@ export function validateChangeArtifact(
   if (wrappers.length === 1) {
     const wrapper = wrappers[0]!;
     if (root.tag === "GraceChangeSpec") {
-      validateRequiredSections(artifact.file, wrapper, SPEC_REQUIRED_SECTIONS, "change.spec-missing-section", result.issues);
+      validateDirectSectionCardinality(
+        artifact.file,
+        wrapper,
+        SPEC_REQUIRED_SECTIONS,
+        "change.spec-missing-section",
+        "change.spec-duplicate-section",
+        result.issues,
+      );
+      validateMeaningfulRequiredSections(artifact.file, wrapper, SPEC_REQUIRED_SECTIONS, result.issues);
     } else {
-      validateRequiredSections(artifact.file, wrapper, PLAN_REQUIRED_SECTIONS, "change.plan-missing-section", result.issues);
+      validateDirectSectionCardinality(
+        artifact.file,
+        wrapper,
+        PLAN_REQUIRED_SECTIONS,
+        "change.plan-missing-section",
+        "change.plan-duplicate-section",
+        result.issues,
+      );
+      validateMeaningfulRequiredSections(artifact.file, wrapper, PLAN_REQUIRED_SECTIONS, result.issues);
       validateImplementationTasks(artifact.file, wrapper, result.issues);
     }
   }
@@ -291,6 +378,7 @@ export function validateGrace4Project(root: string): Grace4ValidationResult {
   }
 
   const paths = resolveGrace4Paths(projectRoot);
+  issues.push(...validateGrace4ProjectLayout(paths));
   artifacts.push(...validateContextArtifacts(paths));
   artifacts.push(...validateRequiredArtifact(paths.graphIndex, "GraceGraphIndex"));
   artifacts.push(...validateXmlFilesInDirectory(paths.graphDir, [paths.graphIndex], "GraceGraphDocument"));
@@ -302,7 +390,7 @@ export function validateGrace4Project(root: string): Grace4ValidationResult {
   return {
     root: projectRoot,
     artifacts,
-    issues: artifacts.flatMap((artifact) => artifact.issues),
+    issues: [...issues, ...artifacts.flatMap((artifact) => artifact.issues)],
   };
 }
 
@@ -456,16 +544,20 @@ function directChangeWrapper(root: GraceXmlNode | null): GraceXmlNode | undefine
   return root?.children.find((child) => ANCHOR_PATTERNS.change.test(child.tag));
 }
 
-function validateRequiredSections(
+function validateDirectSectionCardinality(
   file: string,
-  wrapper: GraceXmlNode,
+  parent: GraceXmlNode,
   sections: readonly string[],
-  code: string,
+  missingCode: string,
+  duplicateCode: string,
   issues: Grace4Issue[],
 ): void {
   for (const section of sections) {
-    if (!wrapper.children.some((child) => child.tag === section)) {
-      issues.push(issue("error", code, file, `${wrapper.tag} is missing required direct section <${section}>.`));
+    const matches = parent.children.filter((child) => child.tag === section);
+    if (matches.length === 0) {
+      issues.push(issue("error", missingCode, file, `${parent.tag} is missing required direct section <${section}>.`));
+    } else if (matches.length > 1) {
+      issues.push(issue("error", duplicateCode, file, `${parent.tag} contains duplicate direct <${section}> sections.`));
     }
   }
 }
@@ -482,8 +574,144 @@ function validateImplementationTasks(file: string, wrapper: GraceXmlNode, issues
     return;
   }
 
+  validateTaskDependencyGraph(file, tasks, issues);
+}
+
+function validateMeaningfulRequiredSections(
+  file: string,
+  parent: GraceXmlNode,
+  sections: readonly string[],
+  issues: Grace4Issue[],
+): void {
+  for (const section of sections) {
+    for (const node of parent.children.filter((child) => child.tag === section)) {
+      validateMeaningfulSection(file, node, issues);
+    }
+  }
+}
+
+function validateMeaningfulSection(file: string, section: GraceXmlNode, issues: Grace4Issue[]): void {
+  const meaningful = [...walkNodes(section)].some((node) => {
+    if (node !== section && classifySemanticAnchorTag(node.tag).kind === "canonical") {
+      return true;
+    }
+    return node.text.trim().length > 0;
+  });
+  if (!meaningful) {
+    issues.push(issue("error", "change.empty-section", file, `<${section.tag}> must contain meaningful content.`));
+  }
+}
+
+function validatePlanTask(file: string, task: GraceXmlNode, issues: Grace4Issue[]): string[] {
+  validateDirectSectionCardinality(
+    file,
+    task,
+    TASK_REQUIRED_SECTIONS,
+    "change.task-missing-section",
+    "change.task-duplicate-section",
+    issues,
+  );
+
+  const title = task.children.find((child) => child.tag === "Title");
+  if (title && !title.text.trim()) {
+    issues.push(issue("error", "change.task-empty-title", file, `${task.tag} must contain a non-empty Title.`));
+  }
+
+  const acceptance = task.children.find((child) => child.tag === "AcceptanceCriteria");
+  if (acceptance) {
+    const criteria = acceptance.children.filter((child) => child.tag === "Criterion" && child.text.trim());
+    if (criteria.length === 0) {
+      issues.push(issue("error", "change.task-empty-acceptance", file, `${task.tag} must contain at least one non-empty acceptance Criterion.`));
+    }
+  }
+
+  const verification = task.children.find((child) => child.tag === "Verification");
+  if (verification) {
+    const commands = verification.children.filter((child) => child.tag === "Command" && child.text.trim());
+    if (commands.length === 0) {
+      issues.push(issue("error", "change.task-empty-verification", file, `${task.tag} must contain at least one non-empty verification Command.`));
+    }
+  }
+
+  const dependsOn = task.children.find((child) => child.tag === "DependsOn");
+  if (!dependsOn) {
+    return [];
+  }
+
+  const dependencyValues = [
+    ...(dependsOn.text.trim() ? [dependsOn.text.trim()] : []),
+    ...dependsOn.children.map((child) => child.text.trim()).filter(Boolean),
+  ];
+  const dependencies: string[] = [];
+  const seen = new Set<string>();
+  for (const dependency of dependencyValues) {
+    if (!ANCHOR_PATTERNS.task.test(dependency)) {
+      issues.push(issue("error", "change.task-invalid-dependency", file, `${task.tag} dependency '${dependency}' must be a canonical T-NNN identifier.`));
+      continue;
+    }
+    if (seen.has(dependency)) {
+      issues.push(issue("error", "change.task-duplicate-dependency", file, `${task.tag} repeats dependency ${dependency}.`));
+      continue;
+    }
+    seen.add(dependency);
+    dependencies.push(dependency);
+  }
+  return dependencies;
+}
+
+function validateTaskDependencyGraph(file: string, tasks: GraceXmlNode[], issues: Grace4Issue[]): void {
+  const taskIds = new Set<string>();
+  const dependencies = new Map<string, string[]>();
+
   for (const task of tasks) {
-    validateRequiredSections(file, task, TASK_REQUIRED_SECTIONS, "change.task-missing-section", issues);
+    if (taskIds.has(task.tag)) {
+      issues.push(issue("error", "change.duplicate-task-id", file, `ImplementationPlan contains duplicate task id ${task.tag}.`));
+    } else {
+      taskIds.add(task.tag);
+    }
+    if (!dependencies.has(task.tag)) {
+      dependencies.set(task.tag, validatePlanTask(file, task, issues));
+    } else {
+      validatePlanTask(file, task, issues);
+    }
+  }
+
+  for (const [taskId, taskDependencies] of dependencies) {
+    for (const dependency of taskDependencies) {
+      if (dependency === taskId) {
+        issues.push(issue("error", "change.task-self-dependency", file, `${taskId} cannot depend on itself.`));
+      } else if (!taskIds.has(dependency)) {
+        issues.push(issue("error", "change.task-unknown-dependency", file, `${taskId} depends on unknown task ${dependency}.`));
+      }
+    }
+  }
+
+  const state = new Map<string, "visiting" | "visited">();
+  const cyclicTasks = new Set<string>();
+  const visit = (taskId: string, stack: string[]): void => {
+    if (state.get(taskId) === "visited") {
+      return;
+    }
+    if (state.get(taskId) === "visiting") {
+      for (const cyclicTask of stack.slice(stack.indexOf(taskId))) {
+        cyclicTasks.add(cyclicTask);
+      }
+      return;
+    }
+    state.set(taskId, "visiting");
+    for (const dependency of dependencies.get(taskId) ?? []) {
+      if (taskIds.has(dependency) && dependency !== taskId) {
+        visit(dependency, [...stack, dependency]);
+      }
+    }
+    state.set(taskId, "visited");
+  };
+
+  for (const taskId of taskIds) {
+    visit(taskId, [taskId]);
+  }
+  if (cyclicTasks.size > 0) {
+    issues.push(issue("error", "change.task-dependency-cycle", file, `ImplementationPlan contains a dependency cycle involving ${[...cyclicTasks].sort().join(", ")}.`));
   }
 }
 
@@ -541,7 +769,7 @@ function validateOptionalContextApplicability(file: string, root: GraceXmlNode):
 function findSemanticAnchorInAttribute(value: string): string | null {
   const candidates = value.split(/[^A-Za-z0-9-]+/).filter(Boolean);
   for (const candidate of candidates) {
-    if (Object.values(ANCHOR_PATTERNS).some((pattern) => pattern.test(candidate))) {
+    if (classifySemanticAnchorTag(candidate).kind !== "ordinary") {
       return candidate;
     }
   }

@@ -5,6 +5,9 @@
     <Goals>
       <Goal>$GOAL</Goal>
     </Goals>
+    <Constraints>
+      <Constraint>$CONSTRAINT</Constraint>
+    </Constraints>
     <NonGoals>
       <NonGoal>$NON_GOAL</NonGoal>
     </NonGoals>
