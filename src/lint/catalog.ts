@@ -25,8 +25,13 @@ const EXACT_GUIDES: Record<string, Omit<LintIssueGuide, "code">> = {
   },
   "analysis.adapter-failed": {
     title: "Language Adapter Failed",
-    explanation: "The file-level export analysis adapter threw an error, so lint fell back to structural checks only.",
+    explanation: "The file-level export analysis adapter failed, so exact export/local parity could not be validated for this governed file.",
     remediation: ["Inspect the file for unusual syntax or unsupported language features.", "Simplify the export surface or improve the adapter if this language pattern should be supported."],
+  },
+  "analysis.runtime-missing": {
+    title: "Language Runtime Missing",
+    explanation: "The governed file uses a language adapter that requires its language runtime on PATH. GRACE fails closed instead of silently dropping export/local parity checks.",
+    remediation: ["Install the runtime named in the issue message and ensure it is available on PATH.", "If the file should not be governed in this environment, exclude it explicitly rather than relying on incomplete analysis."],
   },
   "scope.durable-overlap": {
     title: "Durable Scope Overlap",

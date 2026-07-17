@@ -64,6 +64,8 @@ Stable promotion refuses an existing `v4.0.0` tag or existing `4.0.0` changelog 
 
 The publish workflow fetches full history. Stable tags must resolve to the exact fetched `origin/main` commit, and the stable npm/GitHub job requires approval through the protected `stable-release` environment. Prerelease tags remain on their explicit npm identifier channel such as `rc` and create GitHub prereleases.
 
+`bun run release:checklist` is a post-publication integrity check, not a pre-release branch check. Run it from the exact published tag commit. It fails when `HEAD` differs from that tag or when the current local `npm pack` shasum differs from the published package shasum, preventing unreleased workspace content from being mistaken for the released artifact.
+
 Before running `release:bump`, ensure CI passes:
 
 ```bash
@@ -89,6 +91,8 @@ When a tag matching `v*` is pushed, the `publish.yml` GitHub Actions workflow:
 3. Runs `release:check`, `typecheck`, `test`, `validate:cli`, `validate:marketplace`, and the packed CLI smoke gate.
 4. Publishes stable versions to npm with the default dist-tag, and prerelease versions with the prerelease identifier as the dist-tag (for example, `4.0.0-rc.0` publishes with `--tag rc`).
 5. Creates a GitHub Release with the matching changelog block as body.
+
+After both publication steps succeed, check out the exact release tag and run `bun run release:checklist` to verify the tag commit, npm dist-tag, published tarball shasum, and GitHub prerelease flag as one consistent state.
 
 ## Partial Publication Recovery
 

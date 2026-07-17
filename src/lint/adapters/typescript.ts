@@ -31,6 +31,13 @@ function hasDefaultModifier(node: ts.Node) {
   return (ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined)?.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword) ?? false;
 }
 
+function bindingNames(name: ts.BindingName): string[] {
+  if (ts.isIdentifier(name)) {
+    return [name.text];
+  }
+  return name.elements.flatMap((element) => ts.isOmittedExpression(element) ? [] : bindingNames(element.name));
+}
+
 function addExport(
   analysis: LanguageAnalysis,
   name: string,
@@ -87,9 +94,7 @@ export function createTypeScriptAdapter(): LanguageAdapter {
       for (const statement of sourceFile.statements) {
         if (ts.isVariableStatement(statement)) {
           for (const declaration of statement.declarationList.declarations) {
-            if (ts.isIdentifier(declaration.name)) {
-              analysis.localSymbols.add(declaration.name.text);
-            }
+            for (const name of bindingNames(declaration.name)) analysis.localSymbols.add(name);
           }
         } else if (
           (ts.isFunctionDeclaration(statement)
@@ -151,9 +156,7 @@ export function createTypeScriptAdapter(): LanguageAdapter {
         if (ts.isVariableStatement(statement) && hasExportModifier(statement)) {
           analysis.localImplementationCount += 1;
           for (const declaration of statement.declarationList.declarations) {
-            if (ts.isIdentifier(declaration.name)) {
-              addExport(analysis, declaration.name.text, "value", { local: true });
-            }
+            for (const name of bindingNames(declaration.name)) addExport(analysis, name, "value", { local: true });
           }
           continue;
         }
@@ -199,6 +202,10 @@ export function createTypeScriptAdapter(): LanguageAdapter {
           addExport(analysis, statement.name.getText(sourceFile), "value", { local: true });
           continue;
         }
+      }
+
+      if (analysis.hasWildcardReExport) {
+        analysis.exportConfidence = "heuristic";
       }
 
       return analysis;

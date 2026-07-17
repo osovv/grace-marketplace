@@ -12,11 +12,11 @@ Use this when a CI run or reviewer mentions a specific lint code and you want th
 
 ```bash
 grace lint --path /path/to/project --assertions current --remediate --fail-on warnings
-grace lint --path /path/to/project --change C-ADD-AUTH --assertions baseline
+grace lint --path /path/to/project --change C-ADD-AUTH --assertions baseline --run-commands
 grace lint --path /path/to/project --change C-ADD-AUTH --assertions target --run-commands
 ```
 
-Current mode validates durable state. Baseline and target modes require one approved identity-matched active change. `MustPassCommand` remains unevaluated unless `--run-commands` is supplied.
+Current mode validates durable state. Baseline and target modes require one approved identity-matched active change. `MustPassCommand` remains unevaluated unless `--run-commands` is supplied, so execution workflows must add it whenever the selected baseline or target declares command assertions.
 
 ## Parallel-Safe Preflight
 

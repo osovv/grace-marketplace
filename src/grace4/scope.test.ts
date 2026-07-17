@@ -88,6 +88,37 @@ describe("GRACE 4 scope detector", () => {
     expect(durableOverlaps(left, right, ownership)).toEqual(["graph:GD-MAIN↔M-AUTH-SESSION"]);
   });
 
+  it("conservatively blocks whole-document scope against new or rehomed anchors", () => {
+    const emptyScope = (): DurableScope => ({
+      graphAnchors: [],
+      verificationAnchors: [],
+      contextArtifacts: [],
+      graphDocuments: [],
+      verificationDocuments: [],
+    });
+    const left = emptyScope();
+    left.graphDocuments.push("GD-NEW");
+    const right = emptyScope();
+    right.graphAnchors.push("M-NEW");
+
+    expect(durableOverlaps(left, right)).toEqual(["graph:GD-NEW↔M-NEW"]);
+  });
+
+  it("rejects text-only scopes and accepts explicit None markers", () => {
+    const root = createProject();
+    writeProjectFile(root, ".grace/changes/active/C-TEXT/spec.xml", `<GraceChangeSpec graceVersion="4.0" status="approved"><C-TEXT /></GraceChangeSpec>`);
+    writeProjectFile(root, ".grace/changes/active/C-TEXT/plan.xml", `<GraceChangePlan graceVersion="4.0" status="approved"><C-TEXT><DurableScope>graph changes</DurableScope><ObservedWriteScope>source changes</ObservedWriteScope></C-TEXT></GraceChangePlan>`);
+    writeProjectFile(root, ".grace/changes/active/C-NONE/spec.xml", `<GraceChangeSpec graceVersion="4.0" status="approved"><C-NONE /></GraceChangeSpec>`);
+    writeProjectFile(root, ".grace/changes/active/C-NONE/plan.xml", `<GraceChangePlan graceVersion="4.0" status="approved"><C-NONE><DurableScope><None /></DurableScope><ObservedWriteScope><None /></ObservedWriteScope></C-NONE></GraceChangePlan>`);
+
+    const scopes = collectActiveChangeScopes(resolveGrace4Paths(root));
+    const textScope = scopes.find((scope) => scope.changeId === "C-TEXT")!;
+    const noneScope = scopes.find((scope) => scope.changeId === "C-NONE")!;
+    expect(textScope.issues.map((entry) => entry.code)).toContain("scope.empty-durable-scope");
+    expect(textScope.issues.map((entry) => entry.code)).toContain("scope.empty-observed-write-scope");
+    expect(noneScope.issues).toHaveLength(0);
+  });
+
   it("proves differing extension globs disjoint and auth-prefixed globs overlapping", () => {
     expect(scopeGlobsOverlap(parseScopeGlob("src/**/*.ts"), parseScopeGlob("src/**/*.md"), true)).toBe(false);
     expect(scopeGlobsOverlap(parseScopeGlob("src/**/*.ts"), parseScopeGlob("src/**/auth*.ts"), true)).toBe(true);

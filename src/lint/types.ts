@@ -94,3 +94,16 @@ export type LanguageAdapter = {
   supports(filePath: string): boolean;
   analyze(filePath: string, text: string): LanguageAnalysis;
 };
+
+/** Actionable failure raised when an optional language runtime is unavailable. */
+export class LanguageRuntimeMissingError extends Error {
+  readonly adapterId: string;
+  readonly runtimeCandidates: string[];
+
+  constructor(adapterId: string, runtimeCandidates: string[], message: string) {
+    super(message);
+    this.name = "LanguageRuntimeMissingError";
+    this.adapterId = adapterId;
+    this.runtimeCandidates = runtimeCandidates;
+  }
+}

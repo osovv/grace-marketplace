@@ -343,23 +343,14 @@ function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[], r
 
   const statusResult = spawnSync(
     "git",
-    ["status", "--porcelain=v1", "--untracked-files=all", "--", rootRelativeToGit],
+    ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", rootRelativeToGit],
     { cwd: gitRoot, encoding: "utf8" },
   );
   if (statusResult.status !== 0) {
     return { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] };
   }
 
-  const changedFiles = statusResult.stdout
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .filter(Boolean)
-    .map((line) => line.slice(3))
-    .map((file) => file.includes(" -> ") ? file.slice(file.indexOf(" -> ") + 4) : file)
-    .map((file) => file.replace(/^"|"$/g, ""))
-    .map((file) => path.relative(root, path.resolve(gitRoot, file)).replaceAll(path.sep, "/"))
-    .filter((file) => file !== "" && !file.startsWith("../"))
-    .sort();
+  const changedFiles = parsePorcelainV1ZPaths(statusResult.stdout, gitRoot, root);
 
   const approvedScopes = activeScopes.filter((scope) => scope.specStatus === "approved" && scope.planStatus === "approved");
   const explainedFiles = changedFiles.filter((file) => approvedScopes.some((scope) => activeScopeExplainsFile(root, scope, file, routes)));
@@ -370,6 +361,27 @@ function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[], r
     explainedFiles,
     unexplainedFiles: changedFiles.filter((file) => !explained.has(file)),
   };
+}
+
+function parsePorcelainV1ZPaths(output: string, gitRoot: string, projectRoot: string): string[] {
+  const records = output.split("\0");
+  const authoredPaths: string[] = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (!record || record.length < 4) continue;
+    const status = record.slice(0, 2);
+    authoredPaths.push(record.slice(3));
+    if (status.includes("R") || status.includes("C")) {
+      const sourcePath = records[index + 1];
+      if (sourcePath) authoredPaths.push(sourcePath);
+      index += 1;
+    }
+  }
+
+  return [...new Set(authoredPaths
+    .map((file) => path.relative(projectRoot, path.resolve(gitRoot, file)).replaceAll(path.sep, "/"))
+    .filter((file) => file !== "" && !file.startsWith("../") && file !== ".."))]
+    .sort();
 }
 
 function activeScopeExplainsFile(root: string, scope: ActiveChangeScope, file: string, routes: DriftRouteIndex): boolean {

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 import type { Grace4Issue } from "./types";
@@ -57,7 +57,7 @@ export const ASSERTION_SCHEMAS: Record<AssertionKind, AssertionSchema> = {
   MustNotContain: { fields: ["File", "Text"], fileField: "File" },
 };
 
-const ASSERTION_KINDS = new Set<AssertionKind>([
+export const ASSERTION_KINDS = new Set<AssertionKind>([
   "MustExist",
   "MustNotExist",
   "MustOwn",
@@ -109,6 +109,10 @@ export function extractAssertionsWithIssues(
 
   const sections = [...walkNodes(artifact.root)].filter((node) => node.tag === section);
   for (const sectionNode of sections) {
+    let validAssertions = 0;
+    if (sectionNode.text.trim() || Object.keys(sectionNode.attributes).length > 0) {
+      issues.push(issue("error", "assertion.invalid-section-shape", planFile, `${section} must contain only approved assertion child elements.`));
+    }
     for (const node of sectionNode.children) {
       if (!ASSERTION_KINDS.has(node.tag as AssertionKind)) {
         issues.push(issue("error", "assertion.unknown-kind", planFile, `${node.tag} is not an approved GRACE 4 assertion kind.`));
@@ -123,6 +127,10 @@ export function extractAssertionsWithIssues(
         ...extraction.assertion,
         file: planFile,
       });
+      validAssertions += 1;
+    }
+    if (validAssertions === 0) {
+      issues.push(issue("error", "assertion.empty-section", planFile, `${section} must contain at least one valid machine-checkable assertion.`));
     }
   }
 
@@ -217,7 +225,20 @@ function evaluateTextContainment(assertion: GraceAssertion, context: AssertionCo
     return [assertionIssue(assertion, `${fileValue} does not exist.`)];
   }
 
-  const contains = readFileSync(file, "utf8").includes(expectedText);
+  try {
+    if (!statSync(file).isFile()) {
+      return [assertionIssue(assertion, `${fileValue} must resolve to a regular file.`)];
+    }
+  } catch (error) {
+    return [assertionIssue(assertion, `Unable to inspect ${fileValue}: ${error instanceof Error ? error.message : String(error)}`)];
+  }
+
+  let contains: boolean;
+  try {
+    contains = readFileSync(file, "utf8").includes(expectedText);
+  } catch (error) {
+    return [assertionIssue(assertion, `Unable to read ${fileValue}: ${error instanceof Error ? error.message : String(error)}`)];
+  }
   if (contains === shouldContain) {
     return [];
   }

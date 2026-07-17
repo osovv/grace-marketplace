@@ -32,7 +32,7 @@ GRACE 4 does not dual-validate legacy GRACE 3 project docs as current state. Exi
 
 Verification commands run from the project root by default. A `V-M-*` entry may declare one contained project-relative `<Cwd>packages/example</Cwd>` while keeping `<TestFiles><File>...</File></TestFiles>` paths project-root-relative. Absolute paths, `..` escapes, and symlink escapes fail closed.
 
-TypeScript/JavaScript semantic analysis is bundled and compiler-backed. Governed Python and Dart files require their respective runtimes on `PATH`; Python analysis remains explicitly heuristic (`analysis.heuristic-confidence`), while a missing or failed runtime adapter emits `analysis.adapter-failed`. Neither state is presented as exact `MODULE_MAP` parity.
+TypeScript/JavaScript semantic analysis is bundled and compiler-backed. Governed Python and Dart files require their respective runtimes on `PATH`; Python analysis remains explicitly heuristic (`analysis.heuristic-confidence`). A missing runtime fails closed with actionable `analysis.runtime-missing`; an installed adapter that fails emits `analysis.adapter-failed`. Neither state is presented as exact `MODULE_MAP` parity.
 
 ## Install
 
@@ -82,7 +82,7 @@ For a new GRACE 4 project:
 3. Run `$grace-spec` for a change.
 4. Run `$grace-plan` after spec approval.
 5. Run `grace lint --path /path/to/project --assertions current`.
-6. Run `grace lint --path /path/to/project --change C-ID --assertions baseline` before execution.
+6. Run `grace lint --path /path/to/project --change C-ID --assertions baseline` before execution; add `--run-commands` when the baseline declares `MustPassCommand`.
 7. Run `grace status --path /path/to/project --json`.
 8. Run `$grace-execute` and choose sequential or parallel-safe mode. Parallel-safe mode additionally requires `grace lint --path /path/to/project --parallel-preflight`.
 9. Before apply/archive, run selected target assertions; add `--run-commands` when the plan declares `MustPassCommand`.
@@ -116,7 +116,7 @@ Migration cleanup is separately gated: successful current lint, fresh status pro
 | Command | What It Does |
 | --- | --- |
 | `grace lint --path <root> --assertions current` | Validate current `.grace` grammar, routed coverage, lifecycle locations, and scope overlap |
-| `grace lint --path <root> --change C-ID --assertions baseline` | Validate the immutable selected baseline before implementation |
+| `grace lint --path <root> --change C-ID --assertions baseline [--run-commands]` | Validate the immutable selected baseline before implementation; command assertions run only when explicitly enabled |
 | `grace lint --path <root> --change C-ID --assertions target --run-commands` | Validate selected target assertions and explicitly opt into `MustPassCommand` execution |
 | `grace lint --path <root> --parallel-preflight` | Run the explicit approved-plan scope coexistence gate required for parallel-safe execution |
 | `grace status --path <root>` | Report durable health, stale plans, scope conflicts, and explained/unexplained observed git drift |
@@ -186,4 +186,4 @@ bun run validate:release
 
 For CLI changes, keep tests in `src/grace-lint.test.ts`, `src/grace-status.test.ts`, and `src/grace-query.test.ts` aligned with the GRACE 4 `.grace` fixture model.
 
-Stable releases are stricter than prereleases. Before any stable version mutation, `release:bump` fetches `origin/main` and tags, requires a clean checked-out `main`, and requires `HEAD == origin/main`. CI independently checks the stable tag commit against fetched `origin/main` and gates npm `latest` publication through the protected `stable-release` environment.
+Stable releases are stricter than prereleases. Before any stable version mutation, `release:bump` fetches `origin/main` and tags, requires a clean checked-out `main`, and requires `HEAD == origin/main`. CI independently checks the stable tag commit against fetched `origin/main` and gates npm `latest` publication through the protected `stable-release` environment. After publication, `bun run release:checklist` must run from the exact release tag commit: it verifies `HEAD == tag`, npm/GitHub channel metadata, and that the local `npm pack` shasum matches the immutable published tarball.

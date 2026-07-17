@@ -32,7 +32,7 @@ const AUDIT_REGRESSION_CASES: readonly AuditRegressionCase[] = [
   { id: "route-aware-drift", testFile: "src/grace-status.test.ts", evidence: "exact declared document or owning anchor route", platforms: allPlatforms },
   { id: "python-unicode", testFile: "src/lint/adapters/python.test.ts", evidence: "UTF-8", platforms: allPlatforms },
   { id: "dart-valid-invocation", testFile: "src/lint/adapters/dart.test.ts", evidence: "temporary analyzer file", platforms: allPlatforms },
-  { id: "adapter-runtime-missing", testFile: "src/project-utils.test.ts", evidence: "analysis.adapter-failed", platforms: allPlatforms },
+  { id: "adapter-runtime-missing", testFile: "src/project-utils.test.ts", evidence: "analysis.runtime-missing", platforms: allPlatforms },
   { id: "approved-plan-immutability", testFile: "scripts/skill-contracts.test.ts", evidence: "approved_plan_immutability", platforms: allPlatforms },
   { id: "migration-cleanup-gates", testFile: "scripts/skill-contracts.test.ts", evidence: "git availability/worktree inspection", platforms: allPlatforms },
   { id: "stable-release-ancestry", testFile: "scripts/release-bump.test.ts", evidence: "clean synchronized main", platforms: allPlatforms },

@@ -123,7 +123,7 @@ function validateAssertions(
 
   for (const planFile of planFilesActive) {
     const status = readPlanStatus(planFile);
-    evaluateSection(result, planFile, "BaselineAssertions", context, assertionMode === "current" && status === "approved");
+    evaluateSection(result, planFile, "BaselineAssertions", context, assertionMode === "current" && status === "approved", true, true);
     evaluateSection(result, planFile, "TargetAssertions", context, false);
   }
 
@@ -158,6 +158,7 @@ function evaluateSection(
   context: { root: string; graph: GraphProjection; verification: VerificationProjection; runCommands?: boolean },
   evaluateSemantically: boolean,
   includeExtractionIssues = true,
+  skipUnevaluatedCommands = false,
 ) {
   const extraction = extractAssertionsWithIssues(planFile, section);
   if (includeExtractionIssues) {
@@ -167,6 +168,9 @@ function evaluateSection(
   }
   if (evaluateSemantically) {
     for (const assertion of extraction.assertions) {
+      if (skipUnevaluatedCommands && assertion.kind === "MustPassCommand" && !context.runCommands) {
+        continue;
+      }
       for (const issue of evaluateAssertion(assertion, context)) {
         addGrace4Issue(result, issue);
       }

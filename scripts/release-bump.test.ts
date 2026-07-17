@@ -169,7 +169,8 @@ describe("stable release finalization", () => {
       "## [4.0.0](https://example.test/compare/v4.0.0-rc.2...v4.0.0) (2026-07-14)\n\n* fix: stable\n",
       "4.0.0",
     );
-    expect(conventional).toContain("## <small>4.0.0 (2026-07-14)</small>");
+    const today = new Date().toISOString().slice(0, 10);
+    expect(conventional).toContain(`## <small>4.0.0 (${today})</small>`);
   });
 
   it("updates every version surface fail-closed", () => {

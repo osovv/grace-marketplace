@@ -55,6 +55,8 @@ export type ReleaseState = {
   originMain: string;
   tagCommit?: string;
   packedFiles: string[];
+  localPackShasum: string;
+  npmPackageShasum: string;
   npmDistTags: Record<string, string>;
   githubRelease?: { tagName: string; isPrerelease: boolean };
 };
@@ -127,6 +129,9 @@ export function collectReleaseStateErrors(state: ReleaseState): string[] {
 
   if (state.expectedTag !== canonicalTag) errors.push(`Expected tag ${state.expectedTag} does not match package version ${canonicalTag}.`);
   if (!state.tagCommit) errors.push(`Release tag ${canonicalTag} is missing or cannot be resolved.`);
+  else if (state.head !== state.tagCommit) {
+    errors.push(`Current HEAD ${state.head} does not equal release tag ${canonicalTag} commit ${state.tagCommit}; the workspace contains unreleased code under an already published version.`);
+  }
   if (stable) {
     if (state.branch !== "main") errors.push(`Stable release state must be collected from main, received ${state.branch}.`);
     if (state.head !== state.originMain) errors.push(`Stable HEAD ${state.head} does not equal origin/main ${state.originMain}.`);
@@ -137,6 +142,12 @@ export function collectReleaseStateErrors(state: ReleaseState): string[] {
 
   if (state.npmDistTags[distTag] !== state.version) {
     errors.push(`npm dist-tag ${distTag} points to ${state.npmDistTags[distTag] ?? "nothing"}, expected ${state.version}.`);
+  }
+
+  if (!state.localPackShasum || !state.npmPackageShasum) {
+    errors.push("Local or published npm package shasum is missing.");
+  } else if (state.localPackShasum !== state.npmPackageShasum) {
+    errors.push(`Local npm pack shasum ${state.localPackShasum} does not match published ${state.version} shasum ${state.npmPackageShasum}.`);
   }
 
   if (!state.githubRelease) {

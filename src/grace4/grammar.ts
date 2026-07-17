@@ -42,6 +42,28 @@ const PLAN_REQUIRED_SECTIONS = [
   "ImplementationPlan",
 ] as const;
 const TASK_REQUIRED_SECTIONS = ["Title", "DependsOn", "AcceptanceCriteria", "Verification"] as const;
+const ASSERTION_SECTION_TAGS = new Set([
+  "MustExist",
+  "MustNotExist",
+  "MustOwn",
+  "MustLink",
+  "MustVerify",
+  "MustPassCommand",
+  "MustContain",
+  "MustNotContain",
+]);
+const DURABLE_SCOPE_DIRECT_TAGS = new Set([
+  "GraphAnchors",
+  "VerificationAnchors",
+  "GraphDocuments",
+  "VerificationDocuments",
+  "ContextArtifacts",
+  "ContextArtifact",
+  "Context",
+  "Artifact",
+  "None",
+]);
+const OBSERVED_SCOPE_DIRECT_TAGS = new Set(["File", "Path", "Glob", "None"]);
 
 const ANCHOR_FAMILIES: readonly {
   family: SemanticAnchorFamily;
@@ -292,19 +314,15 @@ export function validateChangeArtifact(
         result.issues,
       );
       validateMeaningfulRequiredSections(artifact.file, wrapper, PLAN_REQUIRED_SECTIONS, result.issues);
+      validateStructuredPlanSections(artifact.file, wrapper, result.issues);
       validateImplementationTasks(artifact.file, wrapper, result.issues);
     }
   }
 
   if (status === "superseded" && wrappers.length === 1) {
     const wrapper = wrappers[0];
-    const hasReplacement = wrapper.children.some(
-      (child) =>
-        ANCHOR_PATTERNS.change.test(child.tag) ||
-        ((child.tag === "Replacement" || child.tag === "ReplacementChange") &&
-          ANCHOR_PATTERNS.change.test(child.text.trim())),
-    );
-    if (!hasReplacement) {
+    const replacements = replacementChangeIds(wrapper);
+    if (replacements.length === 0) {
       result.issues.push(
         issue(
           "error",
@@ -312,6 +330,11 @@ export function validateChangeArtifact(
           artifact.file,
           "Superseded change must reference a replacement C-* as a child tag or via <Replacement>/<ReplacementChange> text.",
         ),
+      );
+    }
+    if (replacements.includes(wrapper.tag)) {
+      result.issues.push(
+        issue("error", "change.superseded-self-replacement", artifact.file, `Superseded change ${wrapper.tag} must reference a different replacement C-* bundle.`),
       );
     }
   }
@@ -384,8 +407,9 @@ export function validateGrace4Project(root: string): Grace4ValidationResult {
   artifacts.push(...validateXmlFilesInDirectory(paths.graphDir, [paths.graphIndex], "GraceGraphDocument"));
   artifacts.push(...validateRequiredArtifact(paths.verificationIndex, "GraceVerificationIndex"));
   artifacts.push(...validateXmlFilesInDirectory(paths.verificationDir, [paths.verificationIndex], "GraceVerificationDocument"));
-  artifacts.push(...validateChangeBundlesInDirectory(paths.changesActiveDir, "active"));
-  artifacts.push(...validateChangeBundlesInDirectory(paths.changesArchiveDir, "archive"));
+  const knownChangeIds = collectChangeBundleIds(paths);
+  artifacts.push(...validateChangeBundlesInDirectory(paths.changesActiveDir, "active", knownChangeIds));
+  artifacts.push(...validateChangeBundlesInDirectory(paths.changesArchiveDir, "archive", knownChangeIds));
 
   return {
     root: projectRoot,
@@ -457,6 +481,7 @@ function validateXmlFilesInDirectory(directory: string, excludedFiles: string[],
 function validateChangeBundlesInDirectory(
   directory: string,
   location: "active" | "archive",
+  knownChangeIds: ReadonlySet<string>,
 ): ArtifactValidationResult[] {
   if (!existsSync(directory)) {
     return [];
@@ -484,6 +509,7 @@ function validateChangeBundlesInDirectory(
     const designFile = path.join(entryPath, "design-context.xml");
     const specArtifact = readGraceXmlArtifact(specFile);
     const specResult = validateChangeArtifact(specArtifact, location);
+    validateReplacementTargetExists(specArtifact, knownChangeIds, specResult.issues);
     const specWrapper = directChangeWrapper(specArtifact.root);
     if (specWrapper && specWrapper.tag !== bundleId) {
       specResult.issues.push(issue("error", "change.bundle-id-mismatch", specFile, `spec.xml uses ${specWrapper.tag}, but its bundle directory is ${bundleId}.`));
@@ -494,6 +520,7 @@ function validateChangeBundlesInDirectory(
     if (existsSync(planFile)) {
       planArtifact = readGraceXmlArtifact(planFile);
       const planResult = validateChangeArtifact(planArtifact, location);
+      validateReplacementTargetExists(planArtifact, knownChangeIds, planResult.issues);
       const planWrapper = directChangeWrapper(planArtifact.root);
       if (planWrapper && planWrapper.tag !== bundleId) {
         planResult.issues.push(issue("error", "change.bundle-id-mismatch", planFile, `plan.xml uses ${planWrapper.tag}, but its bundle directory is ${bundleId}.`));
@@ -544,6 +571,42 @@ function directChangeWrapper(root: GraceXmlNode | null): GraceXmlNode | undefine
   return root?.children.find((child) => ANCHOR_PATTERNS.change.test(child.tag));
 }
 
+function collectChangeBundleIds(paths: Grace4ProjectPaths): Set<string> {
+  const ids = new Set<string>();
+  for (const directory of [paths.changesActiveDir, paths.changesArchiveDir]) {
+    if (!existsSync(directory)) continue;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isDirectory() && ANCHOR_PATTERNS.change.test(entry.name)) ids.add(entry.name);
+    }
+  }
+  return ids;
+}
+
+function replacementChangeIds(wrapper: GraceXmlNode): string[] {
+  return [...new Set(wrapper.children.flatMap((child) => {
+    if (ANCHOR_PATTERNS.change.test(child.tag)) return [child.tag];
+    if ((child.tag === "Replacement" || child.tag === "ReplacementChange") && ANCHOR_PATTERNS.change.test(child.text.trim())) {
+      return [child.text.trim()];
+    }
+    return [];
+  }))];
+}
+
+function validateReplacementTargetExists(
+  artifact: ParsedGraceXmlArtifact,
+  knownChangeIds: ReadonlySet<string>,
+  issues: Grace4Issue[],
+): void {
+  if (artifact.root?.attributes.status !== "superseded") return;
+  const wrapper = directChangeWrapper(artifact.root);
+  if (!wrapper) return;
+  for (const replacement of replacementChangeIds(wrapper)) {
+    if (replacement !== wrapper.tag && !knownChangeIds.has(replacement)) {
+      issues.push(issue("error", "change.superseded-replacement-not-found", artifact.file, `Superseded change ${wrapper.tag} references missing replacement bundle ${replacement}.`));
+    }
+  }
+}
+
 function validateDirectSectionCardinality(
   file: string,
   parent: GraceXmlNode,
@@ -590,8 +653,69 @@ function validateMeaningfulRequiredSections(
   }
 }
 
+function validateStructuredPlanSections(file: string, wrapper: GraceXmlNode, issues: Grace4Issue[]): void {
+  for (const sectionName of ["BaselineAssertions", "TargetAssertions"] as const) {
+    for (const section of wrapper.children.filter((child) => child.tag === sectionName)) {
+      if (section.text.trim() || Object.keys(section.attributes).length > 0) {
+        issues.push(issue("error", "change.plan-invalid-section-shape", file, `<${sectionName}> must contain only approved assertion elements.`));
+      }
+      const approvedChildren = section.children.filter((child) => ASSERTION_SECTION_TAGS.has(child.tag));
+      for (const child of section.children) {
+        if (!ASSERTION_SECTION_TAGS.has(child.tag)) {
+          issues.push(issue("error", "change.plan-invalid-section-shape", file, `<${sectionName}> does not allow child <${child.tag}>.`));
+        }
+      }
+      if (approvedChildren.length === 0) {
+        issues.push(issue("error", "change.plan-invalid-section-shape", file, `<${sectionName}> must contain at least one approved assertion element.`));
+      }
+    }
+  }
+
+  for (const section of wrapper.children.filter((child) => child.tag === "DurableScope")) {
+    if (section.text.trim() || Object.keys(section.attributes).length > 0) {
+      issues.push(issue("error", "change.plan-invalid-section-shape", file, "<DurableScope> must contain only supported durable scope elements."));
+    }
+    const supported = section.children.filter((child) => isSupportedDurableScopeChild(child.tag));
+    for (const child of section.children) {
+      if (!isSupportedDurableScopeChild(child.tag)) {
+        issues.push(issue("error", "change.plan-invalid-section-shape", file, `<DurableScope> does not allow child <${child.tag}>.`));
+      }
+    }
+    if (supported.length === 0) {
+      issues.push(issue("error", "change.plan-invalid-section-shape", file, "<DurableScope> must declare supported scope entries or <None />."));
+    }
+  }
+
+  for (const section of wrapper.children.filter((child) => child.tag === "ObservedWriteScope")) {
+    if (section.text.trim() || Object.keys(section.attributes).length > 0) {
+      issues.push(issue("error", "change.plan-invalid-section-shape", file, "<ObservedWriteScope> must contain only File, Path, Glob, or None elements."));
+    }
+    const supported = section.children.filter((child) => OBSERVED_SCOPE_DIRECT_TAGS.has(child.tag));
+    for (const child of section.children) {
+      if (!OBSERVED_SCOPE_DIRECT_TAGS.has(child.tag)) {
+        issues.push(issue("error", "change.plan-invalid-section-shape", file, `<ObservedWriteScope> does not allow child <${child.tag}>.`));
+      }
+    }
+    if (supported.length === 0) {
+      issues.push(issue("error", "change.plan-invalid-section-shape", file, "<ObservedWriteScope> must declare File/Path/Glob entries or <None />."));
+    }
+  }
+}
+
+function isSupportedDurableScopeChild(tag: string): boolean {
+  return DURABLE_SCOPE_DIRECT_TAGS.has(tag)
+    || ANCHOR_PATTERNS.module.test(tag)
+    || ANCHOR_PATTERNS.dataFlow.test(tag)
+    || ANCHOR_PATTERNS.verification.test(tag)
+    || ANCHOR_PATTERNS.graphDocument.test(tag)
+    || ANCHOR_PATTERNS.verificationDocument.test(tag);
+}
+
 function validateMeaningfulSection(file: string, section: GraceXmlNode, issues: Grace4Issue[]): void {
   const meaningful = [...walkNodes(section)].some((node) => {
+    if ((section.tag === "DurableScope" || section.tag === "ObservedWriteScope") && node !== section && node.tag === "None") {
+      return true;
+    }
     if (node !== section && classifySemanticAnchorTag(node.tag).kind === "canonical") {
       return true;
     }

@@ -348,10 +348,12 @@ describe("release state and packed content", () => {
       version: "4.0.0-rc.2",
       expectedTag: "v4.0.0-rc.2",
       branch: "grace-v4",
-      head: "new-work",
+      head: "published-rc",
       originMain: "published-main",
       tagCommit: "published-rc",
       packedFiles: ["package.json", "README.md", "LICENSE", "src/grace.ts", "src/grace4/paths.ts"],
+      localPackShasum: "rc-shasum",
+      npmPackageShasum: "rc-shasum",
       npmDistTags: { latest: "3.11.0", rc: "4.0.0-rc.2" },
       githubRelease: { tagName: "v4.0.0-rc.2", isPrerelease: true },
     })).toEqual([]);
@@ -364,9 +366,30 @@ describe("release state and packed content", () => {
       originMain: "stable-commit",
       tagCommit: "stable-commit",
       packedFiles: ["package.json", "README.md", "LICENSE", "src/grace.ts", "src/query/index.ts"],
+      localPackShasum: "stable-shasum",
+      npmPackageShasum: "stable-shasum",
       npmDistTags: { latest: "4.0.0", rc: "4.0.0-rc.2" },
       githubRelease: { tagName: "v4.0.0", isPrerelease: false },
     })).toEqual([]);
+  });
+
+  it("rejects unreleased prerelease HEAD or tarball content under an already published version", () => {
+    const errors = collectReleaseStateErrors({
+      version: "4.0.0-rc.2",
+      expectedTag: "v4.0.0-rc.2",
+      branch: "grace-v4",
+      head: "new-work",
+      originMain: "published-main",
+      tagCommit: "published-rc",
+      packedFiles: ["package.json", "README.md", "LICENSE", "src/grace.ts"],
+      localPackShasum: "local-new-work",
+      npmPackageShasum: "published-rc-tarball",
+      npmDistTags: { latest: "3.11.0", rc: "4.0.0-rc.2" },
+      githubRelease: { tagName: "v4.0.0-rc.2", isPrerelease: true },
+    });
+
+    expect(errors.some((error) => error.includes("workspace contains unreleased code"))).toBe(true);
+    expect(errors.some((error) => error.includes("does not match published"))).toBe(true);
   });
 
   it("rejects off-main or mismatched stable state and wrong publication channels", () => {
@@ -378,12 +401,16 @@ describe("release state and packed content", () => {
       originMain: "main",
       tagCommit: "tag",
       packedFiles: ["scripts/release-bump.ts", "src/grace-lint.test.ts", "src/grace4/test-fixtures.ts"],
+      localPackShasum: "local",
+      npmPackageShasum: "published",
       npmDistTags: { latest: "3.11.0" },
       githubRelease: { tagName: "vwrong", isPrerelease: true },
     });
     expect(errors.some((error) => error.includes("does not match package version"))).toBe(true);
     expect(errors.some((error) => error.includes("collected from main"))).toBe(true);
     expect(errors.some((error) => error.includes("does not equal origin/main"))).toBe(true);
+    expect(errors.some((error) => error.includes("does not equal release tag"))).toBe(true);
+    expect(errors.some((error) => error.includes("does not match published"))).toBe(true);
     expect(errors.some((error) => error.includes("npm dist-tag latest"))).toBe(true);
     expect(errors.some((error) => error.includes("prerelease flag"))).toBe(true);
     expect(errors.some((error) => error.includes("forbidden"))).toBe(true);

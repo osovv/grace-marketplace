@@ -286,9 +286,13 @@ describe("lintGraceProject", () => {
     writeApprovedChange(
       root,
       "C-COMMAND",
-      `<MustExist><Value>M-EXAMPLE</Value></MustExist>`,
+      `<MustPassCommand><Command>exit 99</Command></MustPassCommand>`,
       `<MustPassCommand><Command>exit 0</Command></MustPassCommand>`,
     );
+
+    const current = lintGraceProject(root);
+    expect(current.issues.map((issue) => issue.code)).not.toContain("assertion.command-not-evaluated");
+    expect(current.issues.some((issue) => issue.message.includes("exit 99"))).toBe(false);
 
     const skipped = lintGraceProject(root, { assertionMode: "target", changeId: "C-COMMAND" });
     expect(skipped.issues.map((issue) => issue.code)).toContain("assertion.command-not-evaluated");

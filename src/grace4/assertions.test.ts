@@ -107,6 +107,17 @@ describe("GRACE 4 assertions", () => {
     expect(result.issues.filter((item) => item.code === "assertion.invalid-shape").length).toBeGreaterThanOrEqual(6);
   });
 
+  it("rejects text-only assertion sections with no machine-checkable assertions", () => {
+    const root = createProject();
+    const planFile = path.join(root, "plan.xml");
+    writeFileSync(planFile, `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><BaselineAssertions>assume it works</BaselineAssertions></C-EXAMPLE></GraceChangePlan>`);
+
+    const result = extractAssertionsWithIssues(planFile, "BaselineAssertions");
+    expect(result.assertions).toHaveLength(0);
+    expect(result.issues.map((item) => item.code)).toContain("assertion.invalid-section-shape");
+    expect(result.issues.map((item) => item.code)).toContain("assertion.empty-section");
+  });
+
   it("rejects absolute, traversal, and escaping-symlink File fields during extraction", () => {
     const root = createProject();
     const outside = createProject();
@@ -132,6 +143,15 @@ describe("GRACE 4 assertions", () => {
     expect(evaluateAssertion(assertion("MustExist", ["M-MISSING"]), ctx)[0]?.code).toBe("assertion.MustExist");
     expect(evaluateAssertion(assertion("MustLink", ["M-AUTH-SESSION", "M-MISSING"]), ctx)[0]?.code).toBe("assertion.MustLink");
     expect(evaluateAssertion(assertion("MustVerify", ["M-MISSING"]), ctx)[0]?.code).toBe("assertion.MustVerify");
+  });
+
+  it("reports directory containment targets without throwing", () => {
+    const root = createProject();
+    writeProjectionFixture(root);
+    const issues = evaluateAssertion(assertion("MustContain", ["src", "fresh"]), context(root));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.code).toBe("assertion.MustContain");
+    expect(issues[0]?.message).toContain("regular file");
   });
 
   it("fails stale BaselineAssertions after durable graph state changes", () => {

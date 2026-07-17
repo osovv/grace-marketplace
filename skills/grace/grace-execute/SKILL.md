@@ -10,7 +10,7 @@ Require one active bundle with approved, identity-matched `spec.xml` and `plan.x
 
 <assertion_commands>
 - Current validation: `grace lint --path PROJECT --assertions current`
-- Selected baseline: `grace lint --path PROJECT --change C-ID --assertions baseline`
+- Selected baseline: `grace lint --path PROJECT --change C-ID --assertions baseline` (add `--run-commands` when the baseline declares `MustPassCommand`)
 - Selected target without commands: `grace lint --path PROJECT --change C-ID --assertions target`
 - Selected target with command evidence: `grace lint --path PROJECT --change C-ID --assertions target --run-commands`
 - Parallel preflight: `grace lint --path PROJECT --parallel-preflight`
@@ -30,7 +30,7 @@ Wait for explicit `sequential` or `parallel-safe` choice. Parallel-safe requires
 </recovery_decision_table>
 
 <execution_rules>
-1. Run the selected baseline before implementation.
+1. Run the selected baseline before implementation, including explicit `--run-commands` when its assertions declare `MustPassCommand`.
 2. Execute one dependency-ready task or one verified parallel-safe batch at a time.
 3. Run each task's acceptance and verification immediately.
 4. Apply approved durable context, graph, and verification changes centrally.

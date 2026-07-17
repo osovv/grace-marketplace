@@ -25,5 +25,5 @@ jobs:
       - name: Run CI validation
         run: bun run validate:ci
 
-      - name: Run release checklist
-        run: bun run release:checklist
+      - name: Run local release consistency check
+        run: bun run release:check

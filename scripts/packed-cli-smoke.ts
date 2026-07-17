@@ -41,8 +41,16 @@ function run(command: string, args: string[], cwd: string, label: string): strin
   return result.stdout ?? "";
 }
 
-function hasRuntime(candidates: string[]): boolean {
-  return candidates.some((binary) => spawnSync(binary, ["--version"], { stdio: "ignore" }).status === 0);
+export type RuntimeState = "usable" | "missing" | "broken";
+
+export function runtimeState(candidates: string[]): RuntimeState {
+  for (const binary of candidates) {
+    const result = spawnSync(binary, ["--version"], { stdio: "ignore" });
+    if (result.error?.code === "ENOENT") continue;
+    if (result.status === 0) return "usable";
+    return "broken";
+  }
+  return "missing";
 }
 
 function writeBaseProject(root: string): void {
@@ -149,29 +157,36 @@ export async function runPackedCliSmoke(repoRoot: string): Promise<void> {
     ];
     for (const testCase of cases) execute(testCase);
 
-    const runtimeCheck = (name: string, runtimeProject: string, runtimePresent: boolean): void => {
+    const runtimeCheck = (name: string, runtimeProject: string, state: RuntimeState): void => {
       const result = spawnSync(process.execPath, [cliEntry, "lint", "--path", runtimeProject, "--assertions", "current", "--format", "json"], {
         cwd: consumer,
         encoding: "utf8",
         maxBuffer: 32 * 1024 * 1024,
       });
       const output = result.stdout ?? "";
-      if (runtimePresent) {
-        if (result.status !== 0 || output.includes("analysis.adapter-failed")) {
-          throw new Error(`${name} runtime is present but packed analysis failed: ${output} ${result.stderr}`);
+      if (state === "usable") {
+        if (result.status !== 0 || output.includes("analysis.adapter-failed") || output.includes("analysis.runtime-missing")) {
+          throw new Error(`${name} runtime is usable but packed analysis failed: ${output} ${result.stderr}`);
         }
-      } else if (result.status === 0 || !output.includes("analysis.adapter-failed")) {
-        throw new Error(`${name} runtime is missing without explicit analysis.adapter-failed degradation.`);
+      } else if (state === "missing") {
+        if (result.status === 0 || !output.includes("analysis.runtime-missing")) {
+          throw new Error(`${name} runtime is missing without explicit analysis.runtime-missing failure: ${output} ${result.stderr}`);
+        }
+      } else {
+        // state === "broken" - the adapter should emit analysis.adapter-failed
+        if (result.status === 0 || !output.includes("analysis.adapter-failed")) {
+          throw new Error(`${name} runtime is broken without explicit analysis.adapter-failed failure: ${output} ${result.stderr}`);
+        }
       }
     };
 
     const pythonProject = path.join(tempRoot, "python-project");
     writePythonProject(pythonProject);
-    runtimeCheck("Python", pythonProject, hasRuntime(["python3", "python"]));
+    runtimeCheck("Python", pythonProject, runtimeState(["python3", "python"]));
 
     const dartProject = path.join(tempRoot, "dart-project");
     writeDartProject(dartProject);
-    runtimeCheck("Dart", dartProject, hasRuntime(["dart"]));
+    runtimeCheck("Dart", dartProject, runtimeState(["dart"]));
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

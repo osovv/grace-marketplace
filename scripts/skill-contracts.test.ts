@@ -57,7 +57,7 @@ describe("GRACE lifecycle skill contracts", () => {
 
     expect(cli).toContain('"schemaVersion": "1.0.0"');
     expect(cli).toContain('"ok": false');
-    expect(cli).toContain("analysis.adapter-failed");
+    expect(cli).toContain("analysis.runtime-missing");
     expect(read("skills/grace/grace-explainer/references/semantic-markup.md")).toContain("analysis.heuristic-confidence");
     expect(status).toContain("needs-plan-approval");
     expect(status).toContain("stale-plan");

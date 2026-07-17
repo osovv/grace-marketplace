@@ -25,7 +25,7 @@ Every important source file must begin with:
 
 Adapt comment syntax to the project language (`#` for Python, `//` for Dart/Go/TS/Java, `--` for SQL). Marker grammar is strict: canonical marker tokens and field labels must appear at the start of the normalized comment payload, not inside prose, strings, or unrelated code.
 
-The CLI bundles TypeScript/JavaScript analysis and can enforce exact compiler-derived export parity there. Governed Python and Dart files use runtime-backed adapters and therefore require `python3`/`python` or `dart` on `PATH`. Python analysis is explicitly heuristic and emits `analysis.heuristic-confidence`; it cannot prove exact/full `MODULE_MAP` parity. Adapter absence or failure emits `analysis.adapter-failed` and also cannot count as parity success.
+The CLI bundles TypeScript/JavaScript analysis and can enforce exact compiler-derived export parity there. Governed Python and Dart files use runtime-backed adapters and therefore require `python3`/`python` or `dart` on `PATH`. Python analysis is explicitly heuristic and emits `analysis.heuristic-confidence`; it cannot prove exact/full `MODULE_MAP` parity. A missing runtime fails closed with actionable `analysis.runtime-missing`; a present adapter that fails emits `analysis.adapter-failed`. Neither diagnostic can count as parity success.
 
 Substantial test files should use the same structure when tests are the fastest way for future agents to understand behavior, fixtures, and expected evidence.
 

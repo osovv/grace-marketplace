@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { ProjectPathError, normalizeProjectRelativePath, resolveContainedProjectPath } from "./paths";
 import type { GraphProjection, VerificationProjection } from "./projections";
-import { ANCHOR_PATTERNS, type Grace4Issue, type Grace4ProjectPaths } from "./types";
+import { ANCHOR_PATTERNS, GRACE4_CONTEXT_ARTIFACTS, type Grace4Issue, type Grace4ProjectPaths } from "./types";
 import { readGraceXmlArtifact, walkNodes, type GraceXmlNode } from "./xml";
 
 /** Durable semantic scope declared by a GraceChangePlan. */
@@ -54,6 +54,31 @@ const EMPTY_OWNERSHIP: DurableOwnershipIndex = {
   graphDocuments: new Map(),
   verificationDocuments: new Map(),
 };
+
+const CONTEXT_ARTIFACT_NAMES = new Set<string>(GRACE4_CONTEXT_ARTIFACTS);
+const CONTEXT_SCOPE_TAGS = new Set(["ContextArtifact", "Context", "Artifact"]);
+
+type DurableAnchorArray = "graphAnchors" | "verificationAnchors" | "graphDocuments" | "verificationDocuments";
+
+function durableGroupDefinition(tag: string):
+  | { kind: "anchor"; target: DurableAnchorArray; predicate: (value: string) => boolean }
+  | { kind: "context" }
+  | null {
+  switch (tag) {
+    case "GraphAnchors":
+      return { kind: "anchor", target: "graphAnchors", predicate: (value) => ANCHOR_PATTERNS.module.test(value) || ANCHOR_PATTERNS.dataFlow.test(value) };
+    case "VerificationAnchors":
+      return { kind: "anchor", target: "verificationAnchors", predicate: (value) => ANCHOR_PATTERNS.verification.test(value) };
+    case "GraphDocuments":
+      return { kind: "anchor", target: "graphDocuments", predicate: (value) => ANCHOR_PATTERNS.graphDocument.test(value) };
+    case "VerificationDocuments":
+      return { kind: "anchor", target: "verificationDocuments", predicate: (value) => ANCHOR_PATTERNS.verificationDocument.test(value) };
+    case "ContextArtifacts":
+      return { kind: "context" };
+    default:
+      return null;
+  }
+}
 
 /** Returns whether one project-relative file is covered by an observed write scope. */
 export function observedWriteScopeContains(scope: ObservedWriteScope, filePath: string): boolean {
@@ -241,19 +266,20 @@ function readActiveChangeScope(paths: Grace4ProjectPaths, bundlePath: string, ch
     return null;
   }
 
+  const durable = extractDurableScope(plan.root, planFile);
   const observed = extractObservedWriteScope(plan.root, paths.root, planFile);
   return {
     changeId,
     bundlePath,
     specStatus,
     planStatus,
-    durable: extractDurableScope(plan.root),
+    durable: durable.scope,
     observedWrites: observed.scope,
-    issues: observed.issues,
+    issues: [...durable.issues, ...observed.issues],
   };
 }
 
-function extractDurableScope(root: GraceXmlNode): DurableScope {
+function extractDurableScope(root: GraceXmlNode, planFile: string): { scope: DurableScope; issues: Grace4Issue[] } {
   const scopeNode = [...walkNodes(root)].find((node) => node.tag === "DurableScope");
   const scope: DurableScope = {
     graphAnchors: [],
@@ -262,24 +288,97 @@ function extractDurableScope(root: GraceXmlNode): DurableScope {
     graphDocuments: [],
     verificationDocuments: [],
   };
+  const issues: Grace4Issue[] = [];
   if (!scopeNode) {
-    return scope;
+    return { scope, issues };
   }
 
-  for (const node of walkNodes(scopeNode)) {
-    if (ANCHOR_PATTERNS.module.test(node.tag) || ANCHOR_PATTERNS.dataFlow.test(node.tag)) {
-      scope.graphAnchors.push(node.tag);
-    } else if (ANCHOR_PATTERNS.verification.test(node.tag)) {
-      scope.verificationAnchors.push(node.tag);
-    } else if (ANCHOR_PATTERNS.graphDocument.test(node.tag)) {
-      scope.graphDocuments.push(node.tag);
-    } else if (ANCHOR_PATTERNS.verificationDocument.test(node.tag)) {
-      scope.verificationDocuments.push(node.tag);
+  if (scopeNode.text.trim() || Object.keys(scopeNode.attributes).length > 0) {
+    issues.push(issue("error", "scope.invalid-durable-shape", planFile, "DurableScope must contain only supported scope elements."));
+  }
+
+  let entries = 0;
+  let hasNone = false;
+  const addAnchor = (node: GraceXmlNode, expected: (tag: string) => boolean, target: string[], label: string): void => {
+    if (!expected(node.tag)) {
+      issues.push(issue("error", "scope.invalid-durable-shape", planFile, `${label} contains unsupported scope entry <${node.tag}>.`));
+      return;
+    }
+    if (node.text.trim() || node.children.length > 0 || Object.keys(node.attributes).length > 0) {
+      issues.push(issue("error", "scope.invalid-durable-shape", planFile, `Scope marker <${node.tag}> must be an empty attribute-free element.`));
+      return;
+    }
+    target.push(node.tag);
+    entries += 1;
+  };
+  const addContext = (node: GraceXmlNode): void => {
+    if (node.children.length > 0 || Object.keys(node.attributes).length > 0) {
+      issues.push(issue("error", "scope.invalid-durable-shape", planFile, `${node.tag} must be a plain text context artifact filename.`));
+      return;
+    }
+    const value = node.text.trim();
+    if (!CONTEXT_ARTIFACT_NAMES.has(value)) {
+      issues.push(issue("error", "scope.invalid-context-artifact", planFile, `Unsupported context artifact ${JSON.stringify(value)} in DurableScope.`));
+      return;
+    }
+    scope.contextArtifacts.push(value);
+    entries += 1;
+  };
+
+  for (const child of scopeNode.children) {
+    if (child.tag === "None") {
+      if (child.text.trim() || child.children.length > 0 || Object.keys(child.attributes).length > 0) {
+        issues.push(issue("error", "scope.invalid-durable-shape", planFile, "DurableScope/None must be an empty attribute-free element."));
+      }
+      hasNone = true;
+      continue;
+    }
+    if (ANCHOR_PATTERNS.module.test(child.tag) || ANCHOR_PATTERNS.dataFlow.test(child.tag)) {
+      addAnchor(child, (tag) => ANCHOR_PATTERNS.module.test(tag) || ANCHOR_PATTERNS.dataFlow.test(tag), scope.graphAnchors, "DurableScope");
+      continue;
+    }
+    if (ANCHOR_PATTERNS.verification.test(child.tag)) {
+      addAnchor(child, (tag) => ANCHOR_PATTERNS.verification.test(tag), scope.verificationAnchors, "DurableScope");
+      continue;
+    }
+    if (ANCHOR_PATTERNS.graphDocument.test(child.tag)) {
+      addAnchor(child, (tag) => ANCHOR_PATTERNS.graphDocument.test(tag), scope.graphDocuments, "DurableScope");
+      continue;
+    }
+    if (ANCHOR_PATTERNS.verificationDocument.test(child.tag)) {
+      addAnchor(child, (tag) => ANCHOR_PATTERNS.verificationDocument.test(tag), scope.verificationDocuments, "DurableScope");
+      continue;
+    }
+    if (CONTEXT_SCOPE_TAGS.has(child.tag)) {
+      addContext(child);
+      continue;
+    }
+
+    const group = durableGroupDefinition(child.tag);
+    if (!group) {
+      issues.push(issue("error", "scope.invalid-durable-shape", planFile, `DurableScope does not allow child <${child.tag}>.`));
+      continue;
+    }
+    if (child.text.trim() || Object.keys(child.attributes).length > 0) {
+      issues.push(issue("error", "scope.invalid-durable-shape", planFile, `${child.tag} must contain only supported scope entries.`));
+    }
+    for (const entry of child.children) {
+      if (group.kind === "context") {
+        if (!CONTEXT_SCOPE_TAGS.has(entry.tag)) {
+          issues.push(issue("error", "scope.invalid-durable-shape", planFile, `${child.tag} contains unsupported scope entry <${entry.tag}>.`));
+        } else {
+          addContext(entry);
+        }
+      } else addAnchor(entry, group.predicate, scope[group.target], child.tag);
     }
   }
 
-  scope.contextArtifacts.push(...textChildren(scopeNode, ["ContextArtifact", "Context", "Artifact"]));
-  return dedupeDurableScope(scope);
+  if (hasNone && entries > 0) {
+    issues.push(issue("error", "scope.none-with-entries", planFile, "DurableScope/None cannot be combined with durable scope entries."));
+  } else if (!hasNone && entries === 0) {
+    issues.push(issue("error", "scope.empty-durable-scope", planFile, "DurableScope must declare at least one supported entry or an explicit <None /> marker."));
+  }
+  return { scope: dedupeDurableScope(scope), issues };
 }
 
 function extractObservedWriteScope(
@@ -294,7 +393,34 @@ function extractObservedWriteScope(
     return { scope, issues };
   }
 
-  for (const authoredFile of textChildren(scopeNode, ["File", "Path"])) {
+  if (scopeNode.text.trim() || Object.keys(scopeNode.attributes).length > 0) {
+    issues.push(issue("error", "scope.invalid-observed-shape", planFile, "ObservedWriteScope must contain only File, Path, Glob, or None elements."));
+  }
+
+  const fileValues: string[] = [];
+  const globValues: string[] = [];
+  let hasNone = false;
+  for (const child of scopeNode.children) {
+    if (child.tag === "None") {
+      if (child.text.trim() || child.children.length > 0 || Object.keys(child.attributes).length > 0) {
+        issues.push(issue("error", "scope.invalid-observed-shape", planFile, "ObservedWriteScope/None must be an empty attribute-free element."));
+      }
+      hasNone = true;
+      continue;
+    }
+    if (!["File", "Path", "Glob"].includes(child.tag)) {
+      issues.push(issue("error", "scope.invalid-observed-shape", planFile, `ObservedWriteScope does not allow child <${child.tag}>.`));
+      continue;
+    }
+    if (child.children.length > 0 || Object.keys(child.attributes).length > 0 || !child.text.trim()) {
+      issues.push(issue("error", "scope.invalid-observed-shape", planFile, `ObservedWriteScope/${child.tag} must be a non-empty plain text field.`));
+      continue;
+    }
+    if (child.tag === "Glob") globValues.push(child.text.trim());
+    else fileValues.push(child.text.trim());
+  }
+
+  for (const authoredFile of fileValues) {
     try {
       scope.files.push(resolveContainedProjectPath(projectRoot, authoredFile, { mode: "output" }).relativePath);
     } catch (error) {
@@ -302,7 +428,7 @@ function extractObservedWriteScope(
       issues.push(issue("error", "scope.invalid-path", planFile, `Observed write path ${JSON.stringify(authoredFile)} is invalid: ${detail}`));
     }
   }
-  for (const authoredGlob of textChildren(scopeNode, ["Glob"])) {
+  for (const authoredGlob of globValues) {
     try {
       scope.globs.push(parseScopeGlob(authoredGlob).normalizedPattern);
     } catch (error) {
@@ -311,15 +437,13 @@ function extractObservedWriteScope(
   }
   scope.files = [...new Set(scope.files)].sort();
   scope.globs = [...new Set(scope.globs)].sort();
+  const entries = scope.files.length + scope.globs.length;
+  if (hasNone && entries > 0) {
+    issues.push(issue("error", "scope.none-with-entries", planFile, "ObservedWriteScope/None cannot be combined with observed write entries."));
+  } else if (!hasNone && entries === 0) {
+    issues.push(issue("error", "scope.empty-observed-write-scope", planFile, "ObservedWriteScope must declare at least one File/Path/Glob or an explicit <None /> marker."));
+  }
   return { scope, issues };
-}
-
-function textChildren(node: GraceXmlNode, tags: string[]): string[] {
-  const tagSet = new Set(tags);
-  return [...walkNodes(node)]
-    .filter((child) => child !== node && tagSet.has(child.tag))
-    .map((child) => child.text.trim())
-    .filter(Boolean);
 }
 
 function forEachApprovedPair(changes: ActiveChangeScope[], callback: (left: ActiveChangeScope, right: ActiveChangeScope) => void) {
@@ -463,14 +587,15 @@ function addDocumentAnchorOverlaps(
   kind: "graph" | "verification",
   documents: string[],
   anchors: string[],
-  ownership: Map<string, Set<string>>,
+  _ownership: Map<string, Set<string>>,
 ): void {
-  const anchorSet = new Set(anchors);
+  // Whole-document scopes are reserved for split/merge/rehome operations. Current
+  // ownership cannot prove them disjoint from new or moving anchors, so parallel
+  // preflight must conservatively treat every same-family document/anchor pair as
+  // overlapping. Sequential execution remains allowed after fresh assertions.
   for (const document of documents) {
-    for (const anchor of ownership.get(document) ?? []) {
-      if (anchorSet.has(anchor)) {
-        overlaps.add(`${kind}:${document}↔${anchor}`);
-      }
+    for (const anchor of anchors) {
+      overlaps.add(`${kind}:${document}↔${anchor}`);
     }
   }
 }

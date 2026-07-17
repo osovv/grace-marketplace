@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { LanguageAdapter, LanguageAnalysis } from "../types";
+import { LanguageRuntimeMissingError, type LanguageAdapter, type LanguageAnalysis } from "../types";
 
 const DART_EXTENSIONS = new Set([".dart"]);
 const DART_BINARIES = ["dart"];
@@ -197,7 +197,11 @@ function runDartAnalyzer(filePath: string, text: string): LanguageAnalysis {
       }
       throw new Error(run.stderr.trim() || run.stdout.trim() || `Dart analyzer failed via ${binary}.`);
     }
-    throw new Error("Dart adapter requires `dart` on PATH when linting Dart files.");
+    throw new LanguageRuntimeMissingError(
+      "dart",
+      [...DART_BINARIES],
+      "Dart analysis requires `dart` on PATH. Install the Dart SDK or exclude the governed Dart files until the runtime is available.",
+    );
   } finally {
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }

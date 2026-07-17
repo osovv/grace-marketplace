@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, test } from "bun:test";
@@ -88,11 +88,11 @@ def greet():
     expect(analysis.issues.map((issue) => issue.code)).not.toContain("markup.module-map-mismatch");
   });
 
-  test("missing optional runtimes surface analysis.adapter-failed without crashing", () => {
+  test("missing required language runtimes surface an actionable dedicated diagnostic without crashing", () => {
     const script = `import { analyzeGovernedFile } from "./src/project-utils.ts";
 const text = ${JSON.stringify(`${contract("EXPORTS", "# greet - Greeting.").replaceAll("//", "#")}def greet():\n    return "hi"\n`)};
 const result = analyzeGovernedFile(process.cwd(), process.cwd() + "/example.py", text);
-console.log(JSON.stringify(result.issues.map((issue) => issue.code)));`;
+console.log(JSON.stringify(result.issues));`;
     const run = Bun.spawnSync({
       cmd: [process.execPath, "-e", script],
       cwd: path.resolve(import.meta.dir, ".."),
@@ -101,6 +101,30 @@ console.log(JSON.stringify(result.issues.map((issue) => issue.code)));`;
       stderr: "pipe",
     });
     expect(run.exitCode).toBe(0);
-    expect(JSON.parse(Buffer.from(run.stdout).toString("utf8"))).toContain("analysis.adapter-failed");
+    const issues = JSON.parse(Buffer.from(run.stdout).toString("utf8")) as Array<{ code: string; message: string }>;
+    expect(issues.map((issue) => issue.code)).toContain("analysis.runtime-missing");
+    expect(issues.find((issue) => issue.code === "analysis.runtime-missing")?.message).toContain("Install Python");
+  });
+
+  test("present but failing language runtimes surface analysis.adapter-failed without fallback", () => {
+    const runtimeDir = mkdtempSync(path.join(os.tmpdir(), "grace-broken-python-"));
+    const python = path.join(runtimeDir, "python3");
+    writeFileSync(python, "#!/bin/sh\nexit 17\n");
+    chmodSync(python, 0o755);
+    const script = `import { analyzeGovernedFile } from "./src/project-utils.ts";
+const text = ${JSON.stringify(`${contract("EXPORTS", "# greet - Greeting.").replaceAll("//", "#")}def greet():\n    return "hi"\n`)};
+const result = analyzeGovernedFile(process.cwd(), process.cwd() + "/example.py", text);
+console.log(JSON.stringify(result.issues));`;
+    const run = Bun.spawnSync({
+      cmd: [process.execPath, "-e", script],
+      cwd: path.resolve(import.meta.dir, ".."),
+      env: { ...process.env, PATH: runtimeDir },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(run.exitCode).toBe(0);
+    const issues = JSON.parse(Buffer.from(run.stdout).toString("utf8")) as Array<{ code: string }>;
+    expect(issues.map((issue) => issue.code)).toContain("analysis.adapter-failed");
+    expect(issues.map((issue) => issue.code)).not.toContain("analysis.runtime-missing");
   });
 });

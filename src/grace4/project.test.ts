@@ -42,9 +42,12 @@ describe("GRACE 4 project detection", () => {
 
   it("detects legacy GRACE 3 docs when .grace is absent", () => {
     for (const legacyDocument of [
+      "docs/requirements.xml",
+      "docs/technology.xml",
       "docs/development-plan.xml",
       "docs/knowledge-graph.xml",
       "docs/verification-plan.xml",
+      "docs/operational-packets.xml",
     ]) {
       const root = createProject();
       writeProjectFile(root, legacyDocument);

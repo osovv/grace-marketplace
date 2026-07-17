@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { ADAPTER_BACKED_EXTENSIONS, CODE_EXTENSIONS, LANGUAGE_ADAPTERS } from "./language-registry";
-import type { LanguageAnalysis, LintIssue, MapMode, ModuleRole } from "./lint/types";
+import { LanguageRuntimeMissingError, type LanguageAnalysis, type LintIssue, type MapMode, type ModuleRole } from "./lint/types";
 
 export type TextSection = {
   content: string;
@@ -228,7 +228,13 @@ export function analyzeGovernedFile(root: string, filePath: string, text: string
     try {
       language = adapter.analyze(filePath, text);
     } catch (error) {
-      issues.push(markupIssue("error", "analysis.adapter-failed", filePath, 1, error instanceof Error ? error.message : String(error)));
+      issues.push(markupIssue(
+        "error",
+        error instanceof LanguageRuntimeMissingError ? "analysis.runtime-missing" : "analysis.adapter-failed",
+        filePath,
+        1,
+        error instanceof Error ? error.message : String(error),
+      ));
     }
   }
 

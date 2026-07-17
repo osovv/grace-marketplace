@@ -60,17 +60,21 @@ export function collectCurrentReleaseState(repoRoot: string): { state: ReleaseSt
   }
 
   const packJson = runCapture("npm", ["pack", "--dry-run", "--json"], repoRoot);
-  const pack = JSON.parse(packJson) as Array<{ files?: Array<{ path?: string }> }>;
+  const pack = JSON.parse(packJson) as Array<{ shasum?: string; files?: Array<{ path?: string }> }>;
   const packedFiles = pack[0]?.files?.map((entry) => entry.path).filter((entry): entry is string => typeof entry === "string") ?? [];
+  const localPackShasum = pack[0]?.shasum ?? "";
   const npmDistTags = JSON.parse(
     runCapture("npm", ["view", "@osovv/grace-cli", "dist-tags", "--json"], repoRoot),
   ) as Record<string, string>;
+  const npmPackageShasum = JSON.parse(
+    runCapture("npm", ["view", `@osovv/grace-cli@${version}`, "dist.shasum", "--json"], repoRoot),
+  ) as string;
   const githubRelease = JSON.parse(
     runCapture("gh", ["release", "view", expectedTag, "--repo", "osovv/grace-marketplace", "--json", "tagName,isPrerelease"], repoRoot),
   ) as { tagName: string; isPrerelease: boolean };
 
   return {
-    state: { version, expectedTag, branch, head, originMain, tagCommit, packedFiles, npmDistTags, githubRelease },
+    state: { version, expectedTag, branch, head, originMain, tagCommit, packedFiles, localPackShasum, npmPackageShasum, npmDistTags, githubRelease },
     packJson,
   };
 }

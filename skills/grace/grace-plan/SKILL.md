@@ -26,7 +26,7 @@ description: Read an approved GRACE 4 GraceChangeSpec and optional design contex
 </approved_plan_immutability>
 
 <must_do>
-Produce `plan.xml` from `references/change-plan-template.xml` as draft unless the user explicitly approves the completed plan. Require a matching `C-*` wrapper, meaningful intent, non-empty baseline and target assertions, explicit durable and observed scopes, and unique acyclic `T-NNN` tasks. Every task has one `Title`, one `DependsOn`, non-empty acceptance criteria, and non-empty verification commands. Surface stale-state and coexistence warnings, and reject unsupported scope glob syntax instead of guessing.
+Produce `plan.xml` from `references/change-plan-template.xml` as draft unless the user explicitly approves the completed plan. Require a matching `C-*` wrapper, meaningful intent, non-empty machine-checkable baseline and target assertions, explicit durable and observed scopes, and unique acyclic `T-NNN` tasks. A scope with no writes must use an explicit `<None />` marker; prose such as "none" is invalid. Every task has one `Title`, one `DependsOn`, non-empty acceptance criteria, and non-empty verification commands. Surface stale-state and coexistence warnings, and reject unsupported scope glob syntax instead of guessing.
 </must_do>
 
 <validation>

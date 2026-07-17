@@ -194,6 +194,23 @@ describe("grace status", () => {
     expect(change.derivedStates).not.toContain("ready-to-execute");
   });
 
+  it("never marks text-only assertion and scope contracts ready to execute", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeChange(root, "C-TEXT", { specStatus: "approved", planStatus: "approved" });
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-TEXT/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-TEXT><IntentSummary>Invalid text contracts.</IntentSummary><BaselineAssertions>assume state</BaselineAssertions><TargetAssertions>expect state</TargetAssertions><DurableScope>graph changes</DurableScope><ObservedWriteScope>source changes</ObservedWriteScope><ImplementationPlan><T-001><Title>Invalid task</Title><DependsOn></DependsOn><AcceptanceCriteria><Criterion>Never ready.</Criterion></AcceptanceCriteria><Verification><Command>true</Command></Verification></T-001></ImplementationPlan></C-TEXT></GraceChangePlan>`,
+    );
+
+    const result = collectProjectStatus(root);
+    const change = result.changes.find((entry) => entry.changeId === "C-TEXT")!;
+    expect(result.integrity.errors).toBeGreaterThan(0);
+    expect(change.derivedStates).toContain("integrity-issues");
+    expect(change.derivedStates).not.toContain("ready-to-execute");
+  });
+
   it("treats approved spec-only bundles as needing planning and draft spec-only bundles as normal drafts", () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
@@ -229,6 +246,27 @@ describe("grace status", () => {
     expect(result.observedDrift.unexplainedFiles).toContain("unplanned.txt");
     expect(result.derivedStates).toContain("explained-observed-drift");
     expect(result.derivedStates).toContain("unexplained-observed-drift");
+  });
+
+  it("keeps both source and destination paths for git rename drift", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(root, "src/old.ts", "old\n");
+    writeChange(root, "C-RENAME", { specStatus: "approved", planStatus: "approved", file: "src/new.ts" });
+    runGit(root, ["init"]);
+    runGit(root, ["config", "user.email", "grace@example.test"]);
+    runGit(root, ["config", "user.name", "GRACE Test"]);
+    runGit(root, ["config", "commit.gpgsign", "false"]);
+    runGit(root, ["config", "core.hooksPath", "/dev/null"]);
+    runGit(root, ["add", "."]);
+    runGit(root, ["commit", "-m", "test: baseline"]);
+    runGit(root, ["mv", "src/old.ts", "src/new.ts"]);
+
+    const drift = collectProjectStatus(root).observedDrift;
+    expect(drift.changedFiles).toContain("src/old.ts");
+    expect(drift.changedFiles).toContain("src/new.ts");
+    expect(drift.explainedFiles).toContain("src/new.ts");
+    expect(drift.unexplainedFiles).toContain("src/old.ts");
   });
 
   it("attributes graph drift only to the exact declared document or owning anchor route", () => {

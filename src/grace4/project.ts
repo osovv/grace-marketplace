@@ -4,9 +4,12 @@ import path from "node:path";
 import type { Grace4ProjectPaths, GraceProjectKind } from "./types";
 
 const LEGACY_GRACE3_DOCUMENTS = [
+  "docs/requirements.xml",
+  "docs/technology.xml",
   "docs/development-plan.xml",
   "docs/knowledge-graph.xml",
   "docs/verification-plan.xml",
+  "docs/operational-packets.xml",
 ] as const;
 
 /** Resolves canonical GRACE 4 project paths from a repository root. */

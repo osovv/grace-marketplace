@@ -249,6 +249,17 @@ describe("GRACE 4 Artifact Grammar", () => {
     expect(resultCodes).toContain("change.task-empty-verification");
   });
 
+  it("rejects text-only assertion and scope sections that are not machine-checkable", () => {
+    const plan = validPlan(task("T-001"))
+      .replace("<BaselineAssertions><MustExist><Value>M-EXAMPLE</Value></MustExist></BaselineAssertions>", "<BaselineAssertions>assume current state</BaselineAssertions>")
+      .replace("<TargetAssertions><MustVerify><Module>M-EXAMPLE</Module></MustVerify></TargetAssertions>", "<TargetAssertions>expect target state</TargetAssertions>")
+      .replace("<DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope>", "<DurableScope>change the graph</DurableScope>")
+      .replace("<ObservedWriteScope><File>src/example.ts</File></ObservedWriteScope>", "<ObservedWriteScope>write source files</ObservedWriteScope>");
+
+    const resultCodes = codes(validateChangeArtifact(parseGraceXmlArtifact("plan.xml", plan), "active"));
+    expect(resultCodes.filter((code) => code === "change.plan-invalid-section-shape").length).toBeGreaterThanOrEqual(4);
+  });
+
   it("rejects duplicate tasks, invalid dependencies, self-dependencies, unknown dependencies, and cycles", () => {
     const plan = validPlan([
       task("T-001", "<Task>T-002</Task>"),
@@ -368,6 +379,26 @@ describe("GRACE 4 Artifact Grammar", () => {
       "archive",
     );
     expect(codes(replacementChange)).not.toContain("change.superseded-missing-replacement");
+  });
+
+  it("rejects self-referential and missing superseded replacement bundles", () => {
+    const selfReplacement = validateChangeArtifact(
+      parseGraceXmlArtifact(
+        "archive/spec.xml",
+        validSpec("C-SELF", "<Replacement>C-SELF</Replacement>").replace('status="approved"', 'status="superseded"'),
+      ),
+      "archive",
+    );
+    expect(codes(selfReplacement)).toContain("change.superseded-self-replacement");
+
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(
+      root,
+      ".grace/changes/archive/C-OLD/spec.xml",
+      validSpec("C-OLD", "<Replacement>C-MISSING</Replacement>").replace('status="approved"', 'status="superseded"'),
+    );
+    expect(codes(validateGrace4Project(root))).toContain("change.superseded-replacement-not-found");
   });
 
   it("validates GraceChangeDesignContext inside change bundles", () => {
