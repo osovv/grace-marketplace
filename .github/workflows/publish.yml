@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to verify and publish"
+        required: true
+        type: string
 
 permissions:
   id-token: write
@@ -19,9 +25,11 @@ jobs:
     outputs:
       version: ${{ steps.release.outputs.version }}
       prerelease: ${{ steps.release.outputs.prerelease }}
+      tag: ${{ steps.release.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -38,14 +46,20 @@ jobs:
       - name: Verify tag, package version, and stable ancestry
         id: release
         run: |
-          git fetch origin main --tags
-          TAG="${GITHUB_REF_NAME}"
+          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          git fetch --force --no-tags origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          git fetch --no-tags origin main:refs/remotes/origin/main
           PKG_VERSION="$(node -p "require('./package.json').version")"
           if [ "v${PKG_VERSION}" != "${TAG}" ]; then
             echo "Tag ${TAG} does not match package.json version v${PKG_VERSION}"
             exit 1
           fi
           TAG_COMMIT="$(git rev-parse "${TAG}^{commit}")"
+          HEAD_COMMIT="$(git rev-parse HEAD)"
+          if [ "${TAG_COMMIT}" != "${HEAD_COMMIT}" ]; then
+            echo "Checked-out commit ${HEAD_COMMIT} does not equal tag ${TAG} commit ${TAG_COMMIT}"
+            exit 1
+          fi
           ORIGIN_MAIN="$(git rev-parse origin/main)"
           if [[ "${PKG_VERSION}" == *-* ]]; then
             PRERELEASE=true
@@ -58,6 +72,7 @@ jobs:
           fi
           echo "version=${PKG_VERSION}" >> "${GITHUB_OUTPUT}"
           echo "prerelease=${PRERELEASE}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -87,6 +102,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.verify.outputs.tag }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -122,7 +138,7 @@ jobs:
       - name: Create prerelease GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.verify.outputs.tag }}
           body_path: /tmp/release-body.md
           prerelease: true
           fail_on_unmatched_files: false
@@ -137,6 +153,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.verify.outputs.tag }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -168,7 +185,7 @@ jobs:
       - name: Create stable GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.verify.outputs.tag }}
           body_path: /tmp/release-body.md
           prerelease: false
           fail_on_unmatched_files: false
