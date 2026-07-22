@@ -13,6 +13,7 @@ import { collectActiveChangeScopes, createDurableOwnershipIndex, detectScopeOver
 import { readGraceXmlArtifact } from "./grace4/xml";
 import { collectModuleHealth } from "./query/health";
 import { loadGraceArtifactIndex } from "./query/core";
+import { GraceCommandError, runGraceCommand } from "./query/errors";
 import { formatModuleHealthTable } from "./query/render";
 import type { ModuleHealthRecord } from "./query/types";
 
@@ -76,8 +77,13 @@ type ChangeBundleFacts = {
 
 /** Route ownership needed to explain changed GRACE graph and verification documents exactly. */
 type DriftRouteIndex = {
-  graphFiles: Map<string, { document: string; anchors: Set<string> }>;
-  verificationFiles: Map<string, { document: string; anchors: Set<string> }>;
+  graphFiles: Map<string, { documents: Set<string>; anchors: Set<string> }>;
+  verificationFiles: Map<string, { documents: Set<string>; anchors: Set<string> }>;
+};
+
+type CollectedObservedDrift = {
+  drift: StatusResult["observedDrift"];
+  trackedChangedFiles: Set<string>;
 };
 
 function topIssues(issues: LintIssue[]) {
@@ -162,6 +168,7 @@ function deriveChangeStates(facts: ChangeBundleFacts): string[] {
 function chooseNextAction(result: Omit<StatusResult, "nextAction">) {
   if (result.projectKind === "grace3") return "Use $grace-migrate to migrate legacy GRACE 3 docs to .grace artifacts.";
   if (result.projectKind === "none") return "Run $grace-init to create a GRACE 4 .grace skeleton.";
+  if (result.derivedStates.includes("approved-contract-drift")) return "Hard stop: an approved spec.xml or plan.xml changed. Restore it or supersede and replan through a new C-* bundle.";
   if (result.derivedStates.includes("stale-plan")) return "Supersede and replan the stale approved change; do not edit the approved plan or continue execution.";
   if (result.integrity.errors > 0) return "Run grace lint --path <project-root> and fix GRACE 4 integrity errors.";
   if (result.derivedStates.includes("unexplained-observed-drift")) return "Use $grace-refresh to reconcile unexplained repository changes through a new GraceChangeSpec and GraceChangePlan.";
@@ -222,17 +229,26 @@ export function collectProjectStatus(projectRoot: string, options: { includeModu
   const ownership = createDurableOwnershipIndex(graph, verification);
   const overlapIssues = detectScopeOverlaps(activeScopes, ownership);
   const unsafeIssues = detectUnsafeConcurrentExecution(activeScopes, ownership);
-  const changes = [
+  const rawChanges = [
     ...collectChangeBundleStatuses(root, "active", paths.changesActiveDir, lint.issues),
     ...collectChangeBundleStatuses(root, "archive", paths.changesArchiveDir, lint.issues),
   ];
+  const collectedDrift = collectObservedDrift(root, activeScopes, buildDriftRouteIndex(root, graph, verification));
+  const observedDrift = collectedDrift.drift;
+  const approvedContractDrift = collectApprovedContractDrift(root, activeScopes, collectedDrift.trackedChangedFiles);
+  const changes = rawChanges.map((change) => {
+    if (!approvedContractDrift.has(change.changeId)) return change;
+    return {
+      ...change,
+      derivedStates: [...new Set([...change.derivedStates.filter((state) => state !== "ready-to-execute"), "approved-contract-drift"])],
+    };
+  });
   const derivedStates = new Set<string>();
   if (overlapIssues.length > 0) derivedStates.add("scope-overlap");
   if (unsafeIssues.length > 0) derivedStates.add("unsafe-parallel-overlap");
   for (const change of changes) {
     for (const state of change.derivedStates) derivedStates.add(state);
   }
-  const observedDrift = collectObservedDrift(root, activeScopes, buildDriftRouteIndex(root, graph, verification));
   if (observedDrift.explainedFiles.length > 0) derivedStates.add("explained-observed-drift");
   if (observedDrift.unexplainedFiles.length > 0) derivedStates.add("unexplained-observed-drift");
 
@@ -329,16 +345,16 @@ export function formatStatusText(result: StatusResult) {
   return lines.join("\n");
 }
 
-function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[], routes: DriftRouteIndex): StatusResult["observedDrift"] {
+function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[], routes: DriftRouteIndex): CollectedObservedDrift {
   const gitRootResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { cwd: root, encoding: "utf8" });
   if (gitRootResult.status !== 0 || !gitRootResult.stdout.trim()) {
-    return { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] };
+    return { drift: { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] }, trackedChangedFiles: new Set() };
   }
 
   const gitRoot = path.resolve(gitRootResult.stdout.trim());
   const rootRelativeToGit = path.relative(gitRoot, root) || ".";
   if (rootRelativeToGit.startsWith("..") || path.isAbsolute(rootRelativeToGit)) {
-    return { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] };
+    return { drift: { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] }, trackedChangedFiles: new Set() };
   }
 
   const statusResult = spawnSync(
@@ -347,49 +363,59 @@ function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[], r
     { cwd: gitRoot, encoding: "utf8" },
   );
   if (statusResult.status !== 0) {
-    return { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] };
+    return { drift: { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] }, trackedChangedFiles: new Set() };
   }
 
-  const changedFiles = parsePorcelainV1ZPaths(statusResult.stdout, gitRoot, root);
+  const { changedFiles, trackedChangedFiles } = parsePorcelainV1ZPaths(statusResult.stdout, gitRoot, root);
 
   const approvedScopes = activeScopes.filter((scope) => scope.specStatus === "approved" && scope.planStatus === "approved");
-  const explainedFiles = changedFiles.filter((file) => approvedScopes.some((scope) => activeScopeExplainsFile(root, scope, file, routes)));
+  const explainedFiles = changedFiles.filter((file) => approvedScopes.some((scope) => activeScopeExplainsFile(root, scope, file, routes, trackedChangedFiles)));
   const explained = new Set(explainedFiles);
   return {
-    available: true,
-    changedFiles,
-    explainedFiles,
-    unexplainedFiles: changedFiles.filter((file) => !explained.has(file)),
+    drift: {
+      available: true,
+      changedFiles,
+      explainedFiles,
+      unexplainedFiles: changedFiles.filter((file) => !explained.has(file)),
+    },
+    trackedChangedFiles,
   };
 }
 
-function parsePorcelainV1ZPaths(output: string, gitRoot: string, projectRoot: string): string[] {
+function parsePorcelainV1ZPaths(output: string, gitRoot: string, projectRoot: string): { changedFiles: string[]; trackedChangedFiles: Set<string> } {
   const records = output.split("\0");
-  const authoredPaths: string[] = [];
+  const authoredPaths: Array<{ path: string; tracked: boolean }> = [];
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index];
     if (!record || record.length < 4) continue;
     const status = record.slice(0, 2);
-    authoredPaths.push(record.slice(3));
+    const tracked = status !== "??";
+    authoredPaths.push({ path: record.slice(3), tracked });
     if (status.includes("R") || status.includes("C")) {
       const sourcePath = records[index + 1];
-      if (sourcePath) authoredPaths.push(sourcePath);
+      if (sourcePath) authoredPaths.push({ path: sourcePath, tracked: true });
       index += 1;
     }
   }
 
-  return [...new Set(authoredPaths
-    .map((file) => path.relative(projectRoot, path.resolve(gitRoot, file)).replaceAll(path.sep, "/"))
-    .filter((file) => file !== "" && !file.startsWith("../") && file !== ".."))]
-    .sort();
+  const normalized = authoredPaths
+    .map((entry) => ({ ...entry, path: path.relative(projectRoot, path.resolve(gitRoot, entry.path)).replaceAll(path.sep, "/") }))
+    .filter((entry) => entry.path !== "" && !entry.path.startsWith("../") && entry.path !== "..");
+  return {
+    changedFiles: [...new Set(normalized.map((entry) => entry.path))].sort(),
+    trackedChangedFiles: new Set(normalized.filter((entry) => entry.tracked).map((entry) => entry.path)),
+  };
 }
 
-function activeScopeExplainsFile(root: string, scope: ActiveChangeScope, file: string, routes: DriftRouteIndex): boolean {
+function activeScopeExplainsFile(root: string, scope: ActiveChangeScope, file: string, routes: DriftRouteIndex, trackedChangedFiles: ReadonlySet<string>): boolean {
   if (observedWriteScopeContains(scope.observedWrites, file)) {
     return true;
   }
 
   const bundlePath = path.relative(root, scope.bundlePath).replaceAll(path.sep, "/");
+  if (trackedChangedFiles.has(file) && (file === `${bundlePath}/spec.xml` || file === `${bundlePath}/plan.xml`)) {
+    return false;
+  }
   if (file === bundlePath || file.startsWith(`${bundlePath}/`)) {
     return true;
   }
@@ -401,14 +427,14 @@ function activeScopeExplainsFile(root: string, scope: ActiveChangeScope, file: s
   if (file.startsWith(".grace/graph/")) {
     const route = routes.graphFiles.get(file);
     return Boolean(route && (
-      scope.durable.graphDocuments.includes(route.document)
+      scope.durable.graphDocuments.some((document) => route.documents.has(document))
       || scope.durable.graphAnchors.some((anchor) => route.anchors.has(anchor))
     ));
   }
   if (file.startsWith(".grace/verification/")) {
     const route = routes.verificationFiles.get(file);
     return Boolean(route && (
-      scope.durable.verificationDocuments.includes(route.document)
+      scope.durable.verificationDocuments.some((document) => route.documents.has(document))
       || scope.durable.verificationAnchors.some((anchor) => route.anchors.has(anchor))
     ));
   }
@@ -417,6 +443,15 @@ function activeScopeExplainsFile(root: string, scope: ActiveChangeScope, file: s
 
 function buildDriftRouteIndex(root: string, graph: GraphProjection, verification: VerificationProjection): DriftRouteIndex {
   const routes: DriftRouteIndex = { graphFiles: new Map(), verificationFiles: new Map() };
+  const paths = resolveGrace4Paths(root);
+  routes.graphFiles.set(path.relative(root, paths.graphIndex).replaceAll(path.sep, "/"), {
+    documents: new Set(graph.documents.keys()),
+    anchors: new Set([...graph.modules.keys(), ...graph.dataFlows.keys()]),
+  });
+  routes.verificationFiles.set(path.relative(root, paths.verificationIndex).replaceAll(path.sep, "/"), {
+    documents: new Set(verification.documents.keys()),
+    anchors: new Set(verification.entries.keys()),
+  });
   for (const [document, file] of graph.documents) {
     const relativeFile = path.relative(root, file).replaceAll(path.sep, "/");
     const anchors = new Set(
@@ -424,19 +459,29 @@ function buildDriftRouteIndex(root: string, graph: GraphProjection, verification
         .filter((record) => record.owner === document)
         .map((record) => record.id),
     );
-    routes.graphFiles.set(relativeFile, { document, anchors });
+    routes.graphFiles.set(relativeFile, { documents: new Set([document]), anchors });
   }
   for (const [document, file] of verification.documents) {
     const relativeFile = path.relative(root, file).replaceAll(path.sep, "/");
     const anchors = new Set([...verification.entries.values()].filter((record) => record.owner === document).map((record) => record.id));
-    routes.verificationFiles.set(relativeFile, { document, anchors });
+    routes.verificationFiles.set(relativeFile, { documents: new Set([document]), anchors });
   }
   return routes;
 }
 
+function collectApprovedContractDrift(root: string, activeScopes: ActiveChangeScope[], trackedChangedFiles: ReadonlySet<string>): Set<string> {
+  return new Set(activeScopes
+    .filter((scope) => scope.specStatus === "approved" && scope.planStatus === "approved")
+    .filter((scope) => {
+      const bundlePath = path.relative(root, scope.bundlePath).replaceAll(path.sep, "/");
+      return trackedChangedFiles.has(`${bundlePath}/spec.xml`) || trackedChangedFiles.has(`${bundlePath}/plan.xml`);
+    })
+    .map((scope) => scope.changeId));
+}
+
 function resolveFormat(format: unknown, json: unknown) {
   const resolved = Boolean(json) ? "json" : String(format ?? "text");
-  if (resolved !== "text" && resolved !== "json") throw new Error(`Unsupported format \`${resolved}\`. Use \`text\` or \`json\`.`);
+  if (resolved !== "text" && resolved !== "json") throw new GraceCommandError("invalid-arguments", `Unsupported format \`${resolved}\`. Use \`text\` or \`json\`.`);
   return resolved;
 }
 
@@ -446,7 +491,7 @@ function resolveWithList(value: unknown) {
 
 function resolveFailOn(value: unknown) {
   const failOn = String(value ?? "never");
-  if (failOn !== "never" && failOn !== "errors" && failOn !== "warnings") throw new Error(`Unsupported fail-on policy \`${failOn}\`. Use \`never\`, \`errors\`, or \`warnings\`.`);
+  if (failOn !== "never" && failOn !== "errors" && failOn !== "warnings") throw new GraceCommandError("invalid-arguments", `Unsupported fail-on policy \`${failOn}\`. Use \`never\`, \`errors\`, or \`warnings\`.`);
   return failOn;
 }
 
@@ -471,14 +516,17 @@ export const statusCommand = defineCommand({
     failOn: { type: "string", description: "Exit policy: never, errors, or warnings", default: "never" },
   },
   async run(context) {
-    const format = resolveFormat(context.args.format, context.args.json);
-    const withValues = resolveWithList(context.args.with);
-    const failOn = resolveFailOn(context.args.failOn);
-    const result = collectProjectStatus(String(context.args.path ?? "."), { includeModules: withValues.includes("modules") });
+    const errorFormat = Boolean(context.args.json) || context.args.format === "json" ? "json" : "text";
+    await runGraceCommand(errorFormat, () => {
+      const format = resolveFormat(context.args.format, context.args.json);
+      const withValues = resolveWithList(context.args.with);
+      const failOn = resolveFailOn(context.args.failOn);
+      const result = collectProjectStatus(String(context.args.path ?? "."), { includeModules: withValues.includes("modules") });
 
-    if (format === "json") process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    else process.stdout.write(`${formatStatusText(result)}\n`);
-    process.exitCode = shouldFail(result, failOn) ? 1 : 0;
+      if (format === "json") process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      else process.stdout.write(`${formatStatusText(result)}\n`);
+      process.exitCode = shouldFail(result, failOn) ? 1 : 0;
+    }, "Unable to collect GRACE status. Check the project path and run again.");
   },
 });
 

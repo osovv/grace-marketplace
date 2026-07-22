@@ -3,7 +3,7 @@ export type LintSeverity = "error" | "warning";
 export type LintProfile = "standard";
 
 /** Selected assertion section evaluated by grace lint. */
-export type LintAssertionMode = "current" | "baseline" | "target";
+export type LintAssertionMode = "current" | "baseline" | "target" | "final";
 
 export type ModuleRole = "RUNTIME" | "TEST" | "BARREL" | "CONFIG" | "TYPES" | "SCRIPT";
 export type MapMode = "EXPORTS" | "LOCALS" | "SUMMARY" | "NONE";

@@ -248,8 +248,11 @@ export function validateContextArtifacts(paths: Grace4ProjectPaths): ArtifactVal
       result.issues.push(issue("error", "context.unexpected-root-tag", artifact.file, `${file} must use root tag ${rootTag}.`));
     }
 
-    if (artifact.root && (artifact.root.tag === "GraceDeployment" || artifact.root.tag === "GraceUXGuidelines")) {
-      result.issues.push(...validateOptionalContextApplicability(artifact.file, artifact.root));
+    if (artifact.root?.tag === rootTag) {
+      result.issues.push(...validateContextContent(artifact.file, artifact.root));
+      if (artifact.root.tag === "GraceDeployment" || artifact.root.tag === "GraceUXGuidelines") {
+        result.issues.push(...validateOptionalContextApplicability(artifact.file, artifact.root));
+      }
     }
 
     return result;
@@ -379,6 +382,17 @@ export function validateChangeDesignContextArtifact(
   }
 
   issues.push(...validateSemanticAnchorDiscipline(artifact.file, root));
+
+  const changeTextNodes = root.children.filter((child) => child.tag === "Change");
+  const wrapperNodes = root.children.filter((child) => ANCHOR_PATTERNS.change.test(child.tag));
+  const identityCount = changeTextNodes.length + wrapperNodes.length;
+  if (identityCount === 0) {
+    issues.push(issue("error", "design-context.missing-change-id", artifact.file, "GraceChangeDesignContext must identify its bundle through one direct <Change>C-*</Change> or C-* wrapper."));
+  } else if (identityCount > 1) {
+    issues.push(issue("error", "design-context.ambiguous-change-id", artifact.file, "GraceChangeDesignContext must contain exactly one direct change identity declaration."));
+  } else if (changeTextNodes.length === 1 && !ANCHOR_PATTERNS.change.test(changeTextNodes[0]!.text.trim())) {
+    issues.push(issue("error", "design-context.invalid-change-id", artifact.file, "GraceChangeDesignContext <Change> must contain a canonical C-* identifier."));
+  }
 
   return { file: artifact.file, rootTag: root.tag, graceVersion: root.attributes.graceVersion, issues };
 }
@@ -546,7 +560,7 @@ function validateChangeBundlesInDirectory(
     if (existsSync(designFile)) {
       const designArtifact = readGraceXmlArtifact(designFile);
       const designResult = validateChangeDesignContextArtifact(designArtifact);
-      const designChange = designArtifact.root ? childText(designArtifact.root, "Change")?.trim() : undefined;
+      const designChange = designArtifact.root ? designContextChangeId(designArtifact.root) : undefined;
       if (designChange && designChange !== bundleId) {
         designResult.issues.push(issue("error", "design-context.bundle-id-mismatch", designFile, `design-context.xml references ${designChange}, but its bundle directory is ${bundleId}.`));
       }
@@ -870,24 +884,58 @@ function validateChangeStatusAttribute(file: string, root: GraceXmlNode, issues:
 }
 
 function validateOptionalContextApplicability(file: string, root: GraceXmlNode): Grace4Issue[] {
-  const applicability = (childText(root, "Applicability") ?? childText(root, "Status") ?? "").trim().toLowerCase();
+  const issues: Grace4Issue[] = [];
+  const applicabilityNodes = root.children.filter((child) => child.tag === "Applicability");
+  if (applicabilityNodes.length === 0) {
+    return [issue("error", "context.applicability-missing", file, `${root.tag} must declare exactly one direct <Applicability> value.`)];
+  }
+  if (applicabilityNodes.length > 1) {
+    issues.push(issue("error", "context.applicability-duplicate", file, `${root.tag} must not repeat its direct <Applicability> value.`));
+  }
+
+  const applicability = applicabilityNodes[0]?.text.trim().toLowerCase() ?? "";
+  if (applicability !== "applicable" && applicability !== "not-applicable") {
+    issues.push(issue("error", "context.applicability-invalid", file, `${root.tag} Applicability must be 'applicable' or 'not-applicable'.`));
+    return issues;
+  }
   if (applicability !== "not-applicable") {
-    return [];
+    return issues;
   }
 
   const reason = (childText(root, "Reason") ?? childText(root, "NotApplicableReason") ?? childText(root, "Rationale") ?? "").trim();
   if (reason.length === 0) {
-    return [issue("error", "context.not-applicable-reason-missing", file, `${root.tag} marked not-applicable requires a reason.`)];
+    issues.push(issue("error", "context.not-applicable-reason-missing", file, `${root.tag} marked not-applicable requires a reason.`));
+    return issues;
   }
 
   if (
     root.tag === "GraceUXGuidelines"
     && /^(?:this project is\s+)?(?:not a web app|not web|no web ui|no ui|no frontend)[.!]?$/i.test(reason)
   ) {
-    return [issue("error", "context.ux-not-applicable-reason-insufficient", file, "UX applies to CLI, API, documentation, operator, and agent interactions; lack of a web UI alone is not a sufficient reason.")];
+    issues.push(issue("error", "context.ux-not-applicable-reason-insufficient", file, "UX applies to CLI, API, documentation, operator, and agent interactions; lack of a web UI alone is not a sufficient reason."));
   }
 
-  return [];
+  return issues;
+}
+
+function validateContextContent(file: string, root: GraceXmlNode): Grace4Issue[] {
+  const meaningful = [...walkNodes(root)].some((node) => node !== root && node.text.trim().length > 0);
+  return meaningful
+    ? []
+    : [issue("error", "context.empty-artifact", file, `${root.tag} must contain meaningful project context.`)];
+}
+
+function designContextChangeId(root: GraceXmlNode): string | undefined {
+  const changeTextNodes = root.children.filter((child) => child.tag === "Change");
+  const wrapperNodes = root.children.filter((child) => ANCHOR_PATTERNS.change.test(child.tag));
+  if (changeTextNodes.length === 1 && wrapperNodes.length === 0) {
+    const changeId = changeTextNodes[0]!.text.trim();
+    return ANCHOR_PATTERNS.change.test(changeId) ? changeId : undefined;
+  }
+  if (changeTextNodes.length === 0 && wrapperNodes.length === 1) {
+    return wrapperNodes[0]!.tag;
+  }
+  return undefined;
 }
 
 function findSemanticAnchorInAttribute(value: string): string | null {

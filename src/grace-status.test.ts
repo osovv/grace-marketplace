@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "bun:test";
@@ -234,7 +234,7 @@ describe("grace status", () => {
     runGit(root, ["config", "user.email", "grace@example.test"]);
     runGit(root, ["config", "user.name", "GRACE Test"]);
     runGit(root, ["config", "commit.gpgsign", "false"]);
-    runGit(root, ["config", "core.hooksPath", "/dev/null"]);
+    runGit(root, ["config", "core.hooksPath", "disabled-hooks"]);
     runGit(root, ["add", "."]);
     runGit(root, ["commit", "-m", "test: baseline"]);
     writeProjectFile(root, "src/example.ts", "// planned change\n");
@@ -257,7 +257,7 @@ describe("grace status", () => {
     runGit(root, ["config", "user.email", "grace@example.test"]);
     runGit(root, ["config", "user.name", "GRACE Test"]);
     runGit(root, ["config", "commit.gpgsign", "false"]);
-    runGit(root, ["config", "core.hooksPath", "/dev/null"]);
+    runGit(root, ["config", "core.hooksPath", "disabled-hooks"]);
     runGit(root, ["add", "."]);
     runGit(root, ["commit", "-m", "test: baseline"]);
     runGit(root, ["mv", "src/old.ts", "src/new.ts"]);
@@ -281,7 +281,7 @@ describe("grace status", () => {
     runGit(root, ["config", "user.email", "grace@example.test"]);
     runGit(root, ["config", "user.name", "GRACE Test"]);
     runGit(root, ["config", "commit.gpgsign", "false"]);
-    runGit(root, ["config", "core.hooksPath", "/dev/null"]);
+    runGit(root, ["config", "core.hooksPath", "disabled-hooks"]);
     runGit(root, ["add", "."]);
     runGit(root, ["commit", "-m", "test: baseline"]);
     writeProjectFile(root, ".grace/graph/main.xml", `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-EXAMPLE><Summary>Changed main.</Summary></M-EXAMPLE></GD-MAIN></GraceGraphDocument>`);
@@ -290,6 +290,66 @@ describe("grace status", () => {
     const drift = collectProjectStatus(root).observedDrift;
     expect(drift.explainedFiles).toContain(".grace/graph/main.xml");
     expect(drift.unexplainedFiles).toContain(".grace/graph/other.xml");
+  });
+
+  it("attributes graph index drift to declared graph documents or anchors", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeChange(root, "C-INDEX-DRIFT", { specStatus: "approved", planStatus: "approved" });
+    runGit(root, ["init"]);
+    runGit(root, ["config", "user.email", "grace@example.test"]);
+    runGit(root, ["config", "user.name", "GRACE Test"]);
+    runGit(root, ["config", "commit.gpgsign", "false"]);
+    runGit(root, ["config", "core.hooksPath", "disabled-hooks"]);
+    runGit(root, ["add", "."]);
+    runGit(root, ["commit", "-m", "test: baseline"]);
+    const indexFile = path.join(root, ".grace/graph/index.xml");
+    writeFileSync(indexFile, readFileSync(indexFile, "utf8").replace("<GraphDocuments>", "<GraphDocuments>\n"));
+
+    const drift = collectProjectStatus(root).observedDrift;
+    expect(drift.explainedFiles).toContain(".grace/graph/index.xml");
+    expect(drift.unexplainedFiles).not.toContain(".grace/graph/index.xml");
+  });
+
+  it("hard-stops approved contract drift instead of reporting the bundle ready", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeChange(root, "C-IMMUTABLE", { specStatus: "approved", planStatus: "approved" });
+    runGit(root, ["init"]);
+    runGit(root, ["config", "user.email", "grace@example.test"]);
+    runGit(root, ["config", "user.name", "GRACE Test"]);
+    runGit(root, ["config", "commit.gpgsign", "false"]);
+    runGit(root, ["config", "core.hooksPath", "disabled-hooks"]);
+    runGit(root, ["add", "."]);
+    runGit(root, ["commit", "-m", "test: baseline"]);
+    const planFile = path.join(root, ".grace/changes/active/C-IMMUTABLE/plan.xml");
+    writeFileSync(planFile, readFileSync(planFile, "utf8").replace("Apply the change.", "Apply the edited change."));
+
+    const result = collectProjectStatus(root);
+    const change = result.changes.find((entry) => entry.changeId === "C-IMMUTABLE")!;
+    expect(result.observedDrift.unexplainedFiles).toContain(".grace/changes/active/C-IMMUTABLE/plan.xml");
+    expect(change.derivedStates).toContain("approved-contract-drift");
+    expect(change.derivedStates).not.toContain("ready-to-execute");
+    expect(result.nextAction).toContain("Hard stop");
+  });
+
+  it("does not confuse a newly created untracked approved bundle with post-approval contract drift", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    runGit(root, ["init"]);
+    runGit(root, ["config", "user.email", "grace@example.test"]);
+    runGit(root, ["config", "user.name", "GRACE Test"]);
+    runGit(root, ["config", "commit.gpgsign", "false"]);
+    runGit(root, ["config", "core.hooksPath", "disabled-hooks"]);
+    runGit(root, ["add", "."]);
+    runGit(root, ["commit", "-m", "test: baseline"]);
+    writeChange(root, "C-NEW", { specStatus: "approved", planStatus: "approved" });
+
+    const result = collectProjectStatus(root);
+    const change = result.changes.find((entry) => entry.changeId === "C-NEW")!;
+    expect(result.observedDrift.explainedFiles).toContain(".grace/changes/active/C-NEW/plan.xml");
+    expect(change.derivedStates).toContain("ready-to-execute");
+    expect(change.derivedStates).not.toContain("approved-contract-drift");
   });
 
   it("reports invalid projections through integrity without crashing or producing healthy module counts", () => {
@@ -332,5 +392,33 @@ describe("grace status", () => {
     const parsed = JSON.parse(Buffer.from(statusResult.stdout).toString("utf8"));
     expect(parsed.tool).toBe("grace-status");
     expect(parsed.summary.graphModules).toBe(1);
+  });
+
+  it("returns structured JSON for invalid options and missing paths without stack traces", () => {
+    const repoRoot = path.resolve(import.meta.dir, "..");
+    const invalid = Bun.spawnSync({
+      cmd: [process.execPath, "./src/grace.ts", "status", "--json", "--fail-on", "unsupported"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(invalid.exitCode).not.toBe(0);
+    expect(Buffer.from(invalid.stderr).toString("utf8")).toBe("");
+    expect(JSON.parse(Buffer.from(invalid.stdout).toString("utf8"))).toEqual(expect.objectContaining({
+      schemaVersion: "1.0.0",
+      ok: false,
+      error: expect.objectContaining({ code: "invalid-arguments" }),
+    }));
+
+    const missingRoot = path.join(os.tmpdir(), `grace-status-missing-${crypto.randomUUID()}`);
+    const missing = Bun.spawnSync({
+      cmd: [process.execPath, "./src/grace.ts", "status", "--path", missingRoot, "--json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(missing.exitCode).toBe(0);
+    expect(Buffer.from(missing.stderr).toString("utf8")).toBe("");
+    expect(JSON.parse(Buffer.from(missing.stdout).toString("utf8")).projectKind).toBe("none");
   });
 });

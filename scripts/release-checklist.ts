@@ -19,7 +19,9 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   collectPackedContentErrors,
+  collectReleaseProtectionErrors,
   collectReleaseStateErrors,
+  type ReleaseProtectionState,
   type ReleaseState,
 } from "./release-check.ts";
 
@@ -79,6 +81,64 @@ export function collectCurrentReleaseState(repoRoot: string): { state: ReleaseSt
   };
 }
 
+/** Collects GitHub environment, branch protection, and release-tag ruleset state. */
+export function collectCurrentReleaseProtectionState(repoRoot: string): ReleaseProtectionState {
+  const environment = JSON.parse(runCapture("gh", ["api", "repos/osovv/grace-marketplace/environments/stable-release"], repoRoot)) as {
+    protection_rules?: Array<{ type?: string; reviewers?: unknown[] }>;
+    deployment_branch_policy?: { protected_branches?: boolean };
+  };
+  const branch = JSON.parse(runCapture("gh", ["api", "repos/osovv/grace-marketplace/branches/main/protection"], repoRoot)) as {
+    required_status_checks?: { contexts?: string[]; checks?: Array<{ context?: string }> };
+    required_pull_request_reviews?: { required_approving_review_count?: number };
+    enforce_admins?: { enabled?: boolean };
+    allow_force_pushes?: { enabled?: boolean };
+    allow_deletions?: { enabled?: boolean };
+  };
+  const rulesetSummaries = JSON.parse(runCapture("gh", ["api", "repos/osovv/grace-marketplace/rulesets"], repoRoot)) as Array<{
+    id?: number;
+  }>;
+  const rulesets = rulesetSummaries.flatMap((summary) => {
+    if (!summary.id) return [];
+    return [JSON.parse(runCapture("gh", ["api", `repos/osovv/grace-marketplace/rulesets/${summary.id}`], repoRoot)) as {
+      target?: string;
+      enforcement?: string;
+      conditions?: { ref_name?: { include?: string[] } };
+      rules?: Array<{ type?: string }>;
+    }];
+  }) as Array<{
+    target?: string;
+    enforcement?: string;
+    conditions?: { ref_name?: { include?: string[] } };
+    rules?: Array<{ type?: string }>;
+  }>;
+  const reviewerRule = environment.protection_rules?.find((rule) => rule.type === "required_reviewers");
+  const requiredStatusChecks = [
+    ...(branch.required_status_checks?.contexts ?? []),
+    ...(branch.required_status_checks?.checks ?? []).map((check) => check.context).filter((context): context is string => Boolean(context)),
+  ];
+  const releaseTagRulesetActive = rulesets.some((ruleset) => {
+    const includesReleaseTags = ruleset.conditions?.ref_name?.include?.some((pattern) => pattern === "refs/tags/v*" || pattern === "~ALL") ?? false;
+    const ruleTypes = new Set(ruleset.rules?.map((rule) => rule.type));
+    return ruleset.target === "tag"
+      && ruleset.enforcement === "active"
+      && includesReleaseTags
+      && ruleTypes.has("deletion")
+      && ruleTypes.has("non_fast_forward");
+  });
+  return {
+    stableEnvironmentExists: true,
+    stableEnvironmentRequiredReviewers: reviewerRule?.reviewers?.length ?? 0,
+    stableEnvironmentProtectedBranches: environment.deployment_branch_policy?.protected_branches === true,
+    mainBranchProtected: true,
+    mainRequiredApprovingReviews: branch.required_pull_request_reviews?.required_approving_review_count ?? 0,
+    mainRequiredStatusChecks: [...new Set(requiredStatusChecks)],
+    mainEnforceAdmins: branch.enforce_admins?.enabled === true,
+    mainAllowsForcePushes: branch.allow_force_pushes?.enabled === true,
+    mainAllowsDeletions: branch.allow_deletions?.enabled === true,
+    releaseTagRulesetActive,
+  };
+}
+
 export function main(repoRoot = process.cwd()): number {
   const packageJson = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
     version?: string;
@@ -132,6 +192,21 @@ export function main(repoRoot = process.cwd()): number {
       detail: "Expected package.json files exclusions for test sources and GRACE fixture builders.",
     },
   ];
+
+  try {
+    const protectionErrors = collectReleaseProtectionErrors(collectCurrentReleaseProtectionState(repoRoot));
+    checklist.push({
+      label: "Stable environment, main branch, and v* release tags are protected",
+      ok: protectionErrors.length === 0,
+      detail: protectionErrors.join("; ") || "Validated stable-release, main protection, and active v* tag ruleset.",
+    });
+  } catch (error) {
+    checklist.push({
+      label: "GitHub release protections were collected",
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   try {
     const { state, packJson } = collectCurrentReleaseState(repoRoot);

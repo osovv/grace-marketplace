@@ -8,13 +8,14 @@ description: Operate the GRACE 4 CLI for .grace linting, status, module navigati
 - Current lint: `grace lint --path PROJECT --assertions current`
 - Selected baseline: `grace lint --path PROJECT --change C-ID --assertions baseline` (add `--run-commands` when the baseline declares `MustPassCommand`)
 - Selected target: `grace lint --path PROJECT --change C-ID --assertions target --run-commands`
+- Final execution gate: `grace lint --path PROJECT --change C-ID --assertions final --run-commands`
 - Parallel preflight: `grace lint --path PROJECT --parallel-preflight`
 - Status: `grace status --path PROJECT --with modules --json`
 - Navigation: `grace module find|show`, `grace verification find|show`, and `grace file show`.
 </commands>
 
 <failure_contract>
-Navigation validates Artifact Grammar and projections before returning records. JSON failures are one `{ "schemaVersion": "1.0.0", "ok": false, "error": { ... } }` object on stdout. Text failures are one concise actionable line with a nonzero exit code and no stack trace.
+Lint, status, and navigation commands validate before returning records. JSON argument/runtime failures are one `{ "schemaVersion": "1.0.0", "ok": false, "error": { ... } }` object on stdout. Text failures are one concise actionable line with a nonzero exit code and no stack trace.
 </failure_contract>
 
 <runtime_contract>

@@ -15,6 +15,7 @@
 //   expectedNpmDistTag - Resolves latest for stable or the first prerelease identifier.
 //   collectPackedContentErrors - Rejects test, fixture, temporary, and unrelated files from npm pack JSON.
 //   collectReleaseStateErrors - Validates tag, ancestry, packed files, npm dist-tag, and GitHub Release state.
+//   collectReleaseProtectionErrors - Validates the protected stable environment, main branch, and release-tag ruleset.
 //   main - Reads release files, prints consistency errors, and exits nonzero on failure.
 // END_MODULE_MAP
 
@@ -59,6 +60,19 @@ export type ReleaseState = {
   npmPackageShasum: string;
   npmDistTags: Record<string, string>;
   githubRelease?: { tagName: string; isPrerelease: boolean };
+};
+
+export type ReleaseProtectionState = {
+  stableEnvironmentExists: boolean;
+  stableEnvironmentRequiredReviewers: number;
+  stableEnvironmentProtectedBranches: boolean;
+  mainBranchProtected: boolean;
+  mainRequiredApprovingReviews: number;
+  mainRequiredStatusChecks: string[];
+  mainEnforceAdmins: boolean;
+  mainAllowsForcePushes: boolean;
+  mainAllowsDeletions: boolean;
+  releaseTagRulesetActive: boolean;
 };
 
 const PACK_ALLOWED_EXACT = new Set([
@@ -162,6 +176,24 @@ export function collectReleaseStateErrors(state: ReleaseState): string[] {
   }
 
   errors.push(...collectPackedFileErrors(state.packedFiles));
+  return errors;
+}
+
+/** Validates GitHub repository controls required before stable publication. */
+export function collectReleaseProtectionErrors(state: ReleaseProtectionState): string[] {
+  const errors: string[] = [];
+  if (!state.stableEnvironmentExists) errors.push("GitHub environment stable-release does not exist.");
+  if (state.stableEnvironmentRequiredReviewers < 1) errors.push("GitHub environment stable-release requires at least one reviewer.");
+  if (!state.stableEnvironmentProtectedBranches) errors.push("GitHub environment stable-release is not restricted to protected branches.");
+  if (!state.mainBranchProtected) errors.push("GitHub branch main is not protected.");
+  if (state.mainRequiredApprovingReviews < 1) errors.push("GitHub branch main requires no approving pull-request review.");
+  for (const requiredCheck of ["validate", "windows-compatibility", "dart-adapter"]) {
+    if (!state.mainRequiredStatusChecks.includes(requiredCheck)) errors.push(`GitHub branch main does not require the ${requiredCheck} status check.`);
+  }
+  if (!state.mainEnforceAdmins) errors.push("GitHub branch main protection does not include administrators.");
+  if (state.mainAllowsForcePushes) errors.push("GitHub branch main allows force pushes.");
+  if (state.mainAllowsDeletions) errors.push("GitHub branch main allows deletion.");
+  if (!state.releaseTagRulesetActive) errors.push("No active GitHub ruleset protects v* release tags from deletion and non-fast-forward updates.");
   return errors;
 }
 

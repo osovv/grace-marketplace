@@ -112,6 +112,7 @@ describe("lintGraceProject", () => {
 
     expect(result.issues[0]?.code).toBe("project.grace3-detected");
     expect(result.issues[0]?.message).toContain("grace-migrate");
+    expect(result.issues.map((issue) => issue.code)).toEqual(["project.grace3-detected"]);
   });
 
   it("fails with missing .grace guidance when no GRACE artifacts exist", () => {
@@ -175,6 +176,36 @@ describe("lintGraceProject", () => {
     const parsed = JSON.parse(Buffer.from(result.stdout).toString("utf8"));
     expect(parsed.tool).toBe("grace-lint");
     expect(parsed.summary.errors).toBe(0);
+  });
+
+  it("returns structured JSON for invalid options and missing project paths without stack traces", () => {
+    const repoRoot = path.resolve(import.meta.dir, "..");
+    const invalid = Bun.spawnSync({
+      cmd: [process.execPath, "./src/grace.ts", "lint", "--profile", "unsupported", "--format", "json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(invalid.exitCode).not.toBe(0);
+    expect(Buffer.from(invalid.stderr).toString("utf8")).toBe("");
+    expect(JSON.parse(Buffer.from(invalid.stdout).toString("utf8"))).toEqual(expect.objectContaining({
+      schemaVersion: "1.0.0",
+      ok: false,
+      error: expect.objectContaining({ code: "invalid-arguments" }),
+    }));
+
+    const missingRoot = path.join(os.tmpdir(), `grace-missing-${crypto.randomUUID()}`);
+    const missing = Bun.spawnSync({
+      cmd: [process.execPath, "./src/grace.ts", "lint", "--path", missingRoot, "--format", "json"],
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(missing.exitCode).not.toBe(0);
+    expect(Buffer.from(missing.stderr).toString("utf8")).toBe("");
+    const missingResult = JSON.parse(Buffer.from(missing.stdout).toString("utf8"));
+    expect(missingResult.tool).toBe("grace-lint");
+    expect(missingResult.issues.map((issue: { code: string }) => issue.code)).toContain("project.missing-grace");
   });
   it("does not evaluate BaselineAssertions for archived plans", () => {
     const root = createProject();
@@ -287,7 +318,7 @@ describe("lintGraceProject", () => {
       root,
       "C-COMMAND",
       `<MustPassCommand><Command>exit 99</Command></MustPassCommand>`,
-      `<MustPassCommand><Command>exit 0</Command></MustPassCommand>`,
+      `<MustPassCommand><Command>${process.platform === "win32" ? "exit /b 0" : "exit 0"}</Command></MustPassCommand>`,
     );
 
     const current = lintGraceProject(root);
@@ -351,6 +382,55 @@ describe("lintGraceProject", () => {
     );
     const result = lintGraceProject(root);
     expect(result.issues.filter((issue) => issue.code === "assertion.MustExist")).toHaveLength(1);
+  });
+
+  it("parses approved plan status through XML regardless of attribute quote style", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeApprovedChange(
+      root,
+      "C-SINGLE-QUOTE",
+      `<MustExist><Value>M-MISSING</Value></MustExist>`,
+      `<MustVerify><Module>M-EXAMPLE</Module></MustVerify>`,
+    );
+    const planFile = path.join(root, ".grace/changes/active/C-SINGLE-QUOTE/plan.xml");
+    writeFileSync(planFile, readFileSync(planFile, "utf8").replace('status="approved"', "status='approved'"));
+
+    expect(lintGraceProject(root).issues.map((issue) => issue.code)).toContain("assertion.MustExist");
+  });
+
+  it("uses final assertion mode for full end-state validation without re-evaluating the selected baseline", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeApprovedChange(
+      root,
+      "C-CREATE",
+      `<MustNotExist><Value>M-NEW</Value></MustNotExist>`,
+      `<MustVerify><Module>M-NEW</Module></MustVerify>`,
+    );
+    expect(lintGraceProject(root).summary.errors).toBe(0);
+
+    writeProjectFile(root, ".grace/graph/index.xml", `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns><M-EXAMPLE /><M-NEW /></Owns></GD-MAIN></GraphDocuments></GraceGraphIndex>`);
+    writeProjectFile(root, ".grace/graph/main.xml", `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-EXAMPLE><Summary>Example module.</Summary></M-EXAMPLE><M-NEW><Summary>New module.</Summary></M-NEW></GD-MAIN></GraceGraphDocument>`);
+    writeProjectFile(root, ".grace/verification/index.xml", `<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-EXAMPLE /><V-M-NEW /></Owns></VD-MAIN></VerificationDocuments></GraceVerificationIndex>`);
+    writeProjectFile(root, ".grace/verification/main.xml", `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><Scenario>Example works.</Scenario></V-M-EXAMPLE><V-M-NEW><Scenario>New module works.</Scenario></V-M-NEW></VD-MAIN></GraceVerificationDocument>`);
+
+    const current = lintGraceProject(root);
+    expect(current.issues.map((issue) => issue.code)).toContain("assertion.MustNotExist");
+
+    const final = lintGraceProject(root, { assertionMode: "final", changeId: "C-CREATE" });
+    expect(final.summary.errors).toBe(0);
+    expect(final.assertionMode).toBe("final");
+  });
+
+  it("keeps unrelated approved baselines active during selected final validation", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeApprovedChange(root, "C-SELECTED-FINAL", `<MustExist><Value>M-EXAMPLE</Value></MustExist>`, `<MustVerify><Module>M-EXAMPLE</Module></MustVerify>`);
+    writeApprovedChange(root, "C-UNRELATED-STALE", `<MustExist><Value>M-MISSING</Value></MustExist>`, `<MustVerify><Module>M-EXAMPLE</Module></MustVerify>`);
+
+    const final = lintGraceProject(root, { assertionMode: "final", changeId: "C-SELECTED-FINAL" });
+    expect(final.issues.map((issue) => issue.code)).toContain("assertion.MustExist");
   });
 
   it("accepts a bundle with design-context.xml", () => {

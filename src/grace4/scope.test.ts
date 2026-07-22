@@ -88,6 +88,34 @@ describe("GRACE 4 scope detector", () => {
     expect(durableOverlaps(left, right, ownership)).toEqual(["graph:GD-MAIN↔M-AUTH-SESSION"]);
   });
 
+  it("does not overlap known documents with anchors owned by another known document", () => {
+    const emptyScope = (): DurableScope => ({
+      graphAnchors: [],
+      verificationAnchors: [],
+      contextArtifacts: [],
+      graphDocuments: [],
+      verificationDocuments: [],
+    });
+    const left = emptyScope();
+    left.graphDocuments.push("GD-A");
+    left.verificationDocuments.push("VD-A");
+    const right = emptyScope();
+    right.graphAnchors.push("M-B");
+    right.verificationAnchors.push("V-M-B");
+    const ownership: DurableOwnershipIndex = {
+      graphDocuments: new Map([
+        ["GD-A", new Set(["M-A"])],
+        ["GD-B", new Set(["M-B"])],
+      ]),
+      verificationDocuments: new Map([
+        ["VD-A", new Set(["V-M-A"])],
+        ["VD-B", new Set(["V-M-B"])],
+      ]),
+    };
+
+    expect(durableOverlaps(left, right, ownership)).toEqual([]);
+  });
+
   it("conservatively blocks whole-document scope against new or rehomed anchors", () => {
     const emptyScope = (): DurableScope => ({
       graphAnchors: [],

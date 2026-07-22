@@ -31,17 +31,18 @@ export type GraceCommandErrorEnvelope = {
   };
 };
 
-/** Executes a query command and renders stable text or JSON failures without stack traces. */
-export async function runQueryCommand(
+/** Executes any GRACE command operation with stable text or JSON failures. */
+export async function runGraceCommand(
   format: "text" | "json",
   operation: () => void | Promise<void>,
+  fallbackMessage: string,
 ): Promise<void> {
   try {
     await operation();
   } catch (error) {
     const commandError = error instanceof GraceCommandError
       ? error
-      : new GraceCommandError("invalid-project", "Unable to complete the GRACE query. Run `grace lint --path PROJECT` for actionable diagnostics.");
+      : new GraceCommandError("invalid-project", fallbackMessage);
     if (format === "json") {
       const envelope: GraceCommandErrorEnvelope = {
         schemaVersion: "1.0.0",
@@ -58,4 +59,12 @@ export async function runQueryCommand(
     }
     process.exitCode = commandError.exitCode;
   }
+}
+
+/** Executes a query command and renders stable text or JSON failures without stack traces. */
+export async function runQueryCommand(
+  format: "text" | "json",
+  operation: () => void | Promise<void>,
+): Promise<void> {
+  return runGraceCommand(format, operation, "Unable to complete the GRACE query. Run `grace lint --path PROJECT` for actionable diagnostics.");
 }

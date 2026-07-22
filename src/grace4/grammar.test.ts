@@ -315,6 +315,19 @@ describe("GRACE 4 Artifact Grammar", () => {
     expect(allCodes.filter((code) => code === "context.not-applicable-reason-missing")).toHaveLength(2);
   });
 
+  it("rejects empty context artifacts and invalid optional applicability declarations", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(root, ".grace/context/requirements.xml", `<GraceRequirements graceVersion="4.0" />`);
+    writeProjectFile(root, ".grace/context/deployment.xml", `<GraceDeployment graceVersion="4.0"><Summary>Deployment applies.</Summary></GraceDeployment>`);
+    writeProjectFile(root, ".grace/context/ux-guidelines.xml", `<GraceUXGuidelines graceVersion="4.0"><Applicability>sometimes</Applicability></GraceUXGuidelines>`);
+
+    const resultCodes = validateContextArtifacts(resolveGrace4Paths(root)).flatMap(codes);
+    expect(resultCodes).toContain("context.empty-artifact");
+    expect(resultCodes).toContain("context.applicability-missing");
+    expect(resultCodes).toContain("context.applicability-invalid");
+  });
+
   it("rejects lack of a web UI as the sole UX not-applicable reason", () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
@@ -410,7 +423,7 @@ describe("GRACE 4 Artifact Grammar", () => {
 
   it("rejects invalid GraceChangeDesignContext root, missing graceVersion, status attribute", () => {
     const valid = validateChangeDesignContextArtifact(
-      parseGraceXmlArtifact("design-context.xml", `<GraceChangeDesignContext graceVersion="4.0" />`),
+      parseGraceXmlArtifact("design-context.xml", `<GraceChangeDesignContext graceVersion="4.0"><Change>C-DESIGN</Change></GraceChangeDesignContext>`),
     );
     expect(valid.issues).toHaveLength(0);
 
@@ -435,5 +448,33 @@ describe("GRACE 4 Artifact Grammar", () => {
       parseGraceXmlArtifact("design-context.xml", `<GraceChangeDesignContext graceVersion="4.0"><C-DESIGN><Rationale>Test.</Rationale></C-DESIGN></GraceChangeDesignContext>`),
     );
     expect(result.issues).toHaveLength(0);
+  });
+
+  it("requires exactly one canonical design-context identity and matches it to the bundle", () => {
+    const missing = validateChangeDesignContextArtifact(
+      parseGraceXmlArtifact("design-context.xml", `<GraceChangeDesignContext graceVersion="4.0"><Rationale>Missing identity.</Rationale></GraceChangeDesignContext>`),
+    );
+    expect(codes(missing)).toContain("design-context.missing-change-id");
+
+    const invalid = validateChangeDesignContextArtifact(
+      parseGraceXmlArtifact("design-context.xml", `<GraceChangeDesignContext graceVersion="4.0"><Change>not-a-change</Change></GraceChangeDesignContext>`),
+    );
+    expect(codes(invalid)).toContain("design-context.invalid-change-id");
+
+    const ambiguous = validateChangeDesignContextArtifact(
+      parseGraceXmlArtifact("design-context.xml", `<GraceChangeDesignContext graceVersion="4.0"><Change>C-DESIGN</Change><C-DESIGN /></GraceChangeDesignContext>`),
+    );
+    expect(codes(ambiguous)).toContain("design-context.ambiguous-change-id");
+
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeChangeBundleFixture(root, {
+      changeId: "C-DESIGN",
+      location: "active",
+      specStatus: "approved",
+      planStatus: "approved",
+      designContext: `<GraceChangeDesignContext graceVersion="4.0"><C-WRONG><Rationale>Wrong bundle.</Rationale></C-WRONG></GraceChangeDesignContext>`,
+    });
+    expect(codes(validateGrace4Project(root))).toContain("design-context.bundle-id-mismatch");
   });
 });

@@ -32,7 +32,7 @@ GRACE 4 does not dual-validate legacy GRACE 3 project docs as current state. Exi
 
 Verification commands run from the project root by default. A `V-M-*` entry may declare one contained project-relative `<Cwd>packages/example</Cwd>` while keeping `<TestFiles><File>...</File></TestFiles>` paths project-root-relative. Absolute paths, `..` escapes, and symlink escapes fail closed.
 
-TypeScript/JavaScript semantic analysis is bundled and compiler-backed. Governed Python and Dart files require their respective runtimes on `PATH`; Python analysis remains explicitly heuristic (`analysis.heuristic-confidence`). A missing runtime fails closed with actionable `analysis.runtime-missing`; an installed adapter that fails emits `analysis.adapter-failed`. Neither state is presented as exact `MODULE_MAP` parity.
+TypeScript/JavaScript semantic analysis is bundled and compiler-backed. Governed Python and Dart files require their respective runtimes on `PATH`; Python export analysis is exact when a static `__all__` is present (including Unicode identifiers) and otherwise emits heuristic confidence. A missing runtime fails closed with actionable `analysis.runtime-missing`; an installed adapter that fails emits `analysis.adapter-failed`. Neither failure state is presented as exact `MODULE_MAP` parity.
 
 ## Install
 
@@ -85,7 +85,7 @@ For a new GRACE 4 project:
 6. Run `grace lint --path /path/to/project --change C-ID --assertions baseline` before execution; add `--run-commands` when the baseline declares `MustPassCommand`.
 7. Run `grace status --path /path/to/project --json`.
 8. Run `$grace-execute` and choose sequential or parallel-safe mode. Parallel-safe mode additionally requires `grace lint --path /path/to/project --parallel-preflight`.
-9. Before apply/archive, run selected target assertions; add `--run-commands` when the plan declares `MustPassCommand`.
+9. Before apply/archive, run `grace lint --path /path/to/project --change C-ID --assertions final`; add `--run-commands` when the target declares `MustPassCommand`.
 
 Existing GRACE 3 projects should run `$grace-migrate` and review the migration report before writing `.grace` artifacts.
 
@@ -118,6 +118,7 @@ Migration cleanup is separately gated: successful current lint, fresh status pro
 | `grace lint --path <root> --assertions current` | Validate current `.grace` grammar, routed coverage, lifecycle locations, and scope overlap |
 | `grace lint --path <root> --change C-ID --assertions baseline [--run-commands]` | Validate the immutable selected baseline before implementation; command assertions run only when explicitly enabled |
 | `grace lint --path <root> --change C-ID --assertions target --run-commands` | Validate selected target assertions and explicitly opt into `MustPassCommand` execution |
+| `grace lint --path <root> --change C-ID --assertions final [--run-commands]` | Run the final full-project gate, evaluate the selected target, and keep unrelated approved baselines active without re-evaluating the selected baseline |
 | `grace lint --path <root> --parallel-preflight` | Run the explicit approved-plan scope coexistence gate required for parallel-safe execution |
 | `grace status --path <root>` | Report durable health, stale plans, scope conflicts, and explained/unexplained observed git drift |
 | `grace module find <query> --path <root>` | Search graph projection modules by id, path, text, dependency, or verification id |
@@ -137,7 +138,7 @@ Output modes:
 - `grace verification show`: `text`, `json`
 - `grace file show`: `text`, `json`
 
-Projection-backed navigation is fail closed: invalid grammar, duplicate ownership, missing routed files, or ambiguous targets produce a nonzero exit. JSON failures emit one stable `{ "schemaVersion": "1.0.0", "ok": false, "error": { ... } }` envelope on stdout; text failures emit one concise actionable line without a stack trace.
+Lint, status, and projection-backed navigation fail closed: invalid options, invalid grammar, malformed active assertions/scopes, duplicate ownership, missing routed files, or ambiguous targets produce structured results or a nonzero error envelope. JSON command failures emit one stable `{ "schemaVersion": "1.0.0", "ok": false, "error": { ... } }` envelope on stdout; text failures emit one concise actionable line without a stack trace.
 
 ## Grep-First Navigation
 
@@ -186,4 +187,4 @@ bun run validate:release
 
 For CLI changes, keep tests in `src/grace-lint.test.ts`, `src/grace-status.test.ts`, and `src/grace-query.test.ts` aligned with the GRACE 4 `.grace` fixture model.
 
-Stable releases are stricter than prereleases. Before any stable version mutation, `release:bump` fetches `origin/main` and tags, requires a clean checked-out `main`, and requires `HEAD == origin/main`. CI independently checks the stable tag commit against fetched `origin/main` and gates npm `latest` publication through the protected `stable-release` environment. After publication, `bun run release:checklist` must run from the exact release tag commit: it verifies `HEAD == tag`, npm/GitHub channel metadata, and that the local `npm pack` shasum matches the immutable published tarball.
+Stable releases are stricter than prereleases. Before any stable version mutation, `release:bump` fetches `origin/main` and tags, requires a clean checked-out `main`, and requires `HEAD == origin/main`. CI independently checks the stable tag commit against fetched `origin/main` and gates npm `latest` publication through the reviewer-protected `stable-release` environment. Protected `main` requires review plus Linux, Windows, and real-Dart checks, while an active ruleset keeps `v*` tags immutable. `bun run release:checklist` verifies those controls and, after publication from the exact release tag commit, verifies `HEAD == tag`, npm/GitHub channel metadata, and that the local `npm pack` shasum matches the immutable published tarball.

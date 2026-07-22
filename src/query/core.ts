@@ -1,9 +1,11 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { buildGraphProjection, buildVerificationProjection, type GraphAnchorRecord, type VerificationAnchorRecord } from "../grace4/projections";
 import { validateGrace4Project } from "../grace4/grammar";
 import { detectGraceProjectKind, formatGrace3MigrationGuidance, resolveGrace4Paths } from "../grace4/project";
+import { extractAssertionsWithIssues } from "../grace4/assertions";
+import { collectActiveChangeScopes } from "../grace4/scope";
 import { loadGraceLintConfig } from "../lint/config";
 import { collectCodeFiles, hasGraceMarkers, parseGovernedFile, type FileMarkupRecord } from "../project-utils";
 import { GraceCommandError } from "./errors";
@@ -53,6 +55,24 @@ function loadGovernedFiles(root: string) {
   return files.sort((left, right) => left.path.localeCompare(right.path));
 }
 
+function listPlanFiles(directory: string): string[] {
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return listPlanFiles(entryPath);
+    return entry.isFile() && entry.name === "plan.xml" ? [entryPath] : [];
+  });
+}
+
+function collectOperationalValidationErrors(paths: ReturnType<typeof resolveGrace4Paths>) {
+  const assertionIssues = [paths.changesActiveDir, paths.changesArchiveDir]
+    .flatMap(listPlanFiles)
+    .flatMap((planFile) => (["BaselineAssertions", "TargetAssertions"] as const)
+      .flatMap((section) => extractAssertionsWithIssues(planFile, section).issues));
+  const scopeIssues = collectActiveChangeScopes(paths).flatMap((scope) => scope.issues);
+  return [...assertionIssues, ...scopeIssues].filter((issue) => issue.severity === "error");
+}
+
 export function getModuleName(moduleRecord: ModuleRecord) {
   return moduleRecord.name ?? moduleRecord.id;
 }
@@ -92,6 +112,10 @@ export function loadGraceArtifactIndex(projectRoot: string): GraceArtifactIndex 
   const validationErrors = validation.issues.filter((issue) => issue.severity === "error");
   if (validationErrors.length > 0) {
     throw invalidProjectError(validationErrors.map((issue) => issue.code));
+  }
+  const operationalErrors = collectOperationalValidationErrors(paths);
+  if (operationalErrors.length > 0) {
+    throw invalidProjectError(operationalErrors.map((issue) => issue.code));
   }
   const graph = buildGraphProjection(paths);
   const verification = buildVerificationProjection(paths, graph);

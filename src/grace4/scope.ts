@@ -248,10 +248,12 @@ export function durableOverlaps(
     ...intersection(left.graphDocuments, right.graphDocuments),
     ...intersection(left.verificationDocuments, right.verificationDocuments),
   ]);
-  addDocumentAnchorOverlaps(overlaps, "graph", left.graphDocuments, right.graphAnchors, ownership.graphDocuments);
-  addDocumentAnchorOverlaps(overlaps, "graph", right.graphDocuments, left.graphAnchors, ownership.graphDocuments);
-  addDocumentAnchorOverlaps(overlaps, "verification", left.verificationDocuments, right.verificationAnchors, ownership.verificationDocuments);
-  addDocumentAnchorOverlaps(overlaps, "verification", right.verificationDocuments, left.verificationAnchors, ownership.verificationDocuments);
+  const knownGraphAnchors = new Set([...ownership.graphDocuments.values()].flatMap((anchors) => [...anchors]));
+  const knownVerificationAnchors = new Set([...ownership.verificationDocuments.values()].flatMap((anchors) => [...anchors]));
+  addDocumentAnchorOverlaps(overlaps, "graph", left.graphDocuments, right.graphAnchors, ownership.graphDocuments, knownGraphAnchors);
+  addDocumentAnchorOverlaps(overlaps, "graph", right.graphDocuments, left.graphAnchors, ownership.graphDocuments, knownGraphAnchors);
+  addDocumentAnchorOverlaps(overlaps, "verification", left.verificationDocuments, right.verificationAnchors, ownership.verificationDocuments, knownVerificationAnchors);
+  addDocumentAnchorOverlaps(overlaps, "verification", right.verificationDocuments, left.verificationAnchors, ownership.verificationDocuments, knownVerificationAnchors);
   return [...overlaps].sort();
 }
 
@@ -587,15 +589,18 @@ function addDocumentAnchorOverlaps(
   kind: "graph" | "verification",
   documents: string[],
   anchors: string[],
-  _ownership: Map<string, Set<string>>,
+  ownership: Map<string, Set<string>>,
+  knownAnchors: ReadonlySet<string>,
 ): void {
-  // Whole-document scopes are reserved for split/merge/rehome operations. Current
-  // ownership cannot prove them disjoint from new or moving anchors, so parallel
-  // preflight must conservatively treat every same-family document/anchor pair as
-  // overlapping. Sequential execution remains allowed after fresh assertions.
+  // Known current ownership can prove a document and an anchor owned by another
+  // document disjoint. Unknown documents or anchors may represent creation/rehome
+  // work, so those pairs remain conservative parallel blockers.
   for (const document of documents) {
     for (const anchor of anchors) {
-      overlaps.add(`${kind}:${document}↔${anchor}`);
+      const ownedAnchors = ownership.get(document);
+      if (!ownedAnchors || !knownAnchors.has(anchor) || ownedAnchors.has(anchor)) {
+        overlaps.add(`${kind}:${document}↔${anchor}`);
+      }
     }
   }
 }

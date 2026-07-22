@@ -62,9 +62,9 @@ Future `release:bump` runs generate changelog and summary context from that late
 
 Stable promotion refuses an existing `v4.0.0` tag or existing `4.0.0` changelog block before mutation. The successful `4.0.0-rc.*` to `4.0.0` path prepends one stable block while preserving the RC history below it.
 
-The publish workflow fetches full history. Stable tags must resolve to the exact fetched `origin/main` commit, and the stable npm/GitHub job requires approval through the protected `stable-release` environment. Prerelease tags remain on their explicit npm identifier channel such as `rc` and create GitHub prereleases.
+The publish workflow fetches full history. Stable tags must resolve to the exact fetched `origin/main` commit, and the stable npm/GitHub job requires approval through the protected `stable-release` environment. Repository settings must keep `main` protected with one approving review and required `validate`, `windows-compatibility`, and `dart-adapter` checks; an active tag ruleset must prevent deletion or non-fast-forward updates of `v*` tags. Prerelease tags remain on their explicit npm identifier channel such as `rc` and create GitHub prereleases.
 
-`bun run release:checklist` is a post-publication integrity check, not a pre-release branch check. Run it from the exact published tag commit. It fails when `HEAD` differs from that tag or when the current local `npm pack` shasum differs from the published package shasum, preventing unreleased workspace content from being mistaken for the released artifact.
+`bun run release:checklist` validates repository protections as well as post-publication integrity. Run it before promotion to confirm the protected environment/branch/tag controls, and again from the exact published tag commit. The publication-state portion fails when `HEAD` differs from that tag or when the current local `npm pack` shasum differs from the published package shasum, preventing unreleased workspace content from being mistaken for the released artifact.
 
 Before running `release:bump`, ensure CI passes:
 

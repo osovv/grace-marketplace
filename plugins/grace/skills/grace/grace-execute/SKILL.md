@@ -13,6 +13,7 @@ Require one active bundle with approved, identity-matched `spec.xml` and `plan.x
 - Selected baseline: `grace lint --path PROJECT --change C-ID --assertions baseline` (add `--run-commands` when the baseline declares `MustPassCommand`)
 - Selected target without commands: `grace lint --path PROJECT --change C-ID --assertions target`
 - Selected target with command evidence: `grace lint --path PROJECT --change C-ID --assertions target --run-commands`
+- Final end-state validation: `grace lint --path PROJECT --change C-ID --assertions final` (add `--run-commands` when the target declares `MustPassCommand`)
 - Parallel preflight: `grace lint --path PROJECT --parallel-preflight`
 </assertion_commands>
 
@@ -25,7 +26,7 @@ Wait for explicit `sequential` or `parallel-safe` choice. Parallel-safe requires
 | clean-to-start | Run selected baseline, then execute tasks. |
 | partial-observed-writes | Inspect the declared observed scope and ask whether to resume or revert. |
 | durable-state-changed | Hard stop; supersede and replan. Approved assertions are immutable. |
-| target-already-satisfied | Run fresh target validation, opted-in command evidence when declared, durable reconciliation, full lint, and ask for explicit apply confirmation. |
+| target-already-satisfied | Run final end-state validation, opted-in command evidence when declared, durable reconciliation, and ask for explicit apply confirmation. |
 | unsafe-unknown-drift | Hard stop and report unexplained files. |
 </recovery_decision_table>
 
@@ -34,7 +35,7 @@ Wait for explicit `sequential` or `parallel-safe` choice. Parallel-safe requires
 2. Execute one dependency-ready task or one verified parallel-safe batch at a time.
 3. Run each task's acceptance and verification immediately.
 4. Apply approved durable context, graph, and verification changes centrally.
-5. Run selected target validation, including `--run-commands` when `MustPassCommand` is declared, reconcile durable state, run plan gates, and run full current lint.
+5. Reconcile durable state, run plan gates, then run selected `--assertions final`, including `--run-commands` when `MustPassCommand` is declared. Final mode performs full project lint, evaluates the selected target, keeps unrelated approved baselines active, and does not re-evaluate the selected plan's superseded baseline.
 6. Ask for explicit apply confirmation after fresh end-state evidence passes.
 7. Only then set spec and plan to `applied` and archive the complete bundle.
 8. Never edit approved assertions/scopes/tasks in place, bypass stale evidence, or continue through unknown drift.

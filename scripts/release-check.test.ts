@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   collectPackedContentErrors,
   collectReleaseConsistencyErrors,
+  collectReleaseProtectionErrors,
   collectReleaseStateErrors,
   expectedNpmDistTag,
 } from "./release-check.ts";
@@ -337,6 +338,38 @@ Valid summary.
 });
 
 describe("release state and packed content", () => {
+  it("requires protected stable environment, main branch, and v* tags", () => {
+    expect(collectReleaseProtectionErrors({
+      stableEnvironmentExists: true,
+      stableEnvironmentRequiredReviewers: 1,
+      stableEnvironmentProtectedBranches: true,
+      mainBranchProtected: true,
+      mainRequiredApprovingReviews: 1,
+      mainRequiredStatusChecks: ["validate", "windows-compatibility", "dart-adapter"],
+      mainEnforceAdmins: true,
+      mainAllowsForcePushes: false,
+      mainAllowsDeletions: false,
+      releaseTagRulesetActive: true,
+    })).toEqual([]);
+
+    const errors = collectReleaseProtectionErrors({
+      stableEnvironmentExists: false,
+      stableEnvironmentRequiredReviewers: 0,
+      stableEnvironmentProtectedBranches: false,
+      mainBranchProtected: false,
+      mainRequiredApprovingReviews: 0,
+      mainRequiredStatusChecks: [],
+      mainEnforceAdmins: false,
+      mainAllowsForcePushes: true,
+      mainAllowsDeletions: true,
+      releaseTagRulesetActive: false,
+    });
+    expect(errors).toHaveLength(12);
+    expect(errors.join(" ")).toContain("stable-release");
+    expect(errors.join(" ")).toContain("validate");
+    expect(errors.join(" ")).toContain("v*");
+  });
+
   it("resolves stable and prerelease npm channels", () => {
     expect(expectedNpmDistTag("4.0.0")).toBe("latest");
     expect(expectedNpmDistTag("4.0.0-rc.2")).toBe("rc");

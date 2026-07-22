@@ -46,6 +46,8 @@ describe("GRACE lifecycle skill contracts", () => {
     expect(execute.match(/<\/recovery_decision_table>/g)).toHaveLength(1);
     expect(execute).toContain("--change C-ID --assertions baseline");
     expect(execute).toContain("--change C-ID --assertions target --run-commands");
+    expect(execute).toContain("--change C-ID --assertions final");
+    expect(execute).toContain("does not re-evaluate the selected plan's superseded baseline");
     expect(execute).toContain("--parallel-preflight");
     expect(execute).toContain("explicit apply confirmation");
     expect(execute.toLowerCase()).not.toContain("refresh assertions");

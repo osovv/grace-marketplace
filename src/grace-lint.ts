@@ -5,6 +5,7 @@ import { defineCommand, type CommandDef, runMain } from "citty";
 import { formatLintExplanation, getLintIssueGuide } from "./lint/catalog";
 import { formatTextReport, isValidTextFormat, lintGraceProject } from "./lint/core";
 import type { LintAssertionMode, LintOptions, LintProfile, LintResult } from "./lint/types";
+import { GraceCommandError, runGraceCommand } from "./query/errors";
 
 export type {
   GraceLintConfig,
@@ -34,7 +35,7 @@ function writeResult(format: string, result: LintResult) {
 function resolveProfile(value: unknown): LintProfile {
   const profile = String(value ?? "standard");
   if (profile !== "standard") {
-    throw new Error(`Unsupported profile \`${profile}\`. Use \`standard\`.`);
+    throw new GraceCommandError("invalid-arguments", `Unsupported profile \`${profile}\`. Use \`standard\`.`);
   }
 
   return "standard";
@@ -43,7 +44,7 @@ function resolveProfile(value: unknown): LintProfile {
 function resolveFailOn(value: unknown) {
   const failOn = String(value ?? "errors");
   if (failOn !== "errors" && failOn !== "warnings" && failOn !== "never") {
-    throw new Error(`Unsupported fail-on policy \`${failOn}\`. Use \`errors\`, \`warnings\`, or \`never\`.`);
+    throw new GraceCommandError("invalid-arguments", `Unsupported fail-on policy \`${failOn}\`. Use \`errors\`, \`warnings\`, or \`never\`.`);
   }
 
   return failOn;
@@ -51,8 +52,8 @@ function resolveFailOn(value: unknown) {
 
 function resolveAssertionMode(value: unknown): LintAssertionMode {
   const mode = String(value ?? "current");
-  if (mode !== "current" && mode !== "baseline" && mode !== "target") {
-    throw new Error(`Unsupported assertion mode \`${mode}\`. Use \`current\`, \`baseline\`, or \`target\`.`);
+  if (mode !== "current" && mode !== "baseline" && mode !== "target" && mode !== "final") {
+    throw new GraceCommandError("invalid-arguments", `Unsupported assertion mode \`${mode}\`. Use \`current\`, \`baseline\`, \`target\`, or \`final\`.`);
   }
   return mode;
 }
@@ -112,7 +113,7 @@ export const lintCommand = defineCommand({
     },
     assertions: {
       type: "string",
-      description: "Assertion mode: current, baseline, or target",
+      description: "Assertion mode: current, baseline, target, or final",
       default: "current",
     },
     runCommands: {
@@ -127,39 +128,42 @@ export const lintCommand = defineCommand({
     },
   },
   async run(context) {
-    const format = String(context.args.format ?? "text");
-    const profile = resolveProfile(context.args.profile);
-    const failOn = resolveFailOn(context.args.failOn);
-    const assertionMode = resolveAssertionMode(context.args.assertions);
-    if (!isValidTextFormat(format)) {
-      throw new Error(`Unsupported format \`${format}\`. Use \`text\` or \`json\`.`);
-    }
+    const errorFormat = context.args.format === "json" ? "json" : "text";
+    await runGraceCommand(errorFormat, () => {
+      const format = String(context.args.format ?? "text");
+      const profile = resolveProfile(context.args.profile);
+      const failOn = resolveFailOn(context.args.failOn);
+      const assertionMode = resolveAssertionMode(context.args.assertions);
+      if (!isValidTextFormat(format)) {
+        throw new GraceCommandError("invalid-arguments", `Unsupported format \`${format}\`. Use \`text\` or \`json\`.`);
+      }
 
-    if (context.args.explain) {
-      const code = String(context.args.explain);
-      if (format === "json") {
-        process.stdout.write(`${JSON.stringify({ schemaVersion: "1.0.0", tool: "grace-lint", guide: getLintIssueGuide(code) }, null, 2)}\n`);
+      if (context.args.explain) {
+        const code = String(context.args.explain);
+        if (format === "json") {
+          process.stdout.write(`${JSON.stringify({ schemaVersion: "1.0.0", tool: "grace-lint", guide: getLintIssueGuide(code) }, null, 2)}\n`);
+          return;
+        }
+
+        process.stdout.write(`${formatLintExplanation(code)}\n`);
         return;
       }
 
-      process.stdout.write(`${formatLintExplanation(code)}\n`);
-      return;
-    }
+      const result = lintGraceProject(String(context.args.path ?? "."), {
+        profile,
+        assertionMode,
+        changeId: context.args.change ? String(context.args.change) : undefined,
+        runCommands: Boolean(context.args.runCommands),
+        parallelPreflight: Boolean(context.args.parallelPreflight),
+      });
 
-    const result = lintGraceProject(String(context.args.path ?? "."), {
-      profile,
-      assertionMode,
-      changeId: context.args.change ? String(context.args.change) : undefined,
-      runCommands: Boolean(context.args.runCommands),
-      parallelPreflight: Boolean(context.args.parallelPreflight),
-    });
-
-    if (format === "json") {
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    } else {
-      process.stdout.write(`${formatTextReport(result, { remediate: Boolean(context.args.remediate) })}\n`);
-    }
-    process.exitCode = shouldFail(result, failOn) ? 1 : 0;
+      if (format === "json") {
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      } else {
+        process.stdout.write(`${formatTextReport(result, { remediate: Boolean(context.args.remediate) })}\n`);
+      }
+      process.exitCode = shouldFail(result, failOn) ? 1 : 0;
+    }, "Unable to complete GRACE lint. Check the project path and run again.");
   },
 });
 

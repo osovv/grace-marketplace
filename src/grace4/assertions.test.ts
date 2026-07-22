@@ -94,6 +94,12 @@ describe("GRACE 4 assertions", () => {
     expect(evaluateAssertion(assertion("MustPassCommand", ["exit 99"]), { ...ctx, runCommands: true })).toHaveLength(1);
   });
 
+  (process.platform === "win32" ? it : it.skip)("executes command assertions through Windows cmd.exe", () => {
+    const root = createProject();
+    writeProjectionFixture(root);
+    expect(evaluateAssertion(assertion("MustPassCommand", ["exit /b 0"]), { ...context(root), runCommands: true })).toHaveLength(0);
+  });
+
   it("rejects missing, extra, duplicate, nested, and empty assertion fields", () => {
     const root = createProject();
     const planFile = path.join(root, "plan.xml");

@@ -269,7 +269,7 @@ function parseListSection(section: TextSection | null): FileListItem[] {
   return section.content.split("\n")
     .map((line, index) => {
       const label = stripCommentPrefix(line).trim();
-      const symbolName = label.match(/^(?:[-*]\s*)?([A-Za-z_$][\w$]*|default)\b/)?.[1];
+      const symbolName = label.match(/^(?:[-*]\s*)?((?:[$_]|\p{ID_Start})(?:[$_]|\p{ID_Continue})*|default)(?=\s|$)/u)?.[1];
       return { label, symbolName, line: section.startLine + index };
     })
     .filter((item) => item.label.length > 0);

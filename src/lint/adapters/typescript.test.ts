@@ -24,4 +24,12 @@ export const [first, , third] = [1, 2, 3];
     expect(result.hasWildcardReExport).toBe(true);
     expect(result.exportConfidence).toBe("heuristic");
   });
+
+  it("extracts namespace re-export names exactly", () => {
+    const result = adapter.analyze("barrel.ts", `export * as api from "./dependency";\n`);
+    expect([...result.exports]).toEqual(["api"]);
+    expect([...result.valueExports]).toEqual(["api"]);
+    expect(result.hasWildcardReExport).toBe(false);
+    expect(result.exportConfidence).toBe("exact");
+  });
 });

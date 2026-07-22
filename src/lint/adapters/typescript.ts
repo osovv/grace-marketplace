@@ -149,6 +149,8 @@ export function createTypeScriptAdapter(): LanguageAdapter {
               const isTypeOnly = statement.isTypeOnly || element.isTypeOnly;
               addExport(analysis, exportName, isTypeOnly ? "type" : "value", isReExport ? {} : { local: true });
             }
+          } else if (ts.isNamespaceExport(statement.exportClause)) {
+            addExport(analysis, statement.exportClause.name.text, statement.isTypeOnly ? "type" : "value");
           }
           continue;
         }

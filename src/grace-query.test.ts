@@ -287,6 +287,25 @@ describe("grace query core", () => {
     );
   });
 
+  it("fails closed when active assertion or scope contracts are invalid", () => {
+    const root = createQueryProject();
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-INVALID/spec.xml",
+      `<GraceChangeSpec graceVersion="4.0" status="approved"><C-INVALID><Summary>Invalid operational contract.</Summary><Goals><Goal>Fail closed.</Goal></Goals><Constraints><Constraint>Do not navigate invalid state.</Constraint></Constraints><NonGoals><NonGoal>Unrelated work.</NonGoal></NonGoals><AcceptanceCriteria><Criterion>Query fails.</Criterion></AcceptanceCriteria><AffectedAreas><M-DB /></AffectedAreas><VerificationIntent><ExpectedCommand>bun test</ExpectedCommand></VerificationIntent></C-INVALID></GraceChangeSpec>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-INVALID/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-INVALID><IntentSummary>Invalid operational contract.</IntentSummary><BaselineAssertions><MustOwn><Owner>GD-MAIN</Owner></MustOwn></BaselineAssertions><TargetAssertions><MustVerify><Module>M-DB</Module></MustVerify></TargetAssertions><DurableScope><GraphAnchors><M-DB /></GraphAnchors></DurableScope><ObservedWriteScope><File>../escape.ts</File></ObservedWriteScope><ImplementationPlan><T-001><Title>Invalid task</Title><DependsOn></DependsOn><AcceptanceCriteria><Criterion>Query fails.</Criterion></AcceptanceCriteria><Verification><Command>bun test</Command></Verification></T-001></ImplementationPlan></C-INVALID></GraceChangePlan>`,
+    );
+
+    expect(() => loadGraceArtifactIndex(root)).toThrow(expect.objectContaining({
+      code: "invalid-project",
+      issues: expect.arrayContaining(["assertion.invalid-shape", "scope.invalid-path"]),
+    }));
+  });
+
   it("returns one structured JSON error and one concise text error without stack traces", () => {
     const root = createQueryProject();
     writeProjectFile(root, ".grace/graph/main.xml", `<GraceRequirements graceVersion="4.0"><GD-MAIN /></GraceRequirements>`);

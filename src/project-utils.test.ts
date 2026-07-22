@@ -88,6 +88,36 @@ def greet():
     expect(analysis.issues.map((issue) => issue.code)).not.toContain("markup.module-map-mismatch");
   });
 
+  it("preserves Unicode identifiers in exact Python MODULE_MAP parity", () => {
+    const hasPython = ["python3", "python"].some((binary) => {
+      const result = spawnSync(binary, ["--version"], { stdio: "ignore" });
+      return !result.error && result.status === 0;
+    });
+    if (!hasPython) return;
+
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-python-unicode-map-"));
+    const file = path.join(root, "example.py");
+    const text = `# START_MODULE_CONTRACT
+# PURPOSE: Unicode Python fixture.
+# SCOPE: Export one Unicode function.
+# DEPENDS: none
+# LINKS: M-EXAMPLE
+# ROLE: RUNTIME
+# MAP_MODE: EXPORTS
+# END_MODULE_CONTRACT
+# START_MODULE_MAP
+# привет - Public greeting.
+# END_MODULE_MAP
+__all__ = ["привет"]
+def привет():
+    return "hello"
+`;
+    const analysis = analyzeGovernedFile(root, file, text);
+    expect(analysis.record.moduleMap[0]?.symbolName).toBe("привет");
+    expect(analysis.language?.exportConfidence).toBe("exact");
+    expect(analysis.issues.map((issue) => issue.code)).not.toContain("markup.module-map-mismatch");
+  });
+
   test("missing required language runtimes surface an actionable dedicated diagnostic without crashing", () => {
     const script = `import { analyzeGovernedFile } from "./src/project-utils.ts";
 const text = ${JSON.stringify(`${contract("EXPORTS", "# greet - Greeting.").replaceAll("//", "#")}def greet():\n    return "hi"\n`)};

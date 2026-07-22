@@ -99,13 +99,8 @@ function listPlanFiles(directory: string): string[] {
 }
 
 function readPlanStatus(planFile: string): string | null {
-  try {
-    const text = readFileSync(planFile, "utf8");
-    const match = text.match(/<GraceChangePlan[^>]*\sstatus="([^"]+)"/);
-    return match ? match[1] : null;
-  } catch {
-    return null;
-  }
+  const artifact = readGraceXmlArtifact(planFile);
+  return artifact.root?.tag === "GraceChangePlan" ? artifact.root.attributes.status ?? null : null;
 }
 
 function validateAssertions(
@@ -120,10 +115,14 @@ function validateAssertions(
 ) {
   const context = { root, graph, verification, runCommands: options.runCommands };
   const assertionMode = options.assertionMode ?? "current";
+  const selectedPlan = assertionMode === "current" ? null : resolveSelectedApprovedPlan(result, paths, options.changeId);
 
   for (const planFile of planFilesActive) {
     const status = readPlanStatus(planFile);
-    evaluateSection(result, planFile, "BaselineAssertions", context, assertionMode === "current" && status === "approved", true, true);
+    const isSelected = selectedPlan !== null && path.resolve(selectedPlan) === path.resolve(planFile);
+    const evaluateCurrentBaseline = assertionMode === "current" && status === "approved";
+    const evaluateUnrelatedFinalBaseline = assertionMode === "final" && status === "approved" && !isSelected;
+    evaluateSection(result, planFile, "BaselineAssertions", context, evaluateCurrentBaseline || evaluateUnrelatedFinalBaseline, true, true);
     evaluateSection(result, planFile, "TargetAssertions", context, false);
   }
 
@@ -137,7 +136,6 @@ function validateAssertions(
     return;
   }
 
-  const selectedPlan = resolveSelectedApprovedPlan(result, paths, options.changeId);
   if (!selectedPlan) {
     return;
   }
@@ -236,8 +234,6 @@ export function lintGraceProject(projectRoot: string, options: LintOptions = {})
   const result = createResult(root, profile, options);
   const kind = detectGraceProjectKind(root);
 
-  validateGovernedFiles(result, root);
-
   if (kind === "grace3") {
     addIssue(result, {
       severity: "error",
@@ -257,6 +253,8 @@ export function lintGraceProject(projectRoot: string, options: LintOptions = {})
     });
     return finalizeResult(result);
   }
+
+  validateGovernedFiles(result, root);
 
   const paths = resolveGrace4Paths(root);
   const validation = validateGrace4Project(root);
