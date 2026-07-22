@@ -1,3 +1,21 @@
+## <small>4.0.0-rc.3 (2026-07-22)</small>
+
+### Summary
+
+This release candidate introduces the `--assertions final` mode as the official apply/archive gate, adds approved-contract drift detection that hard-stops execution when approved plan files change, tightens plan validation by requiring structured machine-checkable assertions and scopes instead of plain text, and improves git drift tracking with proper rename handling and cross-platform subprocess support. Python export analysis now achieves exact parity when a static `__all__` is present, and all lint, status, and navigation commands produce structured JSON error envelopes for more reliable failure handling. Release automation is hardened with stable ancestry verification, required branch protection checks, and Windows and Dart CI gates to prevent regressions across environments.
+
+* fix(dart): read analyzer input asynchronously ([005b9b0](https://github.com/osovv/grace-marketplace/commit/005b9b0))
+* fix(grace4): close release audit gaps ([4731c3c](https://github.com/osovv/grace-marketplace/commit/4731c3c))
+* fix(grace4): complete release audit remediation ([51ecd1a](https://github.com/osovv/grace-marketplace/commit/51ecd1a))
+* fix(grace4): complete release remediation gates ([8efa740](https://github.com/osovv/grace-marketplace/commit/8efa740))
+* fix(grace4): enforce assertions projections and scopes ([e951b5b](https://github.com/osovv/grace-marketplace/commit/e951b5b))
+* fix(grace4): harden paths and artifact grammar ([4e72903](https://github.com/osovv/grace-marketplace/commit/4e72903))
+* fix(grace4): restore analysis and fail-closed queries ([7c573e1](https://github.com/osovv/grace-marketplace/commit/7c573e1))
+* fix(release): harden stable promotion workflow ([186e47f](https://github.com/osovv/grace-marketplace/commit/186e47f))
+* fix(status): resolve drift paths from project root ([e676a3d](https://github.com/osovv/grace-marketplace/commit/e676a3d))
+* fix(status): use Bun subprocesses for git drift ([0ab3648](https://github.com/osovv/grace-marketplace/commit/0ab3648))
+* docs(grace4): align lifecycle and migration contracts ([8d9b5d5](https://github.com/osovv/grace-marketplace/commit/8d9b5d5))
+
 ## <small>4.0.0-rc.2 (2026-07-13)</small>
 
 ### Summary
