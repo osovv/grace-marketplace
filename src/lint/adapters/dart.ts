@@ -11,8 +11,8 @@ const DART_ANALYZER_SCRIPT = String.raw`
 import 'dart:io';
 import 'dart:convert';
 
-void main(List<String> args) {
-  final source = stdin.readAsStringSync();
+Future<void> main(List<String> args) async {
+  final source = await stdin.transform(utf8.decoder).join();
   final filePath = args.isNotEmpty ? args[0] : '';
 
   final publicSymbols = <String>{};
