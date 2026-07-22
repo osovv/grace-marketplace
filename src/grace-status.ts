@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { defineCommand, type CommandDef, runMain } from "citty";
@@ -346,27 +345,35 @@ export function formatStatusText(result: StatusResult) {
 }
 
 function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[], routes: DriftRouteIndex): CollectedObservedDrift {
-  const gitRootResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { cwd: root, encoding: "utf8" });
-  if (gitRootResult.status !== 0 || !gitRootResult.stdout.trim()) {
+  const gitRootResult = Bun.spawnSync({
+    cmd: ["git", "rev-parse", "--show-toplevel"],
+    cwd: root,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const gitRootOutput = new TextDecoder().decode(gitRootResult.stdout).trim();
+  if (gitRootResult.exitCode !== 0 || !gitRootOutput) {
     return { drift: { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] }, trackedChangedFiles: new Set() };
   }
 
-  const gitRoot = path.resolve(gitRootResult.stdout.trim());
+  const gitRoot = path.resolve(gitRootOutput);
   const rootRelativeToGit = path.relative(gitRoot, root) || ".";
   if (rootRelativeToGit.startsWith("..") || path.isAbsolute(rootRelativeToGit)) {
     return { drift: { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] }, trackedChangedFiles: new Set() };
   }
 
-  const statusResult = spawnSync(
-    "git",
-    ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", rootRelativeToGit],
-    { cwd: gitRoot, encoding: "utf8" },
-  );
-  if (statusResult.status !== 0) {
+  const statusResult = Bun.spawnSync({
+    cmd: ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", rootRelativeToGit],
+    cwd: gitRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (statusResult.exitCode !== 0) {
     return { drift: { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] }, trackedChangedFiles: new Set() };
   }
 
-  const { changedFiles, trackedChangedFiles } = parsePorcelainV1ZPaths(statusResult.stdout, gitRoot, root);
+  const statusOutput = new TextDecoder().decode(statusResult.stdout);
+  const { changedFiles, trackedChangedFiles } = parsePorcelainV1ZPaths(statusOutput, gitRoot, root);
 
   const approvedScopes = activeScopes.filter((scope) => scope.specStatus === "approved" && scope.planStatus === "approved");
   const explainedFiles = changedFiles.filter((file) => approvedScopes.some((scope) => activeScopeExplainsFile(root, scope, file, routes, trackedChangedFiles)));
