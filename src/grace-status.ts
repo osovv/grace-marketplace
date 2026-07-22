@@ -345,26 +345,9 @@ export function formatStatusText(result: StatusResult) {
 }
 
 function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[], routes: DriftRouteIndex): CollectedObservedDrift {
-  const gitRootResult = Bun.spawnSync({
-    cmd: ["git", "rev-parse", "--show-toplevel"],
-    cwd: root,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const gitRootOutput = new TextDecoder().decode(gitRootResult.stdout).trim();
-  if (gitRootResult.exitCode !== 0 || !gitRootOutput) {
-    return { drift: { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] }, trackedChangedFiles: new Set() };
-  }
-
-  const gitRoot = path.resolve(gitRootOutput);
-  const rootRelativeToGit = path.relative(gitRoot, root) || ".";
-  if (rootRelativeToGit.startsWith("..") || path.isAbsolute(rootRelativeToGit)) {
-    return { drift: { available: false, changedFiles: [], explainedFiles: [], unexplainedFiles: [] }, trackedChangedFiles: new Set() };
-  }
-
   const statusResult = Bun.spawnSync({
-    cmd: ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", rootRelativeToGit],
-    cwd: gitRoot,
+    cmd: ["git", "-c", "status.relativePaths=true", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."],
+    cwd: root,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -373,7 +356,7 @@ function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[], r
   }
 
   const statusOutput = new TextDecoder().decode(statusResult.stdout);
-  const { changedFiles, trackedChangedFiles } = parsePorcelainV1ZPaths(statusOutput, gitRoot, root);
+  const { changedFiles, trackedChangedFiles } = parsePorcelainV1ZPaths(statusOutput);
 
   const approvedScopes = activeScopes.filter((scope) => scope.specStatus === "approved" && scope.planStatus === "approved");
   const explainedFiles = changedFiles.filter((file) => approvedScopes.some((scope) => activeScopeExplainsFile(root, scope, file, routes, trackedChangedFiles)));
@@ -389,7 +372,7 @@ function collectObservedDrift(root: string, activeScopes: ActiveChangeScope[], r
   };
 }
 
-function parsePorcelainV1ZPaths(output: string, gitRoot: string, projectRoot: string): { changedFiles: string[]; trackedChangedFiles: Set<string> } {
+function parsePorcelainV1ZPaths(output: string): { changedFiles: string[]; trackedChangedFiles: Set<string> } {
   const records = output.split("\0");
   const authoredPaths: Array<{ path: string; tracked: boolean }> = [];
   for (let index = 0; index < records.length; index += 1) {
@@ -406,8 +389,8 @@ function parsePorcelainV1ZPaths(output: string, gitRoot: string, projectRoot: st
   }
 
   const normalized = authoredPaths
-    .map((entry) => ({ ...entry, path: path.relative(projectRoot, path.resolve(gitRoot, entry.path)).replaceAll(path.sep, "/") }))
-    .filter((entry) => entry.path !== "" && !entry.path.startsWith("../") && entry.path !== "..");
+    .map((entry) => ({ ...entry, path: entry.path.replaceAll("\\", "/").replace(/^\.\//, "") }))
+    .filter((entry) => entry.path !== "" && !entry.path.startsWith("../") && entry.path !== ".." && !path.posix.isAbsolute(entry.path));
   return {
     changedFiles: [...new Set(normalized.map((entry) => entry.path))].sort(),
     trackedChangedFiles: new Set(normalized.filter((entry) => entry.tracked).map((entry) => entry.path)),
