@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, test } from "bun:test";
 
-import { analyzeGovernedFile, parseGovernedFile } from "./project-utils";
+import { analyzeGovernedFile, hasRuntimeMarkerEvidence, parseGovernedFile } from "./project-utils";
 
 function contract(mapMode: "EXPORTS" | "LOCALS" | "SUMMARY" | "NONE", moduleMap = ""): string {
   return `// START_MODULE_CONTRACT
@@ -56,6 +56,48 @@ describe("governed file analysis", () => {
     expect(codes).toContain("markup.duplicate-marker");
     expect(codes).toContain("markup.missing-end-marker");
     expect(issues.filter((issue) => issue.code.startsWith("markup.")).every((issue) => typeof issue.line === "number")).toBe(true);
+  });
+
+  it("parses properly nested semantic blocks without reporting overlap", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-nested-blocks-"));
+    const file = path.join(root, "nested.ts");
+    const text = `// START_BLOCK_OUTER
+// START_BLOCK_INNER
+export const value = true;
+// END_BLOCK_INNER
+// END_BLOCK_OUTER
+`;
+
+    expect(parseGovernedFile(root, file, text).blocks).toEqual([
+      { name: "OUTER", startLine: 1, endLine: 5 },
+      { name: "INNER", startLine: 2, endLine: 4 },
+    ]);
+    expect(analyzeGovernedFile(root, file, text).issues.map((issue) => issue.code)).not.toContain("markup.overlapping-markers");
+  });
+
+  it("does not manufacture an outer block from crossed nesting", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-crossed-blocks-"));
+    const file = path.join(root, "crossed.ts");
+    const text = `// START_BLOCK_OUTER
+// START_BLOCK_INNER
+// END_BLOCK_OUTER
+// END_BLOCK_INNER
+`;
+
+    expect(parseGovernedFile(root, file, text).blocks.map((block) => block.name)).toEqual(["INNER"]);
+    const codes = analyzeGovernedFile(root, file, text).issues.map((issue) => issue.code);
+    expect(codes).toContain("markup.mismatched-marker");
+    expect(codes).toContain("markup.missing-end-marker");
+  });
+
+  it("credits exact marker constants with identifier-aware boundaries", () => {
+    const marker = "[Example][run][BLOCK_RUN]";
+    expect(hasRuntimeMarkerEvidence(`console.info("${marker} ok");`, marker)).toBe(true);
+    expect(hasRuntimeMarkerEvidence(`const marker$ = "${marker}";\nconsole.info(marker$ + " ok");`, marker)).toBe(true);
+    expect(hasRuntimeMarkerEvidence(`static let marker = "${marker}"\nlog.info("\\(marker) ok")`, marker)).toBe(true);
+    expect(hasRuntimeMarkerEvidence(`const marker$ = "${marker}";\nconsole.info(marker$Other + " ok");`, marker)).toBe(false);
+    expect(hasRuntimeMarkerEvidence(`const marker$ = "${marker}";\nreturn marker$;`, marker)).toBe(false);
+    expect(hasRuntimeMarkerEvidence(`// const marker$ = "${marker}";\nconsole.info(marker$ + " ok");`, marker)).toBe(false);
   });
 
   it("emits bounded-confidence diagnostics for heuristic Python analysis", () => {

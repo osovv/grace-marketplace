@@ -52,23 +52,15 @@ function writeGrace4Artifacts(root: string) {
   );
 }
 
-function writeGovernedFiles(root: string) {
-  writeProjectFile(
-    root,
-    "src/db/index.ts",
-    `// START_MODULE_CONTRACT
-//   PURPOSE: Expose the shared database surface
-//   SCOPE: Provide the shared db client singleton
-//   DEPENDS: none
-//   LINKS: M-DB
-// END_MODULE_CONTRACT
-//
-// START_MODULE_MAP
-//   db - Shared database client export
-// END_MODULE_MAP
-export const db = {};
-`,
-  );
+function writeProviderRuntime(
+  root: string,
+  options: { declarations?: string; body?: string } = {},
+) {
+  const declarations = options.declarations ? `${options.declarations}\n` : "";
+  const body = options.body ?? `  console.info("[ProviderConfigPersistence][getProviderConfig][BLOCK_GET_PROVIDER_CONFIG] read");
+  // START_BLOCK_GET_PROVIDER_CONFIG
+  return { ok: true };
+  // END_BLOCK_GET_PROVIDER_CONFIG`;
   writeProjectFile(
     root,
     "src/provider/config-repo.ts",
@@ -92,11 +84,8 @@ export const db = {};
 //   PURPOSE: Read provider configuration from storage
 //   OUTPUTS: { Promise<object> }
 // END_CONTRACT: getProviderConfig
-export async function getProviderConfig() {
-  console.info("[ProviderConfigPersistence][getProviderConfig][BLOCK_GET_PROVIDER_CONFIG] read");
-  // START_BLOCK_GET_PROVIDER_CONFIG
-  return { ok: true };
-  // END_BLOCK_GET_PROVIDER_CONFIG
+${declarations}export async function getProviderConfig() {
+${body}
 }
 //
 // START_CONTRACT: providerConfigRepo
@@ -105,6 +94,26 @@ export async function getProviderConfig() {
 export const providerConfigRepo = { getProviderConfig };
 `,
   );
+}
+
+function writeGovernedFiles(root: string) {
+  writeProjectFile(
+    root,
+    "src/db/index.ts",
+    `// START_MODULE_CONTRACT
+//   PURPOSE: Expose the shared database surface
+//   SCOPE: Provide the shared db client singleton
+//   DEPENDS: none
+//   LINKS: M-DB
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   db - Shared database client export
+// END_MODULE_MAP
+export const db = {};
+`,
+  );
+  writeProviderRuntime(root);
   writeProjectFile(
     root,
     "src/provider/config-repo.test.ts",
@@ -263,6 +272,41 @@ describe("grace query core", () => {
     const dbHealth = buildModuleHealth(index, resolveModule(index, "M-DB"));
     expect(dbHealth.state).toBe("blocked");
     expect(dbHealth.blockers.map((blocker) => blocker.code)).toContain("health.verification-missing-commands");
+  });
+
+  it("credits a required marker emitted through an identifier-safe constant inside nested blocks", () => {
+    const root = createQueryProject();
+    writeProviderRuntime(root, {
+      declarations: 'const marker$ = "[ProviderConfigPersistence][getProviderConfig][BLOCK_GET_PROVIDER_CONFIG]";',
+      body: `  console.info(marker$ + " read");
+  // START_BLOCK_PROVIDER_OPERATION
+  // START_BLOCK_GET_PROVIDER_CONFIG
+  return { ok: true };
+  // END_BLOCK_GET_PROVIDER_CONFIG
+  // END_BLOCK_PROVIDER_OPERATION`,
+    });
+
+    const index = loadGraceArtifactIndex(root);
+    const health = buildModuleHealth(index, resolveModule(index, "M-PROVIDER-PERSIST"));
+    expect(health.blockers.map((blocker) => blocker.code)).not.toContain("health.required-log-marker-not-found");
+    expect(health.blockers.map((blocker) => blocker.code)).not.toContain("health.required-log-marker-block-not-found");
+  });
+
+  it("does not credit a required marker when only a longer identifier is emitted", () => {
+    const root = createQueryProject();
+    writeProviderRuntime(root, {
+      declarations: `const marker$ = "[ProviderConfigPersistence][getProviderConfig][BLOCK_GET_PROVIDER_CONFIG]";
+const marker$Other = "[ProviderConfigPersistence][getProviderConfig][other]";`,
+      body: `  console.info(marker$Other + " read");
+  // START_BLOCK_GET_PROVIDER_CONFIG
+  return { ok: true };
+  // END_BLOCK_GET_PROVIDER_CONFIG`,
+    });
+
+    const index = loadGraceArtifactIndex(root);
+    const health = buildModuleHealth(index, resolveModule(index, "M-PROVIDER-PERSIST"));
+    expect(health.blockers.map((blocker) => blocker.code)).toContain("health.required-log-marker-not-found");
+    expect(health.blockers.map((blocker) => blocker.code)).not.toContain("health.required-log-marker-block-not-found");
   });
 
   it("fails closed before returning records from invalid grammar or projections", () => {

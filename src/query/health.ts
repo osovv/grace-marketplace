@@ -2,20 +2,12 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { getModuleImplementationFiles, getModuleName, getModulePath, getModuleType, resolveModule } from "./core";
+import { hasRuntimeMarkerEvidence, parseMarkerBlockName } from "../project-utils";
 import { checkModuleCheckReferences } from "../verification/check-references";
 import type { GraceArtifactIndex, ModuleHealthIssue, ModuleHealthRecord, ModuleRecord } from "./types";
 
 function isLikelyTestPath(relativePath: string) {
   return /(^|\/)(__tests__|tests)(\/|$)|(^|\/)(test_[^/]+|[^/]+\.(test|spec)\.[^.]+)$/.test(relativePath);
-}
-
-function parseMarkerBlockName(marker: string) {
-  const match = marker.match(/\[([^\]]+)\]\s*$/);
-  return match && match[1].startsWith("BLOCK_") ? match[1].slice("BLOCK_".length) : undefined;
-}
-
-function looksLikeEvidenceEmission(line: string) {
-  return /(console\.|logger\.|tracer\.|trace\(|emit\(|\.(info|warn|error|debug|trace)\s*\()/.test(line);
 }
 
 function pushIssue(issues: ModuleHealthIssue[], severity: ModuleHealthIssue["severity"], code: string, message: string, remediation: string) {
@@ -92,7 +84,7 @@ export function buildModuleHealth(index: GraceArtifactIndex, moduleRecord: Modul
     }
 
     for (const marker of entry.requiredLogMarkers) {
-      if (!runtimeTexts.some(({ text }) => text.split("\n").some((line) => line.includes(marker) && !/^\s*(\/\/|#|--|;+|\*)/.test(line) && looksLikeEvidenceEmission(line)))) {
+      if (!runtimeTexts.some(({ text }) => hasRuntimeMarkerEvidence(text, marker))) {
         pushIssue(blockers, "error", "health.required-log-marker-not-found", `${entry.id} requires marker ${marker}, but it was not found in linked runtime files.`, `Emit ${marker} from ${moduleRecord.id} runtime code or update the verification entry.`);
       }
       const requiredBlock = parseMarkerBlockName(marker);

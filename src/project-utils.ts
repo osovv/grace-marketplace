@@ -123,6 +123,57 @@ export function hasGraceMarkers(text: string) {
     .some((line) => /^(\s*)(\/\/|#|--|;+|\*)\s*(START_MODULE_CONTRACT|START_MODULE_MAP|START_CONTRACT:|START_BLOCK_|START_CHANGE_SUMMARY)/.test(line));
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isCommentOnlyLine(line: string) {
+  return /^\s*(\/\/|#|--|;+|\*)/.test(line);
+}
+
+function looksLikeEvidenceEmission(line: string) {
+  return /(console\.|logger\.|tracer\.|trace\s*\(|emit\s*\(|\.(info|warn|error|debug|trace)\s*\()/.test(line);
+}
+
+/** Extracts the semantic block name encoded at the end of a required log marker. */
+export function parseMarkerBlockName(marker: string) {
+  const match = marker.match(/\[([^\]]+)\]\s*$/);
+  return match?.[1]?.startsWith("BLOCK_") ? match[1].slice("BLOCK_".length) : undefined;
+}
+
+/**
+ * Returns true when a required marker is emitted directly or through a same-file
+ * identifier assigned to that exact marker. Identifier-aware boundaries keep
+ * names such as marker$ distinct from marker$Other.
+ */
+export function hasRuntimeMarkerEvidence(text: string, marker: string) {
+  const lines = text.split("\n");
+  if (lines.some((line) => !isCommentOnlyLine(line) && line.includes(marker) && looksLikeEvidenceEmission(line))) {
+    return true;
+  }
+
+  const identifiers = new Set<string>();
+  for (const line of lines) {
+    if (isCommentOnlyLine(line)) {
+      continue;
+    }
+    for (const quote of ['"', "'", "`"]) {
+      const assignmentPattern = new RegExp(
+        `([A-Za-z_$][A-Za-z0-9_$]*)\\s*(?::[^=\\n]+)?=\\s*${escapeRegExp(`${quote}${marker}${quote}`)}`,
+        "g",
+      );
+      for (const match of line.matchAll(assignmentPattern)) {
+        identifiers.add(match[1]!);
+      }
+    }
+  }
+
+  return [...identifiers].some((identifier) => {
+    const identifierUse = new RegExp(`(?<![A-Za-z0-9_$])${escapeRegExp(identifier)}(?![A-Za-z0-9_$])`);
+    return lines.some((line) => !isCommentOnlyLine(line) && looksLikeEvidenceEmission(line) && identifierUse.test(line));
+  });
+}
+
 export function collectCodeFiles(root: string, ignoredDirs: string[], currentDir = root): string[] {
   const files: string[] = [];
   const ignoredDirSet = new Set([...DEFAULT_IGNORED_DIRS, ...ignoredDirs]);
@@ -307,22 +358,26 @@ function parseScopedFieldSections(text: string): FileContractRecord[] {
 
 function parseBlocks(text: string): FileBlockRecord[] {
   const blocks: FileBlockRecord[] = [];
+  const openBlocks: Array<{ name: string; startLine: number }> = [];
   const lines = text.split("\n");
-  for (let startIndex = 0; startIndex < lines.length; startIndex += 1) {
-    const start = stripCommentPrefix(lines[startIndex]!).trim().match(/^START_BLOCK_([A-Z0-9_]+)$/);
-    if (!start) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const marker = stripCommentPrefix(lines[index]!).trim();
+    const start = marker.match(/^START_BLOCK_([A-Z0-9_]+)$/);
+    if (start?.[1]) {
+      openBlocks.push({ name: start[1], startLine: index + 1 });
       continue;
     }
-    const name = start[1]!;
-    const relativeEnd = lines.slice(startIndex + 1).findIndex((line) => stripCommentPrefix(line).trim() === `END_BLOCK_${name}`);
-    if (relativeEnd < 0) {
+
+    const end = marker.match(/^END_BLOCK_([A-Z0-9_]+)$/);
+    const open = openBlocks.at(-1);
+    if (!end?.[1] || !open || open.name !== end[1]) {
       continue;
     }
-    const endIndex = startIndex + 1 + relativeEnd;
-    blocks.push({ name, startLine: startIndex + 1, endLine: endIndex + 1 });
-    startIndex = endIndex;
+
+    openBlocks.pop();
+    blocks.push({ name: open.name, startLine: open.startLine, endLine: index + 1 });
   }
-  return blocks;
+  return blocks.sort((left, right) => left.startLine - right.startLine || left.endLine - right.endLine);
 }
 
 function splitList(text?: string): string[] {
@@ -334,7 +389,7 @@ type MarkerEvent = { direction: "start" | "end"; family: string; name: string; k
 function validateMarkerStructure(file: string, text: string): LintIssue[] {
   const issues: LintIssue[] = [];
   const completed = new Set<string>();
-  let open: MarkerEvent | null = null;
+  const openMarkers: MarkerEvent[] = [];
   const lines = text.split("\n");
   for (let index = 0; index < lines.length; index += 1) {
     const event = parseMarkerEvent(stripCommentPrefix(lines[index]!).trim(), index + 1);
@@ -342,7 +397,15 @@ function validateMarkerStructure(file: string, text: string): LintIssue[] {
       continue;
     }
     if (event.direction === "start") {
-      if (open) {
+      const open = openMarkers.at(-1);
+      if (openMarkers.some((marker) => marker.key === event.key)) {
+        if (open) {
+          issues.push(markupIssue("error", "markup.overlapping-markers", file, event.line, `${event.key} starts before ${open.key} ends.`));
+        }
+        issues.push(markupIssue("error", "markup.duplicate-marker", file, event.line, `${event.key} has a duplicate start marker.`));
+        continue;
+      }
+      if (open && !(open.family === "block" && event.family === "block")) {
         issues.push(markupIssue("error", "markup.overlapping-markers", file, event.line, `${event.key} starts before ${open.key} ends.`));
         if (open.key === event.key) {
           issues.push(markupIssue("error", "markup.duplicate-marker", file, event.line, `${event.key} has a duplicate start marker.`));
@@ -352,22 +415,22 @@ function validateMarkerStructure(file: string, text: string): LintIssue[] {
       if (completed.has(event.key)) {
         issues.push(markupIssue("error", "markup.duplicate-marker", file, event.line, `${event.key} is declared more than once.`));
       }
-      open = event;
+      openMarkers.push(event);
       continue;
     }
+    const open = openMarkers.at(-1);
     if (!open) {
       issues.push(markupIssue("error", "markup.reversed-marker", file, event.line, `${event.key} ends without a preceding matching start marker.`));
       continue;
     }
     if (open.key !== event.key) {
       issues.push(markupIssue("error", "markup.mismatched-marker", file, event.line, `${event.key} does not match open marker ${open.key}.`));
-      open = null;
       continue;
     }
     completed.add(event.key);
-    open = null;
+    openMarkers.pop();
   }
-  if (open) {
+  for (const open of openMarkers) {
     issues.push(markupIssue("error", "markup.missing-end-marker", file, open.line, `${open.key} is missing its end marker.`));
   }
   return issues;
