@@ -1,7 +1,7 @@
 {
   "name": "grace",
   "description": "Complete GRACE methodology: semantic markup, knowledge graphs, module contracts, testing, and log-driven verification for AI-driven engineering",
-  "version": "4.0.2",
+  "version": "4.0.3",
   "author": {
     "name": "osovv",
     "url": "https://github.com/osovv"

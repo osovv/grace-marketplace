@@ -1,3 +1,11 @@
+## <small>4.0.3 (2026-07-26)</small>
+
+### Summary
+
+Release 4.0.3 improves CLI accuracy and verification flexibility. The `grace status` command now always evaluates module health to provide accurate summary counts (ready, attention, blocked) even when detailed module records are not requested. The verification system introduces a `<TraceAssertion>` contract, allowing modules like pure functions and core libraries to satisfy evidence requirements without requiring runtime logging or markers, reducing false positives in module health reporting. Additionally, LINKS parsing now accepts both bracketed and unbracketed list formats, explicit test file entries take precedence over command-derived paths, and glob-patterned command arguments are no longer incorrectly treated as literal test files.
+
+* fix(cli): align module health parsing and summaries ([3cb7c4f](https://github.com/osovv/grace-marketplace/commit/3cb7c4f))
+
 ## <small>4.0.2 (2026-07-26)</small>
 
 ### Summary
