@@ -455,7 +455,7 @@ function ensureStableReleasePullRequest(repoRoot: string, branchName: string, ve
       "--base", "main",
       "--head", branchName,
       "--title", `chore: prepare ${version} stable release`,
-      "--body", `Prepare @osovv/grace-cli ${version} for stable publication. After approval and merge, run \`bun run release:finalize ${version}\` from clean synchronized main to create and push the immutable release tag.`,
+      "--body", `Prepare @osovv/grace-cli ${version} for stable publication. After required checks pass and the pull request is merged, run \`bun run release:finalize ${version}\` from clean synchronized main to create and push the immutable release tag.`,
     ],
     "Stable release branch was pushed, but pull-request creation failed.",
     repoRoot,
@@ -534,7 +534,7 @@ export function main(
       const localRelease = createReleaseCommit({ repoRoot, currentVersion: preflight.currentVersion, newVersion });
       run("git", ["push", "origin", preflight.branchName], `Stable release branch push failed; local commit ${localRelease.commitSha} remains.`, repoRoot);
       const pullRequestUrl = ensureStableReleasePullRequest(repoRoot, preflight.branchName, newVersion);
-      console.log(`\n✓ Stable release ${newVersion} prepared for protected-main review.`);
+      console.log(`\n✓ Stable release ${newVersion} prepared in a protected-main pull request.`);
       console.log(`  Git SHA: ${localRelease.commitSha}`);
       console.log(`  Branch: ${preflight.branchName}`);
       console.log(`  Pull request: ${pullRequestUrl}`);

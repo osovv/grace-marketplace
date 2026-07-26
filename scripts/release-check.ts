@@ -69,7 +69,6 @@ export type ReleaseProtectionState = {
   stableEnvironmentAllowsMain: boolean;
   stableEnvironmentAllowsReleaseTags: boolean;
   mainBranchProtected: boolean;
-  mainRequiredApprovingReviews: number;
   mainRequiredStatusChecks: string[];
   mainEnforceAdmins: boolean;
   mainAllowsForcePushes: boolean;
@@ -190,7 +189,6 @@ export function collectReleaseProtectionErrors(state: ReleaseProtectionState): s
   if (!state.stableEnvironmentAllowsMain) errors.push("GitHub environment stable-release does not allow the main branch.");
   if (!state.stableEnvironmentAllowsReleaseTags) errors.push("GitHub environment stable-release does not allow v* release tags.");
   if (!state.mainBranchProtected) errors.push("GitHub branch main is not protected.");
-  if (state.mainRequiredApprovingReviews < 1) errors.push("GitHub branch main requires no approving pull-request review.");
   for (const requiredCheck of ["validate", "windows-compatibility", "dart-adapter"]) {
     if (!state.mainRequiredStatusChecks.includes(requiredCheck)) errors.push(`GitHub branch main does not require the ${requiredCheck} status check.`);
   }

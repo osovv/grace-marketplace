@@ -92,7 +92,6 @@ export function collectCurrentReleaseProtectionState(repoRoot: string): ReleaseP
   };
   const branch = JSON.parse(runCapture("gh", ["api", "repos/osovv/grace-marketplace/branches/main/protection"], repoRoot)) as {
     required_status_checks?: { contexts?: string[]; checks?: Array<{ context?: string }> };
-    required_pull_request_reviews?: { required_approving_review_count?: number };
     enforce_admins?: { enabled?: boolean };
     allow_force_pushes?: { enabled?: boolean };
     allow_deletions?: { enabled?: boolean };
@@ -135,7 +134,6 @@ export function collectCurrentReleaseProtectionState(repoRoot: string): ReleaseP
     stableEnvironmentAllowsMain: deploymentPolicies.branch_policies?.some((policy) => policy.type === "branch" && policy.name === "main") ?? false,
     stableEnvironmentAllowsReleaseTags: deploymentPolicies.branch_policies?.some((policy) => policy.type === "tag" && policy.name === "v*") ?? false,
     mainBranchProtected: true,
-    mainRequiredApprovingReviews: branch.required_pull_request_reviews?.required_approving_review_count ?? 0,
     mainRequiredStatusChecks: [...new Set(requiredStatusChecks)],
     mainEnforceAdmins: branch.enforce_admins?.enabled === true,
     mainAllowsForcePushes: branch.allow_force_pushes?.enabled === true,

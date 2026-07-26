@@ -338,7 +338,7 @@ Valid summary.
 });
 
 describe("release state and packed content", () => {
-  it("requires protected stable environment, main branch, and v* tags", () => {
+  it("requires the protected environment, main CI gates, and v* tags without requiring PR approvals", () => {
     expect(collectReleaseProtectionErrors({
       stableEnvironmentExists: true,
       stableEnvironmentRequiredReviewers: 1,
@@ -346,7 +346,6 @@ describe("release state and packed content", () => {
       stableEnvironmentAllowsMain: true,
       stableEnvironmentAllowsReleaseTags: true,
       mainBranchProtected: true,
-      mainRequiredApprovingReviews: 1,
       mainRequiredStatusChecks: ["validate", "windows-compatibility", "dart-adapter"],
       mainEnforceAdmins: true,
       mainAllowsForcePushes: false,
@@ -361,14 +360,13 @@ describe("release state and packed content", () => {
       stableEnvironmentAllowsMain: false,
       stableEnvironmentAllowsReleaseTags: false,
       mainBranchProtected: false,
-      mainRequiredApprovingReviews: 0,
       mainRequiredStatusChecks: [],
       mainEnforceAdmins: false,
       mainAllowsForcePushes: true,
       mainAllowsDeletions: true,
       releaseTagRulesetActive: false,
     });
-    expect(errors).toHaveLength(14);
+    expect(errors).toHaveLength(13);
     expect(errors.join(" ")).toContain("stable-release");
     expect(errors.join(" ")).toContain("validate");
     expect(errors.join(" ")).toContain("v*");

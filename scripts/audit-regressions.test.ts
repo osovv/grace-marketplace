@@ -51,7 +51,7 @@ const AUDIT_REGRESSION_CASES: readonly AuditRegressionCase[] = [
   { id: "migration-cleanup-gates", testFile: "scripts/skill-contracts.test.ts", evidence: "git availability/worktree inspection", platforms: allPlatforms },
   { id: "stable-release-ancestry", testFile: "scripts/release-bump.test.ts", evidence: "release PR branch based on current origin/main", platforms: allPlatforms },
   { id: "stable-release-finalization", testFile: "scripts/release-finalize.test.ts", evidence: "clean synchronized main", platforms: allPlatforms },
-  { id: "stable-release-protections", testFile: "scripts/release-check.test.ts", evidence: "protected stable environment, main branch, and v* tags", platforms: allPlatforms },
+  { id: "stable-release-protections", testFile: "scripts/release-check.test.ts", evidence: "without requiring PR approvals", platforms: allPlatforms },
   { id: "windows-ci", testFile: ".github/workflows/validate.yml", evidence: "windows-compatibility", platforms: ["windows"] },
   { id: "real-dart-ci", testFile: ".github/workflows/validate.yml", evidence: "dart-lang/setup-dart", platforms: ["linux"] },
 ];

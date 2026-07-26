@@ -14,13 +14,13 @@ bun run release:bump prepatch --preid rc
 # Prepare stable version files on the current release PR branch
 bun run release:bump 4.0.0
 
-# After that PR is approved and merged, run from clean synchronized main
+# After that PR passes required checks and is merged, run from clean synchronized main
 bun run release:finalize 4.0.0
 ```
 
 `release:bump` will:
 
-1. Verify required tools, clean working tree, checked-out branch, target tag absence, and target changelog-block absence. Stable targets additionally fetch `origin/main`, require a non-`main` release branch, and require that branch to contain the fetched `origin/main` so review cannot omit newer base changes.
+1. Verify required tools, clean working tree, checked-out branch, target tag absence, and target changelog-block absence. Stable targets additionally fetch `origin/main`, require a non-`main` release branch, and require that branch to contain the fetched `origin/main` so the pull request cannot omit newer base changes.
 2. Run the full current `validate:release` suite before mutating release files.
 3. Resolve the target version and run `npm version --no-git-tag-version` with the given target.
 4. Generate a conventional-changelog entry from git history.
@@ -36,7 +36,7 @@ bun run release:finalize 4.0.0
 9. Assert only expected release files have changed.
 10. Commit those files with a `chore:` message.
 11. For a prerelease, create an annotated tag `v<version>`, push the branch, then push the tag.
-12. For a stable release, push only the release branch and find or create its PR to protected `main`; no stable tag is created before review and merge.
+12. For a stable release, push only the release branch and find or create its PR to protected `main`; no stable tag is created before required checks pass and the PR is merged.
 
 The workflow fails closed at every boundary. A failed preflight creates no release mutation. A failure after version files change leaves the worktree uncommitted for inspection. A prerelease commit failure creates no tag; a prerelease tag failure leaves only the local release commit. A stable branch-push failure leaves only the local release commit, and PR-creation failure leaves the pushed branch for manual PR creation. Stable finalization is a separate post-merge command and never pushes `main` directly.
 
@@ -69,7 +69,7 @@ bun run release:bump 4.0.0
 
 `release:bump 4.0.0` commits and pushes the stable version to the existing release PR branch (or creates a PR when none exists) but deliberately does not create `v4.0.0`. For this initial release, the current GRACE 4 PR already contains the `4.0.0` version surfaces, so do not rerun the bump after merge.
 
-After approval and merge:
+After the required checks pass and the PR is merged:
 
 ```bash
 git switch main
@@ -79,7 +79,7 @@ bun run release:finalize 4.0.0
 
 Stable preparation refuses an existing local or remote `v4.0.0` tag or existing `4.0.0` changelog block before mutation. Post-merge finalization refuses any content drift from `origin/main` and is recovery-aware only for an exact local tag left by a prior failed tag push.
 
-The publish workflow fetches full history. Stable tags must resolve to the exact fetched `origin/main` commit, and the stable npm/GitHub job requires approval through the protected `stable-release` environment. Repository settings must keep explicit environment deployment policies for branch `main` and tags `v*`; keep `main` protected with one approving review and required `validate`, `windows-compatibility`, and `dart-adapter` checks; and keep an active tag ruleset preventing deletion or non-fast-forward updates of `v*` tags. Prerelease tags remain on their explicit npm identifier channel such as `rc` and create GitHub prereleases.
+The publish workflow fetches full history. Stable tags must resolve to the exact fetched `origin/main` commit, and the stable npm/GitHub job requires approval through the protected `stable-release` environment. Repository settings must keep explicit environment deployment policies for branch `main` and tags `v*`; keep `main` protected with required `validate`, `windows-compatibility`, and `dart-adapter` checks but no mandatory PR approval; and keep an active tag ruleset preventing deletion or non-fast-forward updates of `v*` tags. Prerelease tags remain on their explicit npm identifier channel such as `rc` and create GitHub prereleases.
 
 `bun run release:checklist` validates repository protections as well as post-publication integrity. Run it before promotion to confirm the protected environment/branch/tag controls, and again from the exact published tag commit. The publication-state portion fails when `HEAD` differs from that tag or when the current local `npm pack` shasum differs from the published package shasum, preventing unreleased workspace content from being mistaken for the released artifact.
 
@@ -151,4 +151,4 @@ If you need to release without the automated script:
 3. Update version in `README.md`, `openpackage.yml`, `.claude-plugin/marketplace.json`, `plugins/grace/.claude-plugin/plugin.json`.
 4. Run `bun run validate:marketplace` to catch any drift between canonical skills and the packaged mirror.
 5. Run `bun run release:check` to verify consistency.
-6. Put stable version changes through a reviewed PR to protected `main`; after merge, run `bun run release:finalize X.Y.Z`. For prereleases, push the annotated `vX.Y.Z-prerelease` tag after branch validation.
+6. Put stable version changes through a required-check PR to protected `main`; after merge, run `bun run release:finalize X.Y.Z`. For prereleases, push the annotated `vX.Y.Z-prerelease` tag after branch validation.
