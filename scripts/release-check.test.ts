@@ -342,7 +342,9 @@ describe("release state and packed content", () => {
     expect(collectReleaseProtectionErrors({
       stableEnvironmentExists: true,
       stableEnvironmentRequiredReviewers: 1,
-      stableEnvironmentProtectedBranches: true,
+      stableEnvironmentUsesCustomPolicies: true,
+      stableEnvironmentAllowsMain: true,
+      stableEnvironmentAllowsReleaseTags: true,
       mainBranchProtected: true,
       mainRequiredApprovingReviews: 1,
       mainRequiredStatusChecks: ["validate", "windows-compatibility", "dart-adapter"],
@@ -355,7 +357,9 @@ describe("release state and packed content", () => {
     const errors = collectReleaseProtectionErrors({
       stableEnvironmentExists: false,
       stableEnvironmentRequiredReviewers: 0,
-      stableEnvironmentProtectedBranches: false,
+      stableEnvironmentUsesCustomPolicies: false,
+      stableEnvironmentAllowsMain: false,
+      stableEnvironmentAllowsReleaseTags: false,
       mainBranchProtected: false,
       mainRequiredApprovingReviews: 0,
       mainRequiredStatusChecks: [],
@@ -364,7 +368,7 @@ describe("release state and packed content", () => {
       mainAllowsDeletions: true,
       releaseTagRulesetActive: false,
     });
-    expect(errors).toHaveLength(12);
+    expect(errors).toHaveLength(14);
     expect(errors.join(" ")).toContain("stable-release");
     expect(errors.join(" ")).toContain("validate");
     expect(errors.join(" ")).toContain("v*");

@@ -50,15 +50,15 @@ export function collectCurrentReleaseState(repoRoot: string): { state: ReleaseSt
   if (!version) throw new Error("package.json version is missing.");
   const expectedTag = `v${version}`;
 
-  runCapture("git", ["fetch", "origin", "main", "--tags"], repoRoot);
+  runCapture("git", ["fetch", "--no-tags", "origin", "main:refs/remotes/origin/main"], repoRoot);
   const branch = runCapture("git", ["rev-parse", "--abbrev-ref", "HEAD"], repoRoot).trim();
   const head = runCapture("git", ["rev-parse", "HEAD"], repoRoot).trim();
   const originMain = runCapture("git", ["rev-parse", "origin/main"], repoRoot).trim();
   let tagCommit: string | undefined;
-  try {
+  const remoteTag = runCapture("git", ["ls-remote", "--tags", "origin", `refs/tags/${expectedTag}`], repoRoot).trim();
+  if (remoteTag) {
+    runCapture("git", ["fetch", "--force", "--no-tags", "origin", `refs/tags/${expectedTag}:refs/tags/${expectedTag}`], repoRoot);
     tagCommit = runCapture("git", ["rev-parse", `${expectedTag}^{commit}`], repoRoot).trim();
-  } catch {
-    tagCommit = undefined;
   }
 
   const packJson = runCapture("npm", ["pack", "--dry-run", "--json"], repoRoot);
@@ -85,7 +85,10 @@ export function collectCurrentReleaseState(repoRoot: string): { state: ReleaseSt
 export function collectCurrentReleaseProtectionState(repoRoot: string): ReleaseProtectionState {
   const environment = JSON.parse(runCapture("gh", ["api", "repos/osovv/grace-marketplace/environments/stable-release"], repoRoot)) as {
     protection_rules?: Array<{ type?: string; reviewers?: unknown[] }>;
-    deployment_branch_policy?: { protected_branches?: boolean };
+    deployment_branch_policy?: { custom_branch_policies?: boolean };
+  };
+  const deploymentPolicies = JSON.parse(runCapture("gh", ["api", "repos/osovv/grace-marketplace/environments/stable-release/deployment-branch-policies"], repoRoot)) as {
+    branch_policies?: Array<{ name?: string; type?: string }>;
   };
   const branch = JSON.parse(runCapture("gh", ["api", "repos/osovv/grace-marketplace/branches/main/protection"], repoRoot)) as {
     required_status_checks?: { contexts?: string[]; checks?: Array<{ context?: string }> };
@@ -128,7 +131,9 @@ export function collectCurrentReleaseProtectionState(repoRoot: string): ReleaseP
   return {
     stableEnvironmentExists: true,
     stableEnvironmentRequiredReviewers: reviewerRule?.reviewers?.length ?? 0,
-    stableEnvironmentProtectedBranches: environment.deployment_branch_policy?.protected_branches === true,
+    stableEnvironmentUsesCustomPolicies: environment.deployment_branch_policy?.custom_branch_policies === true,
+    stableEnvironmentAllowsMain: deploymentPolicies.branch_policies?.some((policy) => policy.type === "branch" && policy.name === "main") ?? false,
+    stableEnvironmentAllowsReleaseTags: deploymentPolicies.branch_policies?.some((policy) => policy.type === "tag" && policy.name === "v*") ?? false,
     mainBranchProtected: true,
     mainRequiredApprovingReviews: branch.required_pull_request_reviews?.required_approving_review_count ?? 0,
     mainRequiredStatusChecks: [...new Set(requiredStatusChecks)],
@@ -198,7 +203,7 @@ export function main(repoRoot = process.cwd()): number {
     checklist.push({
       label: "Stable environment, main branch, and v* release tags are protected",
       ok: protectionErrors.length === 0,
-      detail: protectionErrors.join("; ") || "Validated stable-release, main protection, and active v* tag ruleset.",
+      detail: protectionErrors.join("; ") || "Validated stable-release main/v* deployment policies, main protection, and active v* tag ruleset.",
     });
   } catch (error) {
     checklist.push({

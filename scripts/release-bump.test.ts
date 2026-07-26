@@ -32,12 +32,11 @@ function dependencies(overrides: Partial<ReleasePreflightDependencies> = {}): Re
     readCurrentVersion: () => "4.0.0-rc.2",
     readChangelog: () => "## <small>4.0.0-rc.2 (2026-07-13)</small>\n",
     getStatus: () => "",
-    getBranch: () => "main\n",
+    getBranch: () => "release/grace-v4\n",
     tagExists: () => false,
     toolExists: () => true,
-    fetchOriginMainAndTags: () => undefined,
-    getHead: () => "abc123\n",
-    getOriginMain: () => "abc123\n",
+    fetchOriginMain: () => undefined,
+    isOriginMainAncestor: () => true,
     runValidation: () => undefined,
     ...overrides,
   };
@@ -103,6 +102,12 @@ describe("release preflight", () => {
     expect(main(["4.0.0"], tempRoot(), deps)).toBe(1);
   });
 
+  it("requires gh only for stable PR preparation", () => {
+    const deps = dependencies({ toolExists: (tool) => tool !== "gh" });
+    expect(() => runReleasePreflight(["4.0.0"], deps)).toThrow("gh");
+    expect(() => runReleasePreflight(["prerelease"], deps)).not.toThrow();
+  });
+
   it("propagates validation failure without calling any mutating helper", () => {
     const root = tempRoot();
     const marker = path.join(root, "marker.txt");
@@ -120,23 +125,23 @@ describe("release preflight", () => {
       npmVersionArgs: ["4.0.0"],
       currentVersion: "4.0.0-rc.2",
       targetVersion: "4.0.0",
-      branchName: "main",
+      branchName: "release/grace-v4",
       tagName: "v4.0.0",
       stable: true,
     });
   });
 
-  it("requires stable releases to use clean synchronized main", () => {
-    expect(collectStableReleasePreconditionErrors({ branch: "feature", head: "a", originMain: "a", worktreeStatus: "" })).toContain(
-      "Stable releases require branch main, received feature.",
+  it("requires stable preparation on a release PR branch based on current origin/main", () => {
+    expect(collectStableReleasePreconditionErrors({ branch: "main", originMainIsAncestor: true, worktreeStatus: "" })[0]).toContain(
+      "must run on a non-main branch",
     );
-    expect(collectStableReleasePreconditionErrors({ branch: "main", head: "ahead", originMain: "remote", worktreeStatus: "" })[0]).toContain(
-      "to equal origin/main",
+    expect(collectStableReleasePreconditionErrors({ branch: "release/grace-v4", originMainIsAncestor: false, worktreeStatus: "" })[0]).toContain(
+      "contain the fetched origin/main",
     );
 
-    const offMain = dependencies({ getBranch: () => "feature\n" });
-    expect(main(["4.0.0"], tempRoot(), offMain)).toBe(1);
-    const divergent = dependencies({ getHead: () => "ahead", getOriginMain: () => "remote" });
+    const onMain = dependencies({ getBranch: () => "main\n" });
+    expect(main(["4.0.0"], tempRoot(), onMain)).toBe(1);
+    const divergent = dependencies({ isOriginMainAncestor: () => false });
     expect(main(["4.0.0"], tempRoot(), divergent)).toBe(1);
   });
 
@@ -144,7 +149,7 @@ describe("release preflight", () => {
     let fetched = false;
     const result = runReleasePreflight(["prerelease"], dependencies({
       getBranch: () => "feature\n",
-      fetchOriginMainAndTags: () => { fetched = true; },
+      fetchOriginMain: () => { fetched = true; },
     }));
     expect(result.stable).toBe(false);
     expect(fetched).toBe(false);

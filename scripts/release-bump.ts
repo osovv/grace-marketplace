@@ -2,8 +2,8 @@
 // FILE: scripts/release-bump.ts
 // VERSION: 1.0.0
 // START_MODULE_CONTRACT
-//   PURPOSE: Execute a fail-closed version bump, changelog generation, validation, release commit, tag, and push workflow.
-//   SCOPE: Testable argv/version/preflight/tag/version-surface helpers plus the guarded production release orchestration.
+//   PURPOSE: Execute a fail-closed version bump, changelog generation, validation, and protected-branch-safe release preparation workflow.
+//   SCOPE: Testable argv/version/preflight/tag/version-surface helpers plus prerelease publication and stable release-PR preparation.
 //   DEPENDS: [node:fs, node:child_process, scripts/release-summary.ts]
 //   LINKS: [M-RELEASE-AUTOMATION, VF-RELEASE-AUTOMATION]
 //   ROLE: SCRIPT
@@ -14,14 +14,15 @@
 //   parseNpmVersionArgs - Validates the supported version target and optional prerelease identifier.
 //   calculateTargetVersion - Resolves the target semver before any repository mutation.
 //   isStableReleaseTarget - Classifies the resolved target as stable or prerelease.
-//   collectStableReleasePreconditionErrors - Enforces clean synchronized main for stable targets.
+//   collectStableReleasePreconditionErrors - Enforces a clean release branch based on current origin/main for stable targets.
 //   runReleasePreflight - Verifies tools, worktree, branch, target tag/changelog uniqueness, and current release validation.
 //   updateVersionSurfaceFiles - Updates every required version surface or fails closed.
 //   prependChangelogEntry - Prepends exactly one target-version changelog block.
 //   assertTagDoesNotExist - Rejects an existing local target tag.
 //   assertTagTargetsCommit - Verifies a created tag resolves to the release commit.
-//   createReleaseCommitAndTag - Creates the local release commit and annotated tag without network access.
-//   main - Runs preflight, mutation, validation, local finalization, and ordered branch/tag pushes.
+//   createReleaseCommit - Creates the local release commit without tagging.
+//   createReleaseCommitAndTag - Creates the local prerelease commit and annotated tag without network access.
+//   main - Publishes prereleases directly or prepares a stable release PR for post-merge finalization.
 // END_MODULE_MAP
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -75,9 +76,8 @@ export interface ReleasePreflightDependencies {
   getBranch: () => string;
   tagExists: (tagName: string) => boolean;
   toolExists: (tool: string) => boolean;
-  fetchOriginMainAndTags: () => void;
-  getHead: () => string;
-  getOriginMain: () => string;
+  fetchOriginMain: () => void;
+  isOriginMainAncestor: () => boolean;
   runValidation: () => void;
 }
 
@@ -92,8 +92,7 @@ export interface ReleasePreflightResult {
 
 export interface StableReleaseGitState {
   branch: string;
-  head: string;
-  originMain: string;
+  originMainIsAncestor: boolean;
   worktreeStatus: string;
 }
 
@@ -228,10 +227,9 @@ export function isStableReleaseTarget(currentVersion: string, npmVersionArgs: st
 /** Returns every stable-release git precondition error without mutating repository state. */
 export function collectStableReleasePreconditionErrors(state: StableReleaseGitState): string[] {
   const errors: string[] = [];
-  if (state.branch !== "main") errors.push(`Stable releases require branch main, received ${state.branch || "detached HEAD"}.`);
+  if (state.branch === "main") errors.push("Stable release preparation must run on a non-main branch so protected main is updated through a pull request.");
   if (state.worktreeStatus.trim()) errors.push("Stable releases require a clean worktree.");
-  if (!state.head || !state.originMain) errors.push("Stable releases require resolved HEAD and origin/main commits.");
-  else if (state.head !== state.originMain) errors.push(`Stable releases require HEAD (${state.head}) to equal origin/main (${state.originMain}).`);
+  if (!state.originMainIsAncestor) errors.push("Stable release preparation requires the current branch to contain the fetched origin/main; rebase or merge main before preparing the release.");
   return errors;
 }
 
@@ -248,7 +246,8 @@ export function runReleasePreflight(args: string[], deps: ReleasePreflightDepend
   const tagName = `v${targetVersion}`;
   const stable = isStableReleaseTarget(currentVersion, npmVersionArgs);
 
-  const missingTools = REQUIRED_RELEASE_TOOLS.filter((tool) => !deps.toolExists(tool));
+  const requiredTools = stable ? [...REQUIRED_RELEASE_TOOLS, "gh"] : [...REQUIRED_RELEASE_TOOLS];
+  const missingTools = requiredTools.filter((tool) => !deps.toolExists(tool));
   if (missingTools.length > 0) throw new Error(`Missing required release tool(s): ${missingTools.join(", ")}`);
 
   const status = deps.getStatus();
@@ -258,11 +257,10 @@ export function runReleasePreflight(args: string[], deps: ReleasePreflightDepend
   if (!branchName || branchName === "HEAD") throw new Error("release:bump requires a checked-out branch; detached HEAD is unsupported.");
 
   if (stable) {
-    deps.fetchOriginMainAndTags();
+    deps.fetchOriginMain();
     const stableErrors = collectStableReleasePreconditionErrors({
       branch: branchName,
-      head: deps.getHead().trim(),
-      originMain: deps.getOriginMain().trim(),
+      originMainIsAncestor: deps.isOriginMainAncestor(),
       worktreeStatus: status,
     });
     if (stableErrors.length > 0) throw new Error(stableErrors.join("\n"));
@@ -375,12 +373,23 @@ function assertOnlyReleaseFilesChanged(repoRoot: string): void {
   if (unexpected.length > 0) throw new Error(`release:bump produced unexpected changes: ${unexpected.join(", ")}`);
 }
 
-function tagExists(repoRoot: string, tagName: string): boolean {
+function localTagExists(repoRoot: string, tagName: string): boolean {
   const result = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/tags/${tagName}`], { cwd: repoRoot, stdio: "ignore" });
   return result.status === 0;
 }
 
-/** Rejects an existing local target tag. */
+function remoteTagExists(repoRoot: string, tagName: string): boolean {
+  const result = spawnSync("git", ["ls-remote", "--exit-code", "--tags", "origin", `refs/tags/${tagName}`], { cwd: repoRoot, stdio: "ignore" });
+  if (result.status === 0) return true;
+  if (result.status === 2) return false;
+  throw result.error ?? new Error(`Failed to inspect remote tag ${tagName}.`);
+}
+
+function tagExists(repoRoot: string, tagName: string): boolean {
+  return localTagExists(repoRoot, tagName) || remoteTagExists(repoRoot, tagName);
+}
+
+/** Rejects an existing local or remote target tag. */
 export function assertTagDoesNotExist(repoRoot: string, tagName: string): void {
   if (tagExists(repoRoot, tagName)) throw new Error(`Tag ${tagName} already exists.`);
 }
@@ -397,16 +406,13 @@ export function assertTagTargetsCommit(
   }
 }
 
-/** Creates the release commit and annotated tag locally; it performs no push. */
-export function createReleaseCommitAndTag(options: {
+/** Creates the release commit locally; it performs no tag or push. */
+export function createReleaseCommit(options: {
   repoRoot: string;
   currentVersion: string;
   newVersion: string;
-  tagName?: string;
-}): { commitSha: string; tagName: string } {
-  const tagName = options.tagName ?? `v${options.newVersion}`;
+}): { commitSha: string } {
   assertOnlyReleaseFilesChanged(options.repoRoot);
-  assertTagDoesNotExist(options.repoRoot, tagName);
   run("git", ["add", ...RELEASE_FILES], "git add failed.", options.repoRoot);
   run(
     "git",
@@ -414,11 +420,46 @@ export function createReleaseCommitAndTag(options: {
     "git commit failed; release files remain staged for inspection.",
     options.repoRoot,
   );
-  run("git", ["tag", "-a", tagName, "-m", tagName], "git tag failed; the release commit exists without a tag.", options.repoRoot);
   return {
     commitSha: runCapture("git", ["rev-parse", "HEAD"], "git rev-parse failed.", options.repoRoot).trim(),
-    tagName,
   };
+}
+
+/** Creates the prerelease commit and annotated tag locally; it performs no push. */
+export function createReleaseCommitAndTag(options: {
+  repoRoot: string;
+  currentVersion: string;
+  newVersion: string;
+  tagName?: string;
+}): { commitSha: string; tagName: string } {
+  const tagName = options.tagName ?? `v${options.newVersion}`;
+  assertTagDoesNotExist(options.repoRoot, tagName);
+  const release = createReleaseCommit(options);
+  run("git", ["tag", "-a", tagName, "-m", tagName], "git tag failed; the release commit exists without a tag.", options.repoRoot);
+  return { ...release, tagName };
+}
+
+function ensureStableReleasePullRequest(repoRoot: string, branchName: string, version: string): string {
+  const existing = JSON.parse(runCapture(
+    "gh",
+    ["pr", "list", "--state", "open", "--base", "main", "--head", branchName, "--limit", "1", "--json", "url"],
+    "Failed to inspect an existing stable release pull request.",
+    repoRoot,
+  )) as Array<{ url?: string }>;
+  if (existing[0]?.url) return existing[0].url;
+
+  return runCapture(
+    "gh",
+    [
+      "pr", "create",
+      "--base", "main",
+      "--head", branchName,
+      "--title", `chore: prepare ${version} stable release`,
+      "--body", `Prepare @osovv/grace-cli ${version} for stable publication. After approval and merge, run \`bun run release:finalize ${version}\` from clean synchronized main to create and push the immutable release tag.`,
+    ],
+    "Stable release branch was pushed, but pull-request creation failed.",
+    repoRoot,
+  ).trim();
 }
 
 function readPackageVersion(repoRoot: string): string {
@@ -437,9 +478,13 @@ function productionPreflightDependencies(repoRoot: string): ReleasePreflightDepe
     getBranch: () => runCapture("git", ["rev-parse", "--abbrev-ref", "HEAD"], "Failed to detect current branch.", repoRoot),
     tagExists: (tagName) => tagExists(repoRoot, tagName),
     toolExists: (tool) => spawnSync(tool, ["--version"], { cwd: repoRoot, stdio: "ignore" }).status === 0,
-    fetchOriginMainAndTags: () => run("git", ["fetch", "origin", "main", "--tags"], "Failed to fetch origin/main and tags before stable release.", repoRoot),
-    getHead: () => runCapture("git", ["rev-parse", "HEAD"], "Failed to resolve HEAD.", repoRoot),
-    getOriginMain: () => runCapture("git", ["rev-parse", "origin/main"], "Failed to resolve origin/main.", repoRoot),
+    fetchOriginMain: () => run("git", ["fetch", "--no-tags", "origin", "main:refs/remotes/origin/main"], "Failed to fetch origin/main before stable release preparation.", repoRoot),
+    isOriginMainAncestor: () => {
+      const result = spawnSync("git", ["merge-base", "--is-ancestor", "origin/main", "HEAD"], { cwd: repoRoot, stdio: "ignore" });
+      if (result.status === 0) return true;
+      if (result.status === 1) return false;
+      throw result.error ?? new Error("Failed to compare the release branch with origin/main.");
+    },
     runValidation: () => run("bun", ["run", "validate:release"], "Pre-bump validate:release failed; no release files were mutated.", repoRoot),
   };
 }
@@ -485,6 +530,18 @@ export function main(
     updateVersionSurfaceFiles(repoRoot, newVersion);
 
     run("bun", ["run", "validate:release"], "Post-bump validate:release failed; release files remain uncommitted for inspection.", repoRoot);
+    if (preflight.stable) {
+      const localRelease = createReleaseCommit({ repoRoot, currentVersion: preflight.currentVersion, newVersion });
+      run("git", ["push", "origin", preflight.branchName], `Stable release branch push failed; local commit ${localRelease.commitSha} remains.`, repoRoot);
+      const pullRequestUrl = ensureStableReleasePullRequest(repoRoot, preflight.branchName, newVersion);
+      console.log(`\n✓ Stable release ${newVersion} prepared for protected-main review.`);
+      console.log(`  Git SHA: ${localRelease.commitSha}`);
+      console.log(`  Branch: ${preflight.branchName}`);
+      console.log(`  Pull request: ${pullRequestUrl}`);
+      console.log(`  No tag was created. After merge, run: bun run release:finalize ${newVersion}`);
+      return 0;
+    }
+
     const localRelease = createReleaseCommitAndTag({
       repoRoot,
       currentVersion: preflight.currentVersion,
@@ -499,13 +556,6 @@ export function main(
     );
 
     run("git", ["push", "origin", preflight.branchName], `Branch push failed; local commit ${localRelease.commitSha} and ${localRelease.tagName} remain.`, repoRoot);
-    if (preflight.stable) {
-      run("git", ["fetch", "origin", "main"], "Stable branch push completed but origin/main confirmation fetch failed.", repoRoot);
-      const pushedMain = runCapture("git", ["rev-parse", "origin/main"], "Failed to resolve origin/main after stable branch push.", repoRoot).trim();
-      if (pushedMain !== localRelease.commitSha) {
-        throw new Error(`Stable branch push did not place release commit on origin/main: ${pushedMain} != ${localRelease.commitSha}.`);
-      }
-    }
     run("git", ["push", "origin", localRelease.tagName], `Tag push failed after branch push; push ${localRelease.tagName} manually after inspection.`, repoRoot);
 
     console.log(`\n✓ Release ${localRelease.tagName} committed, tagged, and pushed.`);

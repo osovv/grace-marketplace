@@ -65,7 +65,9 @@ export type ReleaseState = {
 export type ReleaseProtectionState = {
   stableEnvironmentExists: boolean;
   stableEnvironmentRequiredReviewers: number;
-  stableEnvironmentProtectedBranches: boolean;
+  stableEnvironmentUsesCustomPolicies: boolean;
+  stableEnvironmentAllowsMain: boolean;
+  stableEnvironmentAllowsReleaseTags: boolean;
   mainBranchProtected: boolean;
   mainRequiredApprovingReviews: number;
   mainRequiredStatusChecks: string[];
@@ -184,7 +186,9 @@ export function collectReleaseProtectionErrors(state: ReleaseProtectionState): s
   const errors: string[] = [];
   if (!state.stableEnvironmentExists) errors.push("GitHub environment stable-release does not exist.");
   if (state.stableEnvironmentRequiredReviewers < 1) errors.push("GitHub environment stable-release requires at least one reviewer.");
-  if (!state.stableEnvironmentProtectedBranches) errors.push("GitHub environment stable-release is not restricted to protected branches.");
+  if (!state.stableEnvironmentUsesCustomPolicies) errors.push("GitHub environment stable-release does not use explicit branch and tag deployment policies.");
+  if (!state.stableEnvironmentAllowsMain) errors.push("GitHub environment stable-release does not allow the main branch.");
+  if (!state.stableEnvironmentAllowsReleaseTags) errors.push("GitHub environment stable-release does not allow v* release tags.");
   if (!state.mainBranchProtected) errors.push("GitHub branch main is not protected.");
   if (state.mainRequiredApprovingReviews < 1) errors.push("GitHub branch main requires no approving pull-request review.");
   for (const requiredCheck of ["validate", "windows-compatibility", "dart-adapter"]) {

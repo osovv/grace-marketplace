@@ -4,7 +4,7 @@
 
 This repository ships the GRACE skills plus the optional `grace` CLI. It is a packaging and distribution repository, not an end-user application.
 
-Current packaged version: `4.0.0-rc.3`
+Current packaged version: `4.0.0`
 
 ## What This Repository Ships
 
@@ -187,4 +187,4 @@ bun run validate:release
 
 For CLI changes, keep tests in `src/grace-lint.test.ts`, `src/grace-status.test.ts`, and `src/grace-query.test.ts` aligned with the GRACE 4 `.grace` fixture model.
 
-Stable releases are stricter than prereleases. Before any stable version mutation, `release:bump` fetches `origin/main` and tags, requires a clean checked-out `main`, and requires `HEAD == origin/main`. CI independently checks the stable tag commit against fetched `origin/main` and gates npm `latest` publication through the reviewer-protected `stable-release` environment. Protected `main` requires review plus Linux, Windows, and real-Dart checks, while an active ruleset keeps `v*` tags immutable. `bun run release:checklist` verifies those controls and, after publication from the exact release tag commit, verifies `HEAD == tag`, npm/GitHub channel metadata, and that the local `npm pack` shasum matches the immutable published tarball.
+Stable releases use a protected-main two-stage flow. `release:bump` runs on a clean release branch that contains current `origin/main`, updates and validates the version surfaces, commits them, pushes the branch, and finds or creates the review PR without creating a tag. After that PR is approved and merged, `release:finalize X.Y.Z` runs from clean synchronized `main`, revalidates the exact stable state, creates the annotated tag, and pushes only that tag. CI independently requires the stable tag commit to equal fetched `origin/main` and gates npm `latest` publication through the reviewer-protected `stable-release` environment, whose explicit deployment policies allow only branch `main` and tags `v*`. Protected `main` requires review plus Linux, Windows, and real-Dart checks, while an active ruleset keeps `v*` tags immutable. `bun run release:checklist` verifies those controls and, after publication from the exact release tag commit, verifies `HEAD == tag`, npm/GitHub channel metadata, and that the local `npm pack` shasum matches the immutable published tarball.

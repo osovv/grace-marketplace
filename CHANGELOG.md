@@ -1,3 +1,14 @@
+## <small>4.0.0 (2026-07-26)</small>
+
+### Summary
+
+GRACE 4 is ready for stable publication with its versioned `.grace` artifact model, parser-backed Artifact Grammar, deterministic graph and verification projections, assertion and scope contracts, recovery-aware execution workflow, migration safety, projection-backed CLI, synchronized skill package, and reproducible npm release surface. Stable promotion now respects protected `main`: the version commit is reviewed through a pull request, post-merge finalization creates the immutable tag from synchronized `main`, and the protected release environment explicitly admits only `main` and `v*` tags before npm `latest` publication.
+
+* fix(release): prepare stable versions through a protected-main pull request and finalize the tag only after merge
+* fix(release): validate explicit `main` and `v*` deployment policies for the `stable-release` environment
+* fix(release): replace broad tag fetching with exact remote tag checks and no-tag `origin/main` fetches
+* chore(runtime): require Bun 1.3.14 for local and CI validation
+
 ## <small>4.0.0-rc.3 (2026-07-22)</small>
 
 ### Summary

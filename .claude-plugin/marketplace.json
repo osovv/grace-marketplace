@@ -8,14 +8,14 @@
   },
   "metadata": {
     "description": "GRACE (Graph-RAG Anchored Code Engineering) - a methodology by Vladimir Ivanov for contract-first AI engineering with semantic markup, knowledge graphs, and log-driven verification",
-    "version": "4.0.0-rc.3"
+    "version": "4.0.0"
   },
   "plugins": [
     {
       "name": "grace",
       "source": "./plugins/grace",
       "description": "Complete GRACE methodology: semantic markup, knowledge graphs, module contracts, testing, and log-driven verification for AI-driven engineering",
-      "version": "4.0.0-rc.3",
+      "version": "4.0.0",
       "author": {
         "name": "osovv",
         "url": "https://github.com/osovv"
