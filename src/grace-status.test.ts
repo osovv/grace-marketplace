@@ -99,13 +99,19 @@ describe("grace status", () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
 
+    const summaryOnly = collectProjectStatus(root);
     const result = collectProjectStatus(root, { includeModules: true });
 
+    expect(summaryOnly.summary.readyModules).toBe(1);
+    expect(summaryOnly.summary.attentionModules).toBe(0);
+    expect(summaryOnly.summary.blockedModules).toBe(0);
+    expect(summaryOnly.modules).toBeUndefined();
     expect(result.projectKind).toBe("grace4");
     expect(result.summary.contextArtifacts).toBe(5);
     expect(result.summary.graphModules).toBe(1);
     expect(result.summary.verificationEntries).toBe(1);
     expect(result.summary.readyModules).toBe(1);
+    expect(result.modules).toHaveLength(1);
     expect(result.nextAction).toContain("$grace-spec");
     expect(result.observedDrift.available).toBe(false);
   });

@@ -252,11 +252,13 @@ export function collectProjectStatus(projectRoot: string, options: { includeModu
   if (observedDrift.unexplainedFiles.length > 0) derivedStates.add("unexplained-observed-drift");
 
   let modules: ModuleHealthRecord[] | undefined;
+  let evaluatedModules: ModuleHealthRecord[] | undefined;
   let moduleHealthLoadError: string | undefined;
   try {
     const index = loadGraceArtifactIndex(root);
+    evaluatedModules = collectModuleHealth(index);
     if (options.includeModules) {
-      modules = collectModuleHealth(index);
+      modules = evaluatedModules;
     }
   } catch (error) {
     moduleHealthLoadError = error instanceof Error ? error.message : String(error);
@@ -285,9 +287,9 @@ export function collectProjectStatus(projectRoot: string, options: { includeModu
       archivedChanges: changes.filter((change) => change.location === "archive").length,
       integrityErrors: integrityErrors.length,
       integrityWarnings: integrityWarnings.length,
-      readyModules: modules?.filter((module) => module.state === "ready").length ?? 0,
-      attentionModules: modules?.filter((module) => module.state === "attention").length ?? 0,
-      blockedModules: modules?.filter((module) => module.state === "blocked").length ?? 0,
+      readyModules: evaluatedModules?.filter((module) => module.state === "ready").length ?? 0,
+      attentionModules: evaluatedModules?.filter((module) => module.state === "attention").length ?? 0,
+      blockedModules: evaluatedModules?.filter((module) => module.state === "blocked").length ?? 0,
     },
     changes,
     derivedStates: [...derivedStates].sort(),

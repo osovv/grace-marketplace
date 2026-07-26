@@ -34,6 +34,18 @@ describe("governed file analysis", () => {
     expect(analysis.issues.filter((issue) => issue.severity === "error")).toHaveLength(0);
   });
 
+  it("accepts bracketed and unbracketed LINKS lists while filtering non-module anchors", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-links-"));
+    const file = path.join(root, "src", "example.ts");
+    const links = (value: string) => parseGovernedFile(root, file, contract("NONE").replace("LINKS: M-EXAMPLE", `LINKS: ${value}`)).linkedModuleIds;
+
+    expect(links("[M-ONE]")).toEqual(["M-ONE"]);
+    expect(links("[M-ONE, M-TWO, V-M-ONE]")).toEqual(["M-ONE", "M-TWO"]);
+    expect(links("M-ONE, M-TWO, V-M-ONE")).toEqual(["M-ONE", "M-TWO"]);
+    expect(links("[none]")).toEqual([]);
+    expect(links("none")).toEqual([]);
+  });
+
   it("reports line-addressed missing, reversed, duplicate, mismatched, and overlapping markers", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "grace-markers-"));
     const file = path.join(root, "broken.ts");

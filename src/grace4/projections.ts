@@ -34,6 +34,7 @@ export type VerificationAnchorRecord = {
   commands: string[];
   scenarios: string[];
   markers: string[];
+  traceAssertions: string[];
   testFiles: string[];
 };
 
@@ -245,6 +246,7 @@ export function buildVerificationProjection(paths: Grace4ProjectPaths, graph: Gr
         commands: collectExactEvidence(node, "Command"),
         scenarios: collectExactEvidence(node, "Scenario"),
         markers: collectExactEvidence(node, "Marker"),
+        traceAssertions: collectExactEvidence(node, "TraceAssertion"),
         testFiles: collectTestFiles(node, paths.root, route.file, projection.issues),
       });
     }
@@ -411,7 +413,7 @@ function validateModuleVerificationCoverage(graph: GraphProjection, verification
   }
 }
 
-function collectExactEvidence(node: GraceXmlNode, tag: "Command" | "Scenario" | "Marker"): string[] {
+function collectExactEvidence(node: GraceXmlNode, tag: "Command" | "Scenario" | "Marker" | "TraceAssertion"): string[] {
   return [...walkNodes(node)]
     .filter((candidate) => candidate !== node && candidate.tag === tag)
     .map((candidate) => aggregateNodeText(candidate).trim())

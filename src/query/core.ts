@@ -170,7 +170,9 @@ function toModuleGraphRecord(record: GraphAnchorRecord): ModuleGraphRecord {
 }
 
 function toModuleVerificationRecord(record: VerificationAnchorRecord): ModuleVerificationRecord {
-  const inferredTestFiles = inferTestFiles(record.commands).map((file) => qualifyVerificationPath(record.cwd, file));
+  const inferredTestFiles = record.testFiles.length === 0
+    ? inferTestFiles(record.commands).map((file) => qualifyVerificationPath(record.cwd, file))
+    : [];
   return {
     id: record.id,
     moduleId: record.moduleId,
@@ -180,7 +182,7 @@ function toModuleVerificationRecord(record: VerificationAnchorRecord): ModuleVer
     moduleChecks: record.commands,
     scenarios: record.scenarios.map((text, index) => ({ tag: "Scenario-" + (index + 1), text })),
     requiredLogMarkers: record.markers,
-    requiredTraceAssertions: [],
+    requiredTraceAssertions: record.traceAssertions,
   };
 }
 
@@ -192,7 +194,10 @@ function qualifyVerificationPath(cwd: string | undefined, file: string): string 
 }
 
 function inferTestFiles(commands: string[]) {
-  return [...new Set(commands.flatMap((command) => [...command.matchAll(/\b([^\s]+\.(?:test|spec)\.[A-Za-z0-9]+)\b/g)].map((match) => match[1])))].sort();
+  return [...new Set(commands
+    .flatMap((command) => [...command.matchAll(/\b([^\s]+\.(?:test|spec)\.[A-Za-z0-9]+)\b/g)].map((match) => match[1]!))
+    .filter((file) => ![...file].some((character) => "*?[]{}()!".includes(character))))]
+    .sort();
 }
 
 function extractNamedField(text: string, label: string) {

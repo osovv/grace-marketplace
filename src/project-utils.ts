@@ -381,7 +381,11 @@ function parseBlocks(text: string): FileBlockRecord[] {
 }
 
 function splitList(text?: string): string[] {
-  return (text ?? "").split(",").map((item) => item.trim()).filter((item) => item && item.toLowerCase() !== "none");
+  const authored = (text ?? "").trim();
+  const normalized = authored.startsWith("[") && authored.endsWith("]")
+    ? authored.slice(1, -1).trim()
+    : authored;
+  return normalized.split(",").map((item) => item.trim()).filter((item) => item && item.toLowerCase() !== "none");
 }
 
 type MarkerEvent = { direction: "start" | "end"; family: string; name: string; key: string; line: number };

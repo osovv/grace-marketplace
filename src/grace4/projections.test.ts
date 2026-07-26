@@ -343,7 +343,7 @@ describe("GRACE 4 graph and verification projections", () => {
     writeProjectFile(
       root,
       ".grace/verification/main.xml",
-      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><Cwd>apps/web</Cwd><TestFiles><File>apps/web/src/example.test.ts</File></TestFiles><File>src/metadata.ts</File><Command>bun test example</Command><CommandNotes>ignored command</CommandNotes><ScenarioNotes>ignored scenario</ScenarioNotes><MarkerNotes>ignored marker</MarkerNotes></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>`
+      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-EXAMPLE><Cwd>apps/web</Cwd><TestFiles><File>apps/web/src/example.test.ts</File></TestFiles><File>src/metadata.ts</File><Command>bun test example</Command><CommandNotes>ignored command</CommandNotes><ScenarioNotes>ignored scenario</ScenarioNotes><MarkerNotes>ignored marker</MarkerNotes><TraceAssertion>Pure output is deterministic.</TraceAssertion><TraceAssertionNotes>ignored trace</TraceAssertionNotes></V-M-EXAMPLE></VD-MAIN></GraceVerificationDocument>`
     );
 
     const paths = resolveGrace4Paths(root);
@@ -359,6 +359,7 @@ describe("GRACE 4 graph and verification projections", () => {
     expect(entry.commands).toEqual(["bun test example"]);
     expect(entry.scenarios).toEqual([]);
     expect(entry.markers).toEqual([]);
+    expect(entry.traceAssertions).toEqual(["Pure output is deterministic."]);
   });
 
   it("rejects verification cwd values that escape the project root", () => {

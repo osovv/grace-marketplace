@@ -207,7 +207,7 @@ describe("grace query core", () => {
     expect(resolved.module?.id).toBe("M-PROVIDER-PERSIST");
   });
 
-  it("collects explicit TestFiles/File from verification entries into query model", () => {
+  it("prefers explicit TestFiles/File entries over command-derived test paths", () => {
     const root = createProject();
     writeProjectSkeleton(root);
     writeProjectFile(
@@ -225,7 +225,7 @@ describe("grace query core", () => {
       ".grace/verification/index.xml",
       '<GraceVerificationIndex graceVersion="4.0"><VerificationDocuments><VD-MAIN><Path>verification/main.xml</Path><Owns><V-M-EXAMPLE /></Owns></VD-MAIN></VerificationDocuments></GraceVerificationIndex>',
     );
-    // Verification has both a Command with a test file reference AND explicit TestFiles/File tags
+    // Explicit TestFiles are authoritative even when the command mentions another test path.
     writeProjectFile(root, "apps/web/src/module-explicit.test.ts", "test\n");
     writeProjectFile(root, "apps/web/src/module-additional.test.ts", "test\n");
     writeProjectFile(
@@ -237,10 +237,24 @@ describe("grace query core", () => {
     const index = loadGraceArtifactIndex(root);
     const resolved = resolveVerification(index, "V-M-EXAMPLE");
     expect(resolved.verification.cwd).toBe("apps/web");
-    // Test files should include both inferred (from command) AND explicit (from TestFiles)
-    expect(resolved.verification.testFiles).toContain("apps/web/src/module.test.ts");
+    expect(resolved.verification.testFiles).not.toContain("apps/web/src/module.test.ts");
     expect(resolved.verification.testFiles).toContain("apps/web/src/module-explicit.test.ts");
     expect(resolved.verification.testFiles).toContain("apps/web/src/module-additional.test.ts");
+  });
+
+  it("does not infer glob-shaped command arguments as literal test files", () => {
+    const root = createQueryProject();
+    writeProjectFile(
+      root,
+      ".grace/verification/main.xml",
+      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-DB><Scenario>Database client is available.</Scenario></V-M-DB><V-M-PROVIDER-PERSIST><Command>bun test src/provider/config-repo*.test.ts</Command><Scenario>Reads provider config.</Scenario><Marker>[ProviderConfigPersistence][getProviderConfig][BLOCK_GET_PROVIDER_CONFIG]</Marker></V-M-PROVIDER-PERSIST></VD-MAIN></GraceVerificationDocument>`,
+    );
+
+    const index = loadGraceArtifactIndex(root);
+    const verification = resolveVerification(index, "V-M-PROVIDER-PERSIST").verification;
+    expect(verification.testFiles).toEqual([]);
+    const health = buildModuleHealth(index, resolveModule(index, "M-PROVIDER-PERSIST"));
+    expect(health.blockers.map((blocker) => blocker.code)).not.toContain("health.verification-test-file-missing-on-disk");
   });
 
   it("uses verification Cwd when checking monorepo test command references", () => {
@@ -272,6 +286,22 @@ describe("grace query core", () => {
     const dbHealth = buildModuleHealth(index, resolveModule(index, "M-DB"));
     expect(dbHealth.state).toBe("blocked");
     expect(dbHealth.blockers.map((blocker) => blocker.code)).toContain("health.verification-missing-commands");
+  });
+
+  it("treats TraceAssertion as module-health evidence without requiring runtime logging", () => {
+    const root = createQueryProject();
+    writeProjectFile(
+      root,
+      ".grace/verification/main.xml",
+      `<GraceVerificationDocument graceVersion="4.0"><VD-MAIN><V-M-DB><Scenario>Database client is available.</Scenario></V-M-DB><V-M-PROVIDER-PERSIST><Command>bun test src/provider/config-repo.test.ts</Command><Scenario>Pure output is deterministic.</Scenario><TraceAssertion>The test proves deterministic output without runtime logging.</TraceAssertion></V-M-PROVIDER-PERSIST></VD-MAIN></GraceVerificationDocument>`,
+    );
+
+    const index = loadGraceArtifactIndex(root);
+    const verification = resolveVerification(index, "V-M-PROVIDER-PERSIST").verification;
+    expect(verification.requiredTraceAssertions).toEqual(["The test proves deterministic output without runtime logging."]);
+    const health = buildModuleHealth(index, resolveModule(index, "M-PROVIDER-PERSIST"));
+    expect(health.warnings.map((warning) => warning.code)).not.toContain("health.verification-missing-evidence");
+    expect(health.blockers.map((blocker) => blocker.code)).not.toContain("health.required-log-marker-not-found");
   });
 
   it("credits a required marker emitted through an identifier-safe constant inside nested blocks", () => {

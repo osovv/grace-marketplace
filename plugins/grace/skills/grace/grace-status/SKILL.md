@@ -4,7 +4,7 @@ description: Show GRACE 4 project health across .grace context, graph, verificat
 ---
 
 <skill>
-<task>Run `grace status --path PROJECT --json` (add `--with modules` when module health is needed) and report current GRACE 4 state without mutating artifacts.</task>
+<task>Run `grace status --path PROJECT --json` and report current GRACE 4 state without mutating artifacts. Module-health summary counts are always evaluated; add `--with modules` only when detailed module records are needed.</task>
 
 <must_report>
 - Project kind: GRACE 4, legacy GRACE 3 migration candidate, or missing GRACE; plus context completeness.
