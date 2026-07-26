@@ -62,14 +62,12 @@ cp -r grace-marketplace/skills/grace/grace-* /path/to/your/agent/skills/
 
 ### CLI
 
-Requires `bun` on `PATH`.
+Requires `bun` on `PATH`. GRACE skills invoke the installed stable `grace` binary directly; they do not default to `bunx`, `npx`, or a prerelease dist-tag.
 
 ```bash
-# GRACE 4 release candidates while npm `latest` still points to GRACE 3
-bun add -g @osovv/grace-cli@rc
-
-# Stable channel after GRACE 4 is promoted to npm `latest`
+# Install the current stable release from npm `latest`
 bun add -g @osovv/grace-cli
+grace --version
 grace lint --path /path/to/grace4-project
 ```
 

@@ -3,19 +3,19 @@
 ## Release Commands
 
 ```bash
-# Prerelease and ordinary version preparation
+# Prepare the next stable patch from a clean non-main release branch
 bun run release:bump patch
 
-# Other version targets
+# Other stable or prerelease targets
 bun run release:bump minor
 bun run release:bump major
 bun run release:bump prepatch --preid rc
 
-# Prepare stable version files on the current release PR branch
-bun run release:bump 4.0.0
+# Or prepare an exact unreleased stable version
+bun run release:bump X.Y.Z
 
 # After that PR passes required checks and is merged, run from clean synchronized main
-bun run release:finalize 4.0.0
+bun run release:finalize X.Y.Z
 ```
 
 `release:bump` will:
@@ -53,31 +53,28 @@ Every command uses argument arrays without shell interpolation. Release automati
 | `GRACE_RELEASE_SUMMARY_MODEL` | OpenCode model for AI release summary | `deepseek/deepseek-v4-flash` |
 | `GRACE_RELEASE_SUMMARY_TIMEOUT_MS` | Per-attempt timeout for OpenCode | `120000` (2 min) |
 
-## Pre-Release Validation
+## Stable Release Preparation
 
-The release automation baseline is the existing `v3.11.0` tag, and GRACE 4 release-candidate tags are already published. Do **not** create a synthetic `v4.0.0` baseline tag: `v4.0.0` is reserved for the actual stable release.
-
-Before stable preparation, update the release branch with current `origin/main` and confirm that the latest reachable tag is the release being promoted from. For the initial GRACE 4 promotion, the expected predecessor on `grace-v4` is the latest `v4.0.0-rc.*` tag:
+Published stable tags are immutable release history. Choose a new semantic version that has no local or remote tag and no existing changelog block, then create the release branch from current `origin/main`:
 
 ```bash
 git fetch --no-tags origin main:refs/remotes/origin/main
+git switch -c release/X.Y.Z origin/main
 git merge-base --is-ancestor origin/main HEAD
-git fetch origin --tags
-git describe --tags --abbrev=0
-bun run release:bump 4.0.0
+bun run release:bump X.Y.Z
 ```
 
-`release:bump 4.0.0` commits and pushes the stable version to the existing release PR branch (or creates a PR when none exists) but deliberately does not create `v4.0.0`. For this initial release, the current GRACE 4 PR already contains the `4.0.0` version surfaces, so do not rerun the bump after merge.
+`release:bump X.Y.Z` performs exact local and remote target-tag checks, commits and pushes the version surfaces to the release branch, and finds or creates its PR to protected `main`. It deliberately does not create `vX.Y.Z` before the PR is merged.
 
 After the required checks pass and the PR is merged:
 
 ```bash
 git switch main
 git pull --ff-only origin main
-bun run release:finalize 4.0.0
+bun run release:finalize X.Y.Z
 ```
 
-Stable preparation refuses an existing local or remote `v4.0.0` tag or existing `4.0.0` changelog block before mutation. Post-merge finalization refuses any content drift from `origin/main` and is recovery-aware only for an exact local tag left by a prior failed tag push.
+Stable preparation refuses an existing local or remote target tag or target-version changelog block before mutation. Post-merge finalization refuses any content drift from `origin/main` and is recovery-aware only for an exact local tag left by a prior failed tag push.
 
 The publish workflow fetches full history. Stable tags must resolve to the exact fetched `origin/main` commit, and the stable npm/GitHub job requires approval through the protected `stable-release` environment. Repository settings must keep explicit environment deployment policies for branch `main` and tags `v*`; keep `main` protected with required `validate`, `windows-compatibility`, and `dart-adapter` checks but no mandatory PR approval; and keep an active tag ruleset preventing deletion or non-fast-forward updates of `v*` tags. Prerelease tags remain on their explicit npm identifier channel such as `rc` and create GitHub prereleases.
 

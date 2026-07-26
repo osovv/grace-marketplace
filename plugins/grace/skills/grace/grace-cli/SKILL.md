@@ -4,6 +4,8 @@ description: Operate the GRACE 4 CLI for .grace linting, status, module navigati
 ---
 
 <skill>
+<installation_contract>Invoke the installed stable `grace` binary directly. If it is missing, install it with `bun add -g @osovv/grace-cli`. Do not default to `bunx`, `npx`, or the `rc` dist-tag.</installation_contract>
+
 <commands>
 - Current lint: `grace lint --path PROJECT --assertions current`
 - Selected baseline: `grace lint --path PROJECT --change C-ID --assertions baseline` (add `--run-commands` when the baseline declares `MustPassCommand`)
