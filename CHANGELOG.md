@@ -1,3 +1,11 @@
+## <small>4.0.2 (2026-07-26)</small>
+
+### Summary
+
+This release updates the CLI installation documentation and skill contracts to use the stable `bun add -g @osovv/grace-cli` command instead of the release-candidate `@rc` dist-tag, and instructs agents to invoke the installed stable `grace` binary directly rather than defaulting to `bunx` or `npx`. The RELEASING.md guide is also simplified to generic stable version instructions, removing GRACE 4 release-candidate-specific steps and example version numbers, so contributors follow a consistent release process regardless of version. These changes ensure users and agents always target the current stable release, reducing confusion and installation errors as GRACE 4 moves past the release-candidate phase.
+
+* docs(cli): use stable install commands ([b3a2cc9](https://github.com/osovv/grace-marketplace/commit/b3a2cc9))
+
 ## <small>4.0.1 (2026-07-26)</small>
 
 ### Summary
