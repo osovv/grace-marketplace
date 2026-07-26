@@ -1,3 +1,11 @@
+## <small>4.0.1 (2026-07-26)</small>
+
+### Summary
+
+This release fixes the health query engine to correctly recognize required log markers when they are emitted through identifier-safe constants, such as template string variables or assigned variable names, within nested block structures. Previously, the marker validation could miss evidence when a marker string was stored in a variable rather than inlined, leading to false health blockers, and nested semantic blocks could be misreported as overlapping. The improved block parser now handles proper nesting without false positives and reliably credits evidence from constant-assigned marker references, making module health checks more accurate for real-world runtime code patterns.
+
+* fix(query): support constant markers and nested blocks ([7746ff6](https://github.com/osovv/grace-marketplace/commit/7746ff6))
+
 ## <small>4.0.0 (2026-07-26)</small>
 
 ### Summary
