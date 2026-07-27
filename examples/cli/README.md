@@ -17,7 +17,7 @@ grace lint --path /path/to/project --change C-ADD-AUTH --assertions target --run
 grace lint --path /path/to/project --change C-ADD-AUTH --assertions final --run-commands
 ```
 
-Current mode validates durable state. Baseline, target, and final modes require one approved identity-matched active change. Final mode is the apply/archive gate: it performs full project validation, evaluates the selected target, preserves unrelated approved baseline checks, and skips only the selected plan's superseded baseline. `MustPassCommand` remains unevaluated unless `--run-commands` is supplied.
+Current mode is the active-baseline preflight and should run only before observed writes. Baseline, target, and final modes require one approved identity-matched active change. Final mode is the outer apply/archive gate: it performs full project validation, evaluates the selected target, preserves unrelated approved baseline checks, and skips only the selected plan's superseded baseline. `MustPassCommand` remains unevaluated unless `--run-commands` is supplied and must contain leaf project checks rather than nested GRACE lifecycle commands.
 
 ## Parallel-Safe Preflight
 

@@ -32,6 +32,6 @@ The direct `C-*` wrapper must contain exactly one meaningful `Summary`, `Goals`,
 <hard_rules>
 - `spec.xml` is the source of truth for `grace-plan`; design context never adds requirements.
 - Do not implement code, mutate current graph/verification state, or create retroactive change bundles.
-- Recommend `grace lint --path <project-root> --assertions current` after writing the bundle.
+- Recommend `grace lint --path <project-root> --assertions current` as a pre-implementation active-baseline check after writing the bundle; never present it as target or final evidence.
 </hard_rules>
 </skill>

@@ -113,7 +113,7 @@ export const lintCommand = defineCommand({
     },
     assertions: {
       type: "string",
-      description: "Assertion mode: current, baseline, target, or final",
+      description: "Assertion mode: current (pre-write active baselines), baseline, target, or final",
       default: "current",
     },
     runCommands: {

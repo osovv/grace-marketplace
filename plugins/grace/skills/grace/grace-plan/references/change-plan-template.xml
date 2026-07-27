@@ -10,6 +10,9 @@
       <MustVerify>
         <Module>M-TARGET-MODULE</Module>
       </MustVerify>
+      <MustPassCommand>
+        <Command>bun run check</Command>
+      </MustPassCommand>
     </TargetAssertions>
     <DurableScope>
       <GraphAnchors>

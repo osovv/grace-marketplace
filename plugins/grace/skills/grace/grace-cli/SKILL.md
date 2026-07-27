@@ -7,7 +7,7 @@ description: Operate the GRACE 4 CLI for .grace linting, status, module navigati
 <installation_contract>Invoke the installed stable `grace` binary directly. If it is missing, install it with `bun add -g @osovv/grace-cli`. Do not default to `bunx`, `npx`, or the `rc` dist-tag.</installation_contract>
 
 <commands>
-- Current lint: `grace lint --path PROJECT --assertions current`
+- Active-baseline preflight before observed writes: `grace lint --path PROJECT --assertions current`
 - Selected baseline: `grace lint --path PROJECT --change C-ID --assertions baseline` (add `--run-commands` when the baseline declares `MustPassCommand`)
 - Selected target: `grace lint --path PROJECT --change C-ID --assertions target --run-commands`
 - Final execution gate: `grace lint --path PROJECT --change C-ID --assertions final --run-commands`
@@ -15,6 +15,8 @@ description: Operate the GRACE 4 CLI for .grace linting, status, module navigati
 - Status: `grace status --path PROJECT --with modules --json`
 - Navigation: `grace module find|show`, `grace verification find|show`, and `grace file show`.
 </commands>
+
+<lifecycle_command_contract>`current` evaluates active approved baselines and is not end-state evidence. Keep `MustPassCommand` entries as leaf project checks; do not nest `grace lint`, `grace status`, or another GRACE lifecycle command inside plan assertions. Run selected target/final lint externally.</lifecycle_command_contract>
 
 <failure_contract>
 Lint, status, and navigation commands validate before returning records. JSON argument/runtime failures are one `{ "schemaVersion": "1.0.0", "ok": false, "error": { ... } }` object on stdout. Text failures are one concise actionable line with a nonzero exit code and no stack trace.

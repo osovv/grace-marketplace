@@ -123,6 +123,12 @@ export function extractAssertionsWithIssues(
       if (!extraction.assertion) {
         continue;
       }
+      const phaseIssues = validateAssertionPhase(planFile, section, extraction.assertion);
+      issues.push(...phaseIssues);
+      if (phaseIssues.length > 0) {
+        validAssertions += 1;
+        continue;
+      }
       assertions.push({
         ...extraction.assertion,
         file: planFile,
@@ -135,6 +141,25 @@ export function extractAssertionsWithIssues(
   }
 
   return { assertions, issues };
+}
+
+function validateAssertionPhase(
+  planFile: string,
+  section: "BaselineAssertions" | "TargetAssertions",
+  assertion: Omit<GraceAssertion, "file">,
+): Grace4Issue[] {
+  if (section !== "TargetAssertions" || assertion.kind !== "MustPassCommand") {
+    return [];
+  }
+
+  return assertion.values
+    .filter((command) => /(?:^|\s)--assertions(?:\s+|=)(?:current|["']current["'])(?=\s|$|[;&|])/i.test(command))
+    .map((command) => issue(
+      "error",
+      "assertion.phase-incompatible-command",
+      planFile,
+      `TargetAssertions MustPassCommand must not invoke --assertions current: ${command}. Current mode evaluates active approved baselines and becomes stale after target writes; keep MustPassCommand as leaf project evidence and run selected target/final lint as the outer gate.`,
+    ));
 }
 
 function evaluateMustOwn(assertion: GraceAssertion, context: AssertionContext): Grace4Issue[] {

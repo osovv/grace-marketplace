@@ -343,6 +343,43 @@ describe("lintGraceProject", () => {
     expect(JSON.parse(Buffer.from(cli.stdout).toString("utf8")).assertionMode).toBe("target");
   });
 
+  it("rejects target command evidence that recursively invokes current baseline lint", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeApprovedChange(
+      root,
+      "C-PHASE-CONFLICT",
+      `<MustExist><Value>M-EXAMPLE</Value></MustExist>`,
+      `<MustPassCommand><Command>grace lint --path . --assertions current</Command></MustPassCommand>`,
+    );
+
+    const current = lintGraceProject(root);
+    const issue = current.issues.find((item) => item.code === "assertion.phase-incompatible-command");
+    expect(issue?.message).toContain("leaf project evidence");
+    expect(issue?.title).toContain("Phase-Incompatible");
+
+    const final = lintGraceProject(root, { assertionMode: "final", changeId: "C-PHASE-CONFLICT", runCommands: true });
+    expect(final.issues.map((item) => item.code)).toContain("assertion.phase-incompatible-command");
+    expect(final.issues.map((item) => item.code)).not.toContain("assertion.MustPassCommand");
+  });
+
+  it("does not apply new phase policy retroactively to archived plans", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(
+      root,
+      ".grace/changes/archive/C-HISTORICAL/spec.xml",
+      `<GraceChangeSpec graceVersion="4.0" status="applied"><C-HISTORICAL><Summary>Historical change.</Summary><Goals><Goal>Preserve history.</Goal></Goals><Constraints><Constraint>Do not rewrite archives.</Constraint></Constraints><NonGoals><NonGoal>New behavior.</NonGoal></NonGoals><AcceptanceCriteria><Criterion>History remains readable.</Criterion></AcceptanceCriteria><AffectedAreas><M-EXAMPLE /></AffectedAreas><VerificationIntent><ExpectedCommand>bun test</ExpectedCommand></VerificationIntent></C-HISTORICAL></GraceChangeSpec>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/changes/archive/C-HISTORICAL/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="applied"><C-HISTORICAL><IntentSummary>Historical plan.</IntentSummary><BaselineAssertions><MustExist><Value>M-EXAMPLE</Value></MustExist></BaselineAssertions><TargetAssertions><MustPassCommand><Command>grace lint --path . --assertions current</Command></MustPassCommand></TargetAssertions><DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>src/example.ts</File></ObservedWriteScope><ImplementationPlan><T-001><Title>Historical task</Title><DependsOn></DependsOn><AcceptanceCriteria><Criterion>Done.</Criterion></AcceptanceCriteria><Verification><Command>bun test</Command></Verification></T-001></ImplementationPlan></C-HISTORICAL></GraceChangePlan>`,
+    );
+
+    expect(lintGraceProject(root).issues.map((item) => item.code)).not.toContain("assertion.phase-incompatible-command");
+  });
+
   it("reserves blocking overlap diagnostics for explicit parallel preflight", () => {
     const root = createProject();
     writeMinimalGrace4Project(root);

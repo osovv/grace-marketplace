@@ -124,6 +124,20 @@ describe("GRACE 4 assertions", () => {
     expect(result.issues.map((item) => item.code)).toContain("assertion.empty-section");
   });
 
+  it("rejects current-mode lifecycle lint nested inside target command evidence", () => {
+    const root = createProject();
+    const planFile = path.join(root, "plan.xml");
+    writeFileSync(
+      planFile,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><TargetAssertions><MustPassCommand><Command>grace lint --path . --assertions current</Command><Command>bun run check</Command></MustPassCommand></TargetAssertions></C-EXAMPLE></GraceChangePlan>`,
+    );
+
+    const result = extractAssertionsWithIssues(planFile, "TargetAssertions");
+    expect(result.issues.map((item) => item.code)).toContain("assertion.phase-incompatible-command");
+    expect(result.assertions).toHaveLength(0);
+    expect(result.issues.map((item) => item.code)).not.toContain("assertion.empty-section");
+  });
+
   it("rejects absolute, traversal, and escaping-symlink File fields during extraction", () => {
     const root = createProject();
     const outside = createProject();

@@ -128,8 +128,8 @@ function validateAssertions(
 
   for (const planFile of planFilesArchived) {
     // Archived plans: syntax only, never semantic (baseline may be stale, target may be superseded by later changes)
-    evaluateSection(result, planFile, "BaselineAssertions", context, false);
-    evaluateSection(result, planFile, "TargetAssertions", context, false);
+    evaluateSection(result, planFile, "BaselineAssertions", context, false, true, false, true);
+    evaluateSection(result, planFile, "TargetAssertions", context, false, true, false, true);
   }
 
   if (assertionMode === "current") {
@@ -157,10 +157,14 @@ function evaluateSection(
   evaluateSemantically: boolean,
   includeExtractionIssues = true,
   skipUnevaluatedCommands = false,
+  skipActivePhaseIssues = false,
 ) {
   const extraction = extractAssertionsWithIssues(planFile, section);
   if (includeExtractionIssues) {
     for (const issue of extraction.issues) {
+      if (skipActivePhaseIssues && issue.code === "assertion.phase-incompatible-command") {
+        continue;
+      }
       addGrace4Issue(result, issue);
     }
   }

@@ -17,7 +17,7 @@ description: Show GRACE 4 project health across .grace context, graph, verificat
 </must_report>
 
 <commands>
-- Current integrity: `grace lint --path PROJECT --assertions current`
+- Pre-implementation active-baseline integrity: `grace lint --path PROJECT --assertions current`
 - Parallel decision: `grace lint --path PROJECT --parallel-preflight`
 - Status snapshot: `grace status --path PROJECT --with modules --json --fail-on errors`
 </commands>
