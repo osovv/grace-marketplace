@@ -131,8 +131,19 @@ function isCommentOnlyLine(line: string) {
   return /^\s*(\/\/|#|--|;+|\*)/.test(line);
 }
 
+/**
+ * Case-insensitive, with the printf/context suffixes those ecosystems use,
+ * because Go, Java, and C# capitalise logger methods: `.Info(`, `.InfoContext(`,
+ * `.Errorf(`. A lowercase-only pattern recognises no emission there at all.
+ *
+ * `severe` is java.util.logging's error level, and the `log*` names are C#
+ * ILogger's (`LogWarning`, `LogInformation`). Without them those two only match
+ * when the receiver happens to be called `logger`, which is not a guarantee.
+ */
 function looksLikeEvidenceEmission(line: string) {
-  return /(console\.|logger\.|tracer\.|trace\s*\(|emit\s*\(|\.(info|warn|error|debug|trace)\s*\()/.test(line);
+  return /(console\.|logger\.|tracer\.|trace\s*\(|emit\s*\(|\.(?:info|warn(?:ing)?|error|debug|trace|severe|log(?:information|warning|error|debug|trace|critical))(?:f|w|ln)?(?:context)?\s*\()/i.test(
+    line,
+  );
 }
 
 /** Extracts the semantic block name encoded at the end of a required log marker. */
@@ -142,9 +153,10 @@ export function parseMarkerBlockName(marker: string) {
 }
 
 /**
- * Returns true when a required marker is emitted directly or through a same-file
- * identifier assigned to that exact marker. Identifier-aware boundaries keep
- * names such as marker$ distinct from marker$Other.
+ * Returns true when a required marker is emitted directly, through a same-file
+ * identifier assigned to that exact marker, or assembled from an identifier
+ * holding a PREFIX of it concatenated with the remainder. Identifier-aware
+ * boundaries keep names such as marker$ distinct from marker$Other.
  */
 export function hasRuntimeMarkerEvidence(text: string, marker: string) {
   const lines = text.split("\n");
@@ -168,10 +180,82 @@ export function hasRuntimeMarkerEvidence(text: string, marker: string) {
     }
   }
 
-  return [...identifiers].some((identifier) => {
-    const identifierUse = new RegExp(`(?<![A-Za-z0-9_$])${escapeRegExp(identifier)}(?![A-Za-z0-9_$])`);
-    return lines.some((line) => !isCommentOnlyLine(line) && looksLikeEvidenceEmission(line) && identifierUse.test(line));
-  });
+  if (
+    [...identifiers].some((identifier) => {
+      // `.` is in the lookbehind so `obj.logger` is not read as a use of a
+      // constant named `logger`. Broadening the emission match to capitalised
+      // methods makes that reachable: `const logger = "<marker>"` plus an
+      // unrelated `obj.logger.Info(...)` would otherwise credit the marker.
+      const identifierUse = new RegExp(`(?<![A-Za-z0-9_$.])${escapeRegExp(identifier)}(?![A-Za-z0-9_$])`);
+      return lines.some((line) => !isCommentOnlyLine(line) && looksLikeEvidenceEmission(line) && identifierUse.test(line));
+    })
+  ) {
+    return true;
+  }
+
+  return hasConcatenatedMarkerEvidence(lines, marker);
+}
+
+/**
+ * Credits `logModule+"[fn][BLOCK_X]"`, where the whole marker is neither on the
+ * line nor bound to an identifier. Each binding gives one way the marker could
+ * split: its value must prefix the marker, the remainder must be on the line.
+ */
+function hasConcatenatedMarkerEvidence(lines: string[], marker: string) {
+  const constants = new Map<string, Set<string>>();
+  // The name must open the line, follow a declaration keyword, or follow `( , ;`.
+  // Allowing any whitespace before it let Go's `var prefix string = "..."` bind
+  // the TYPE token: `:?=` fails at `string`, the engine re-scans, and `string`
+  // becomes the name. A line using that token for anything else - `string(body)` -
+  // then credits a marker nothing emitted.
+  const binding =
+    /(?:^\s*|[(,;]\s*|\b(?:const|let|var|final|static)\s+)([A-Za-z_$][A-Za-z0-9_$]*)\s*(?::[^=\n]+?)?:?=\s*(["'`])((?:\\.|(?!\2)[^\\])*)\2/g;
+
+  for (const line of lines) {
+    if (isCommentOnlyLine(line)) {
+      continue;
+    }
+    for (const match of line.matchAll(binding)) {
+      const name = match[1]!;
+      if (!constants.has(name)) {
+        constants.set(name, new Set());
+      }
+      constants.get(name)!.add(match[3]!);
+    }
+  }
+
+  // The lookbehind on `.` keeps `d.log` from counting as a use of `log`.
+  const boundary = (name: string) => `(?<![A-Za-z0-9_$.])${escapeRegExp(name)}(?![A-Za-z0-9_$])`;
+
+  const splits: RegExp[] = [];
+  for (const [name, values] of constants) {
+    for (const value of values) {
+      if (!marker.startsWith(value)) {
+        continue;
+      }
+      const remainder = marker.slice(value.length);
+      if (remainder === "") {
+        // The binding already holds the whole marker; using it is the emission.
+        splits.push(new RegExp(boundary(name)));
+        continue;
+      }
+      // The remainder must ADJOIN the identifier, not merely share the line with
+      // it. Checking both appear anywhere credits `log("… " + p + " … <tail>")`,
+      // where nothing ever assembles the marker - a false pass on a gate whose
+      // whole job is to prove the marker is emitted.
+      splits.push(
+        new RegExp(`(?:${boundary(name)}\\s*\\+\\s*["'\`]|\\$\\{\\s*${escapeRegExp(name)}\\s*\\})${escapeRegExp(remainder)}`),
+      );
+    }
+  }
+
+  if (splits.length === 0) {
+    return false;
+  }
+
+  return lines.some(
+    (line) => !isCommentOnlyLine(line) && looksLikeEvidenceEmission(line) && splits.some((split) => split.test(line)),
+  );
 }
 
 export function collectCodeFiles(root: string, ignoredDirs: string[], currentDir = root): string[] {
