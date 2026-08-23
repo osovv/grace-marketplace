@@ -157,8 +157,9 @@ An optional `.grace-lint.json` file at the project root (next to `.grace`) contr
 Built-in ignored directories:
 
 - VCS metadata: `.git`, `.svn`, `.hg`
-- JavaScript/TypeScript output and caches: `node_modules`, `dist`, `build`, `coverage`, `.next`, `.nuxt`, `.output`, `out`, `.turbo`, `.vite`, `.parcel-cache`, `.svelte-kit`, `.astro`, `storybook-static`, `.cache`, `.yarn`
-- Python bytecode, virtualenvs, and tool caches: `__pycache__`, `venv`, `.venv`, `.tox`, `.nox`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.pyre`, `.pytype`, `htmlcov`, `.eggs`
+- JavaScript/TypeScript output and caches: `node_modules`, `dist`, `build`, `coverage`, `.next`, `.nuxt`, `.output`, `out`, `.turbo`, `.vite`, `.parcel-cache`, `.svelte-kit`, `.astro`, `storybook-static`, `.cache`, `.yarn`, `.nyc_output`, `bower_components`, `jspm_packages`
+- Python bytecode, virtualenvs, and tool caches: `__pycache__`, `venv`, `.venv`, `.tox`, `.nox`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.pyre`, `.pytype`, `htmlcov`, `.eggs`, `.hypothesis`, `.ipynb_checkpoints`, `__pypackages__`, `.pixi`, `cover`
+- Test reports and artifacts: `test-results`, `test-reports`, `playwright-report`, `blob-report`, `allure-results`, `allure-report`, `test-output`
 - JVM and Rust build output: `target`, `.gradle`, `.idea`
 - Vendored dependencies (Go modules, Ruby bundler, PHP Composer): `vendor`
 - Swift/Apple toolchain output and dependencies: `.build`, `Pods`, `Carthage`, `DerivedData`
