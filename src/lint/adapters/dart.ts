@@ -140,8 +140,24 @@ function createEmptyAnalysis(): LanguageAnalysis {
   };
 }
 
+/**
+ * Extracts the analyzer JSON payload from raw stdout. Dart SDK 3.10.8+ can
+ * print tool preamble (e.g. "Running build hooks...") before the JSON when
+ * `dart run` executes inside a package context, so the payload is carved out
+ * instead of parsing the whole stream. Returns the input unchanged when no
+ * JSON object is present, letting JSON.parse surface the original failure.
+ */
+export function sanitizeDartAnalyzerOutput(output: string): string {
+  const start = output.indexOf("{");
+  const end = output.lastIndexOf("}");
+  if (start < 0 || end <= start) {
+    return output;
+  }
+  return output.slice(start, end + 1);
+}
+
 function normalizeResult(output: string): LanguageAnalysis {
-  const parsed = JSON.parse(output) as {
+  const parsed = JSON.parse(sanitizeDartAnalyzerOutput(output)) as {
     exports: string[];
     valueExports: string[];
     typeExports: string[];
@@ -178,10 +194,15 @@ function runDartAnalyzer(filePath: string, text: string): LanguageAnalysis {
   writeFileSync(analyzerFile, DART_ANALYZER_SCRIPT, "utf8");
   try {
     for (const binary of DART_BINARIES) {
+      // Run outside the governed package context: with a pubspec.yaml nearby,
+      // `dart run` can emit tool output ("Running build hooks...") onto stdout
+      // and pollute the analyzer JSON. The script reads the source from stdin
+      // and takes the file path as an argument, so the cwd is irrelevant to it.
       const run = spawnSync(binary, ["run", analyzerFile, filePath], {
         input: Buffer.from(text, "utf8"),
         encoding: "utf8",
         maxBuffer: 1024 * 1024,
+        cwd: temporaryDirectory,
       });
 
       if (run.error) {
