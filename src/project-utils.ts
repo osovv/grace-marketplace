@@ -51,15 +51,64 @@ export type GovernedFileAnalysis = {
   issues: LintIssue[];
 };
 
+/**
+ * Directory names pruned from every project walk, matched at any depth.
+ * Covers VCS metadata, build output, dependency caches, vendored code,
+ * and tool scratch space across the ecosystems GRACE analyzes.
+ */
 const DEFAULT_IGNORED_DIRS = new Set([
+  // VCS metadata
   ".git",
+  ".svn",
+  ".hg",
+  // JavaScript/TypeScript output and caches
   "node_modules",
   "dist",
   "build",
   "coverage",
   ".next",
+  ".nuxt",
+  ".output",
+  "out",
   ".turbo",
+  ".vite",
+  ".parcel-cache",
+  ".svelte-kit",
+  ".astro",
+  "storybook-static",
   ".cache",
+  ".yarn",
+  // Python bytecode, virtualenvs, tool caches, and coverage reports
+  "__pycache__",
+  "venv",
+  ".venv",
+  ".tox",
+  ".nox",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".pyre",
+  ".pytype",
+  "htmlcov",
+  ".eggs",
+  // JVM and Rust build output, Gradle cache, IDE metadata
+  "target",
+  ".gradle",
+  ".idea",
+  // Vendored dependencies (Go modules, Ruby bundler, PHP Composer)
+  "vendor",
+  // Swift/Apple toolchain output and dependencies
+  ".build",
+  "Pods",
+  "Carthage",
+  "DerivedData",
+  // Dart/Flutter tooling cache
+  ".dart_tool",
+  // Ruby/general scratch space and bundler config
+  "tmp",
+  ".bundle",
+  // Editor metadata
+  ".vscode",
 ]);
 
 
