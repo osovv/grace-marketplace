@@ -1,7 +1,10 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, test } from "bun:test";
 
-import { createDartAdapter } from "./dart";
+import { createDartAdapter, sanitizeDartAnalyzerOutput } from "./dart";
 
 const hasDart = (() => {
   const result = spawnSync("dart", ["--version"], { stdio: "ignore" });
@@ -60,5 +63,42 @@ describe("DartAdapter", () => {
     expect(result.exports.has("Greeting")).toBe(true);
     expect(result.exports.has("greet")).toBe(true);
     expect(result.exportConfidence).toBe("heuristic");
+  });
+
+  test.skipIf(!hasDart)("analyzes a governed file inside a Dart package context", () => {
+    // Regression for #29: inside a package (pubspec.yaml nearby) `dart run` can
+    // print tool preamble onto stdout. The analyzer must run outside that
+    // context and still return a parsed result.
+    const packageDir = mkdtempSync(path.join(os.tmpdir(), "grace-dart-package-"));
+    writeFileSync(path.join(packageDir, "pubspec.yaml"), "name: grace_fixture\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\n");
+    const governedFile = path.join(packageDir, "widget.dart");
+
+    const result = adapter.analyze(governedFile, "class Widget {}\nString build() => 'ok';\n");
+    expect(result.adapterId).toBe("dart");
+    expect(result.exports.has("Widget")).toBe(true);
+    expect(result.exports.has("build")).toBe(true);
+  });
+});
+
+describe("sanitizeDartAnalyzerOutput", () => {
+  const payload = JSON.stringify({ exports: ["Widget"], valueExports: ["Widget"] });
+
+  it("keeps a clean JSON payload unchanged", () => {
+    expect(sanitizeDartAnalyzerOutput(payload)).toBe(payload);
+  });
+
+  it("strips the Dart SDK tool preamble before the JSON", () => {
+    const polluted = `Running build hooks...Running build hooks...Running\n${payload}`;
+    expect(sanitizeDartAnalyzerOutput(polluted)).toBe(payload);
+  });
+
+  it("carves the payload out of surrounding noise on both sides", () => {
+    const polluted = `Resolving dependencies...\n${payload}\nDone.`;
+    expect(sanitizeDartAnalyzerOutput(polluted)).toBe(payload);
+  });
+
+  it("returns the input unchanged when no JSON object is present", () => {
+    expect(sanitizeDartAnalyzerOutput("Running build hooks...")).toBe("Running build hooks...");
+    expect(sanitizeDartAnalyzerOutput("")).toBe("");
   });
 });
