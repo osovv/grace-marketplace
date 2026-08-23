@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "bun:test";
@@ -490,5 +490,33 @@ describe("lintGraceProject", () => {
     );
     const result = lintGraceProject(root);
     expect(result.issues.filter((issue) => issue.code.startsWith("design-context.") || issue.code === "artifact.invalid-root-tag" || issue.code === "change.invalid-root-tag")).toHaveLength(0);
+  });
+});
+
+describe("lintGraceProject unreadable directories", () => {
+  const permissionsUnsupported = process.platform === "win32" || process.getuid?.() === 0;
+
+  it.skipIf(permissionsUnsupported)("warns walk.unreadable-directory and continues instead of aborting", () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(root, "blocked/hidden.ts", "export const hidden = true;\n");
+    const baseline = lintGraceProject(root);
+
+    const blockedDir = path.join(root, "blocked");
+    chmodSync(blockedDir, 0o000);
+
+    try {
+      const result = lintGraceProject(root);
+      const walkIssues = result.issues.filter((issue) => issue.code === "walk.unreadable-directory");
+      expect(walkIssues).toHaveLength(1);
+      expect(walkIssues[0]?.severity).toBe("warning");
+      expect(walkIssues[0]?.file).toBe(blockedDir);
+      expect(walkIssues[0]?.message).toContain(blockedDir);
+      // The unreadable subtree drops out of the checked set; nothing else changes.
+      expect(result.filesChecked).toBe(baseline.filesChecked - 1);
+      expect(result.summary.errors).toBe(baseline.summary.errors);
+    } finally {
+      chmodSync(blockedDir, 0o755);
+    }
   });
 });

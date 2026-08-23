@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { type Dirent, existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { evaluateAssertion, extractAssertionsWithIssues } from "../grace4/assertions";
@@ -8,7 +8,7 @@ import { buildGraphProjection, buildVerificationProjection, type GraphProjection
 import { collectActiveChangeScopes, createDurableOwnershipIndex, detectScopeOverlaps, detectUnsafeConcurrentExecution } from "../grace4/scope";
 import { ANCHOR_PATTERNS, type Grace4Issue, type Grace4ProjectPaths } from "../grace4/types";
 import { readGraceXmlArtifact } from "../grace4/xml";
-import { analyzeGovernedFile, collectCodeFiles, hasGraceMarkers } from "../project-utils";
+import { analyzeGovernedFile, collectCodeFiles, describeUnreadableDirectory, hasGraceMarkers, type UnreadableDirectoryHandler } from "../project-utils";
 import { withLintIssueGuide } from "./catalog";
 import { loadGraceLintConfig } from "./config";
 import type { LintIssue, LintOptions, LintProfile, LintResult } from "./types";
@@ -58,6 +58,17 @@ function finalizeResult(result: LintResult): LintResult {
   return result;
 }
 
+function reportUnreadableDirectory(result: LintResult): UnreadableDirectoryHandler {
+  return (directory, error) => {
+    addIssue(result, {
+      severity: "warning",
+      code: "walk.unreadable-directory",
+      file: directory,
+      message: describeUnreadableDirectory(directory, error),
+    });
+  };
+}
+
 function validateGovernedFiles(result: LintResult, root: string): void {
   const { config, issues } = loadGraceLintConfig(root);
   for (const configIssue of issues) {
@@ -67,7 +78,7 @@ function validateGovernedFiles(result: LintResult, root: string): void {
     return;
   }
 
-  const files = collectCodeFiles(root, [".grace", ...(config?.ignoredDirs ?? [])]);
+  const files = collectCodeFiles(root, [".grace", ...(config?.ignoredDirs ?? [])], root, reportUnreadableDirectory(result));
   result.filesChecked = files.length;
   for (const file of files) {
     const text = readText(file);
@@ -85,14 +96,21 @@ function readText(file: string) {
   return readFileSync(file, "utf8");
 }
 
-function listPlanFiles(directory: string): string[] {
+function listPlanFiles(directory: string, onUnreadableDirectory?: UnreadableDirectoryHandler): string[] {
   if (!existsSync(directory)) {
     return [];
   }
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch (error) {
+    onUnreadableDirectory?.(directory, error);
+    return [];
+  }
+  return entries.flatMap((entry) => {
     const entryPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      return listPlanFiles(entryPath);
+      return listPlanFiles(entryPath, onUnreadableDirectory);
     }
     return entry.isFile() && entry.name === "plan.xml" ? [entryPath] : [];
   });
@@ -282,8 +300,9 @@ export function lintGraceProject(projectRoot: string, options: LintOptions = {})
     addGrace4Issue(result, issue);
   }
 
-  const planFilesActive = [...listPlanFiles(paths.changesActiveDir)];
-  const planFilesArchived = [...listPlanFiles(paths.changesArchiveDir)];
+  const unreadableDirectory = reportUnreadableDirectory(result);
+  const planFilesActive = [...listPlanFiles(paths.changesActiveDir, unreadableDirectory)];
+  const planFilesArchived = [...listPlanFiles(paths.changesArchiveDir, unreadableDirectory)];
   validateAssertions(result, paths, planFilesActive, planFilesArchived, graph, verification, root, options);
 
   return finalizeResult(result);

@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, test } from "bun:test";
 
-import { analyzeGovernedFile, hasRuntimeMarkerEvidence, parseGovernedFile } from "./project-utils";
+import { analyzeGovernedFile, collectCodeFiles, describeUnreadableDirectory, hasRuntimeMarkerEvidence, parseGovernedFile } from "./project-utils";
 
 function contract(mapMode: "EXPORTS" | "LOCALS" | "SUMMARY" | "NONE", moduleMap = ""): string {
   return `// START_MODULE_CONTRACT
@@ -313,5 +313,55 @@ console.log(JSON.stringify(result.issues));`;
     const issues = JSON.parse(Buffer.from(run.stdout).toString("utf8")) as Array<{ code: string }>;
     expect(issues.map((issue) => issue.code)).toContain("analysis.adapter-failed");
     expect(issues.map((issue) => issue.code)).not.toContain("analysis.runtime-missing");
+  });
+});
+
+describe("unreadable directory walking", () => {
+  const permissionsUnsupported = process.platform === "win32" || process.getuid?.() === 0;
+
+  it("describes walk failures with the directory and errno code", () => {
+    const errno = Object.assign(new Error("EPERM: operation not permitted"), { code: "EACCES" });
+    expect(describeUnreadableDirectory("/project/blocked", errno)).toBe(
+      "Directory '/project/blocked' could not be listed (EACCES); its contents were not checked.",
+    );
+    expect(describeUnreadableDirectory("/project/blocked", new Error("boom"))).toBe(
+      "Directory '/project/blocked' could not be listed (unknown); its contents were not checked.",
+    );
+  });
+
+  it.skipIf(permissionsUnsupported)("skips unreadable directories instead of throwing", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-walk-"));
+    writeFileSync(path.join(root, "visible.ts"), "export const visible = true;\n");
+    mkdirSync(path.join(root, "readable"));
+    writeFileSync(path.join(root, "readable", "other.ts"), "export const other = true;\n");
+    mkdirSync(path.join(root, "blocked"));
+    writeFileSync(path.join(root, "blocked", "hidden.ts"), "export const hidden = true;\n");
+    chmodSync(path.join(root, "blocked"), 0o000);
+
+    try {
+      const reported: Array<{ directory: string; error: unknown }> = [];
+      const files = collectCodeFiles(root, [], root, (directory, error) => reported.push({ directory, error }));
+
+      expect(files.sort()).toEqual([path.join(root, "readable", "other.ts"), path.join(root, "visible.ts")].sort());
+      expect(reported).toHaveLength(1);
+      expect(reported[0]?.directory).toBe(path.join(root, "blocked"));
+
+      // Without a handler the walk still must not abort.
+      expect(collectCodeFiles(root, []).sort()).toEqual([path.join(root, "readable", "other.ts"), path.join(root, "visible.ts")].sort());
+    } finally {
+      chmodSync(path.join(root, "blocked"), 0o755);
+    }
+  });
+
+  it.skipIf(permissionsUnsupported)("still throws nothing for readable roots when a handler is attached", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-walk-ok-"));
+    mkdirSync(path.join(root, "src"));
+    writeFileSync(path.join(root, "src", "example.ts"), "export const example = true;\n");
+
+    const reported: string[] = [];
+    const files = collectCodeFiles(root, [], root, (directory) => reported.push(directory));
+
+    expect(files).toEqual([path.join(root, "src", "example.ts")]);
+    expect(reported).toEqual([]);
   });
 });

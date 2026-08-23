@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { type Dirent, existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { ADAPTER_BACKED_EXTENSIONS, CODE_EXTENSIONS, LANGUAGE_ADAPTERS } from "./language-registry";
 import { LanguageRuntimeMissingError, type LanguageAnalysis, type LintIssue, type MapMode, type ModuleRole } from "./lint/types";
@@ -258,10 +258,34 @@ function hasConcatenatedMarkerEvidence(lines: string[], marker: string) {
   );
 }
 
-export function collectCodeFiles(root: string, ignoredDirs: string[], currentDir = root): string[] {
+/** Notified when a directory cannot be listed during a project walk. */
+export type UnreadableDirectoryHandler = (directory: string, error: unknown) => void;
+
+/** Stable, diagnosable message for a directory that could not be listed. */
+export function describeUnreadableDirectory(directory: string, error: unknown): string {
+  const code = error !== null && typeof error === "object" && "code" in error && typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : "unknown";
+  return `Directory '${directory}' could not be listed (${code}); its contents were not checked.`;
+}
+
+export function collectCodeFiles(
+  root: string,
+  ignoredDirs: string[],
+  currentDir = root,
+  onUnreadableDirectory?: UnreadableDirectoryHandler,
+): string[] {
   const files: string[] = [];
   const ignoredDirSet = new Set([...DEFAULT_IGNORED_DIRS, ...ignoredDirs]);
-  const entries = readdirSync(currentDir, { withFileTypes: true });
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(currentDir, { withFileTypes: true });
+  } catch (error) {
+    // An unreadable directory (EACCES/EPERM, sandbox leftovers, chmod 000) must
+    // not abort the whole walk: skip it and let the caller surface a warning.
+    onUnreadableDirectory?.(currentDir, error);
+    return files;
+  }
 
   for (const entry of entries) {
     if (entry.isDirectory()) {
@@ -269,7 +293,7 @@ export function collectCodeFiles(root: string, ignoredDirs: string[], currentDir
         continue;
       }
 
-      files.push(...collectCodeFiles(root, ignoredDirs, path.join(currentDir, entry.name)));
+      files.push(...collectCodeFiles(root, ignoredDirs, path.join(currentDir, entry.name), onUnreadableDirectory));
       continue;
     }
 
