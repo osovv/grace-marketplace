@@ -81,6 +81,9 @@ const DEFAULT_IGNORED_DIRS = new Set([
   ".nyc_output",
   "bower_components",
   "jspm_packages",
+  ".stryker-tmp",
+  ".serverless",
+  ".docusaurus",
   // Python bytecode, virtualenvs, tool caches, and coverage reports
   "__pycache__",
   "venv",
@@ -99,7 +102,8 @@ const DEFAULT_IGNORED_DIRS = new Set([
   "__pypackages__",
   ".pixi",
   "cover",
-  // Test reports and artifacts (Playwright, Allure, TestNG, common CI layout)
+  // Test reports and artifacts (Playwright, Allure, TestNG, Newman, Cucumber,
+  // common CI layout)
   "test-results",
   "test-reports",
   "playwright-report",
@@ -107,6 +111,9 @@ const DEFAULT_IGNORED_DIRS = new Set([
   "allure-results",
   "allure-report",
   "test-output",
+  "newman",
+  "cucumber-report",
+  "cucumber-reports",
   // JVM and Rust build output, Gradle cache, IDE metadata
   "target",
   ".gradle",
