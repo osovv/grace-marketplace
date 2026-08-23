@@ -33,6 +33,11 @@ const EXACT_GUIDES: Record<string, Omit<LintIssueGuide, "code">> = {
     explanation: "The governed file uses a language adapter that requires its language runtime on PATH. GRACE fails closed instead of silently dropping export/local parity checks.",
     remediation: ["Install the runtime named in the issue message and ensure it is available on PATH.", "If the file should not be governed in this environment, exclude it explicitly rather than relying on incomplete analysis."],
   },
+  "walk.unreadable-directory": {
+    title: "Unreadable Directory Skipped",
+    explanation: "A directory could not be listed while walking the project, so the files inside it were not checked. This usually means restrictive permissions or a leftover sandbox directory; it does not make the GRACE project itself invalid.",
+    remediation: ["Restore read permission on the directory if it should be governed.", "If the directory is build output or a sandbox leftover, add it to ignoredDirs in .grace-lint.json or remove it."],
+  },
   "scope.durable-overlap": {
     title: "Durable Scope Overlap",
     explanation: "Two or more active change scopes claim overlapping durable regions, which creates a data-contention risk if executed in parallel.",

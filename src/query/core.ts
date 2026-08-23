@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { type Dirent, existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { buildGraphProjection, buildVerificationProjection, type GraphAnchorRecord, type VerificationAnchorRecord } from "../grace4/projections";
@@ -6,8 +6,9 @@ import { validateGrace4Project } from "../grace4/grammar";
 import { detectGraceProjectKind, formatGrace3MigrationGuidance, resolveGrace4Paths } from "../grace4/project";
 import { extractAssertionsWithIssues } from "../grace4/assertions";
 import { collectActiveChangeScopes } from "../grace4/scope";
+import type { Grace4Issue } from "../grace4/types";
 import { loadGraceLintConfig } from "../lint/config";
-import { collectCodeFiles, hasGraceMarkers, parseGovernedFile, type FileMarkupRecord } from "../project-utils";
+import { collectCodeFiles, describeUnreadableDirectory, hasGraceMarkers, parseGovernedFile, type FileMarkupRecord, type UnreadableDirectoryHandler } from "../project-utils";
 import { GraceCommandError } from "./errors";
 import type {
   GraceArtifactIndex,
@@ -36,7 +37,7 @@ function normalizeInputPath(root: string, input: string) {
   return toPosixPath(input);
 }
 
-function loadGovernedFiles(root: string) {
+function loadGovernedFiles(root: string, onUnreadableDirectory?: UnreadableDirectoryHandler) {
   const { config, issues } = loadGraceLintConfig(root);
   const configErrors = issues.filter((issue) => issue.severity === "error");
   if (configErrors.length > 0) {
@@ -46,7 +47,7 @@ function loadGovernedFiles(root: string) {
   }
 
   const files: FileMarkupRecord[] = [];
-  for (const filePath of collectCodeFiles(root, config?.ignoredDirs ?? [])) {
+  for (const filePath of collectCodeFiles(root, config?.ignoredDirs ?? [], root, onUnreadableDirectory)) {
     const text = readFileSync(filePath, "utf8");
     if (hasGraceMarkers(text)) {
       files.push(parseGovernedFile(root, filePath, text));
@@ -55,18 +56,25 @@ function loadGovernedFiles(root: string) {
   return files.sort((left, right) => left.path.localeCompare(right.path));
 }
 
-function listPlanFiles(directory: string): string[] {
+function listPlanFiles(directory: string, onUnreadableDirectory?: UnreadableDirectoryHandler): string[] {
   if (!existsSync(directory)) return [];
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch (error) {
+    onUnreadableDirectory?.(directory, error);
+    return [];
+  }
+  return entries.flatMap((entry) => {
     const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) return listPlanFiles(entryPath);
+    if (entry.isDirectory()) return listPlanFiles(entryPath, onUnreadableDirectory);
     return entry.isFile() && entry.name === "plan.xml" ? [entryPath] : [];
   });
 }
 
-function collectOperationalValidationErrors(paths: ReturnType<typeof resolveGrace4Paths>) {
+function collectOperationalValidationErrors(paths: ReturnType<typeof resolveGrace4Paths>, onUnreadableDirectory?: UnreadableDirectoryHandler) {
   const assertionIssues = [paths.changesActiveDir, paths.changesArchiveDir]
-    .flatMap(listPlanFiles)
+    .flatMap((directory) => listPlanFiles(directory, onUnreadableDirectory))
     .flatMap((planFile) => (["BaselineAssertions", "TargetAssertions"] as const)
       .flatMap((section) => extractAssertionsWithIssues(planFile, section).issues));
   const scopeIssues = collectActiveChangeScopes(paths).flatMap((scope) => scope.issues);
@@ -113,7 +121,11 @@ export function loadGraceArtifactIndex(projectRoot: string): GraceArtifactIndex 
   if (validationErrors.length > 0) {
     throw invalidProjectError(validationErrors.map((issue) => issue.code));
   }
-  const operationalErrors = collectOperationalValidationErrors(paths);
+  const walkIssues: Grace4Issue[] = [];
+  const onUnreadableDirectory: UnreadableDirectoryHandler = (directory, error) => {
+    walkIssues.push({ severity: "warning", code: "walk.unreadable-directory", file: directory, message: describeUnreadableDirectory(directory, error) });
+  };
+  const operationalErrors = collectOperationalValidationErrors(paths, onUnreadableDirectory);
   if (operationalErrors.length > 0) {
     throw invalidProjectError(operationalErrors.map((issue) => issue.code));
   }
@@ -123,7 +135,7 @@ export function loadGraceArtifactIndex(projectRoot: string): GraceArtifactIndex 
   if (projectionErrors.length > 0) {
     throw invalidProjectError(projectionErrors.map((issue) => issue.code));
   }
-  const governedFiles = loadGovernedFiles(root);
+  const governedFiles = loadGovernedFiles(root, onUnreadableDirectory);
   const verifications = [...verification.entries.values()].map(toModuleVerificationRecord).sort((left, right) => left.id.localeCompare(right.id));
 
   const modules = [...graph.modules.values()]
@@ -145,7 +157,7 @@ export function loadGraceArtifactIndex(projectRoot: string): GraceArtifactIndex 
       } satisfies Grace4ModuleRecord;
     });
 
-  return { root, graph, verification, modules, verifications, files: governedFiles, issues: [...validation.issues, ...graph.issues, ...verification.issues] };
+  return { root, graph, verification, modules, verifications, files: governedFiles, issues: [...validation.issues, ...graph.issues, ...verification.issues, ...walkIssues] };
 }
 
 function invalidProjectError(issueCodes: string[]): GraceCommandError {
