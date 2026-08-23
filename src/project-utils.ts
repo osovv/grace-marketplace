@@ -1,6 +1,7 @@
 import { type Dirent, existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { ADAPTER_BACKED_EXTENSIONS, CODE_EXTENSIONS, LANGUAGE_ADAPTERS } from "./language-registry";
+import { readCachedAnalysis, writeCachedAnalysis } from "./lint/analysis-cache";
 import { LanguageRuntimeMissingError, type LanguageAnalysis, type LintIssue, type MapMode, type ModuleRole } from "./lint/types";
 
 export type TextSection = {
@@ -457,7 +458,15 @@ export function analyzeGovernedFile(root: string, filePath: string, text: string
   let language: LanguageAnalysis | null = null;
   if (adapter) {
     try {
-      language = adapter.analyze(filePath, text);
+      // Successful analyses are content-cached across runs; failures stay
+      // uncached so environment fixes take effect immediately.
+      const cached = readCachedAnalysis(adapter.id, filePath, text);
+      if (cached) {
+        language = cached;
+      } else {
+        language = adapter.analyze(filePath, text);
+        writeCachedAnalysis(adapter.id, filePath, text, language);
+      }
     } catch (error) {
       issues.push(markupIssue(
         "error",
