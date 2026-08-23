@@ -1,3 +1,18 @@
+## <small>4.0.5 (2026-08-23)</small>
+
+### Summary
+
+Grace CLI 4.0.5 makes linting faster, more robust, and less noisy across ecosystems. The default ignored-directory list grows to 64 well-known tooling, build-output, and test-report names (covering Playwright, Allure, Newman, Cucumber, Stryker, Python, and JavaScript/TypeScript tooling), so grace lint automatically skips generated artifacts without extra configuration. Repeated lint runs and CI re-runs are now faster thanks to a content-addressed cache of per-file language analyses that lives outside the project, never touches governed .grace state, and invalidates automatically when files change. Reliability fixes include skipping unreadable directories with a warning instead of aborting the whole command, fixing Dart analysis for Flutter projects where the SDK emits tool preamble on stdout, and correctly crediting runtime log-marker evidence from Go, Java, and C# loggers in addition to JavaScript. The optional .grace-lint.json configuration file is now documented for projects that need custom ignore rules.
+
+* feat(cli): expand default ignored directories across ecosystems ([3019de6](https://github.com/osovv/grace-marketplace/commit/3019de6))
+* feat(cli): ignore Newman, Cucumber, Stryker, and remaining tool output ([56f2745](https://github.com/osovv/grace-marketplace/commit/56f2745))
+* feat(cli): ignore test report artifacts and remaining ecosystem directories ([69da5f6](https://github.com/osovv/grace-marketplace/commit/69da5f6))
+* feat(lint): cache per-file language analyses across runs ([47d8f92](https://github.com/osovv/grace-marketplace/commit/47d8f92))
+* fix(cli): skip unreadable directories with a warning instead of aborting ([b0f12be](https://github.com/osovv/grace-marketplace/commit/b0f12be)), closes [#31](https://github.com/osovv/grace-marketplace/issues/31)
+* fix(dart): run analyzer outside package context and tolerate stdout preamble ([bf98471](https://github.com/osovv/grace-marketplace/commit/bf98471)), closes [#29](https://github.com/osovv/grace-marketplace/issues/29)
+* fix(lint): credit log markers emitted by non-JS loggers (e.g. Go or Java) ([b9d7507](https://github.com/osovv/grace-marketplace/commit/b9d7507))
+* docs(cli): document .grace-lint.json configuration ([a14dbc6](https://github.com/osovv/grace-marketplace/commit/a14dbc6))
+
 ## <small>4.0.4 (2026-07-27)</small>
 
 ### Summary
