@@ -150,9 +150,21 @@ An optional `.grace-lint.json` file at the project root (next to `.grace`) contr
 }
 ```
 
-- `ignoredDirs` lists directory names to prune from file collection, on top of the built-in set (`.git`, `node_modules`, `dist`, `build`, `coverage`, `.next`, `.turbo`, `.cache`). Names match at any depth; globs and paths are not supported.
+- `ignoredDirs` lists directory names to prune from file collection, on top of the built-in set below. Names match at any depth; globs and paths are not supported.
 - The file must be a JSON object with supported keys only. Broken JSON, a non-object shape, an unknown key, or a non-array `ignoredDirs` is a `config.*` lint error, and query commands refuse to run until the file is fixed.
 - A directory that cannot be listed (restrictive permissions, sandbox leftovers) is skipped with a `walk.unreadable-directory` warning instead of aborting the run; add its name to `ignoredDirs` to prune it silently. Explain any of these codes with `grace lint --explain <code>`.
+
+Built-in ignored directories:
+
+- VCS metadata: `.git`, `.svn`, `.hg`
+- JavaScript/TypeScript output and caches: `node_modules`, `dist`, `build`, `coverage`, `.next`, `.nuxt`, `.output`, `out`, `.turbo`, `.vite`, `.parcel-cache`, `.svelte-kit`, `.astro`, `storybook-static`, `.cache`, `.yarn`
+- Python bytecode, virtualenvs, and tool caches: `__pycache__`, `venv`, `.venv`, `.tox`, `.nox`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.pyre`, `.pytype`, `htmlcov`, `.eggs`
+- JVM and Rust build output: `target`, `.gradle`, `.idea`
+- Vendored dependencies (Go modules, Ruby bundler, PHP Composer): `vendor`
+- Swift/Apple toolchain output and dependencies: `.build`, `Pods`, `Carthage`, `DerivedData`
+- Dart/Flutter tooling cache: `.dart_tool`
+- Ruby/general scratch space: `tmp`, `.bundle`
+- Editor metadata: `.vscode`
 
 ## Grep-First Navigation
 

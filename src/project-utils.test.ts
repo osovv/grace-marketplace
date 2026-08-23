@@ -365,3 +365,39 @@ describe("unreadable directory walking", () => {
     expect(reported).toEqual([]);
   });
 });
+
+describe("default ignored directories", () => {
+  const defaultIgnored = [
+    ".git", ".svn", ".hg",
+    "node_modules", "dist", "build", "coverage", ".next", ".nuxt", ".output", "out", ".turbo",
+    ".vite", ".parcel-cache", ".svelte-kit", ".astro", "storybook-static", ".cache", ".yarn",
+    "__pycache__", "venv", ".venv", ".tox", ".nox", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    ".pyre", ".pytype", "htmlcov", ".eggs",
+    "target", ".gradle", ".idea",
+    "vendor",
+    ".build", "Pods", "Carthage", "DerivedData",
+    ".dart_tool",
+    "tmp", ".bundle",
+    ".vscode",
+  ];
+
+  it("prunes well-known ecosystem directories by default", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-ignore-"));
+    for (const dir of defaultIgnored) {
+      mkdirSync(path.join(root, dir));
+      writeFileSync(path.join(root, dir, "generated.ts"), "export const generated = true;\n");
+    }
+    writeFileSync(path.join(root, "source.ts"), "export const source = true;\n");
+
+    expect(collectCodeFiles(root, [])).toEqual([path.join(root, "source.ts")]);
+  });
+
+  it("prunes default-ignored names at any depth", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-ignore-depth-"));
+    mkdirSync(path.join(root, "src", "__pycache__"), { recursive: true });
+    writeFileSync(path.join(root, "src", "__pycache__", "cached.ts"), "export const cached = true;\n");
+    writeFileSync(path.join(root, "src", "main.ts"), "export const main = true;\n");
+
+    expect(collectCodeFiles(root, [])).toEqual([path.join(root, "src", "main.ts")]);
+  });
+});
