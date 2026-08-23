@@ -140,6 +140,20 @@ Output modes:
 
 Lint, status, and projection-backed navigation fail closed: invalid options, invalid grammar, malformed active assertions/scopes, duplicate ownership, missing routed files, or ambiguous targets produce structured results or a nonzero error envelope. JSON command failures emit one stable `{ "schemaVersion": "1.0.0", "ok": false, "error": { ... } }` envelope on stdout; text failures emit one concise actionable line without a stack trace.
 
+### Lint Configuration
+
+An optional `.grace-lint.json` file at the project root (next to `.grace`) controls how `grace lint` and the query commands collect code files:
+
+```json
+{
+  "ignoredDirs": ["generated", "fixtures-output"]
+}
+```
+
+- `ignoredDirs` lists directory names to prune from file collection, on top of the built-in set (`.git`, `node_modules`, `dist`, `build`, `coverage`, `.next`, `.turbo`, `.cache`). Names match at any depth; globs and paths are not supported.
+- The file must be a JSON object with supported keys only. Broken JSON, a non-object shape, an unknown key, or a non-array `ignoredDirs` is a `config.*` lint error, and query commands refuse to run until the file is fixed.
+- A directory that cannot be listed (restrictive permissions, sandbox leftovers) is skipped with a `walk.unreadable-directory` warning instead of aborting the run; add its name to `ignoredDirs` to prune it silently. Explain any of these codes with `grace lint --explain <code>`.
+
 ## Grep-First Navigation
 
 Prefer this order when narrowing scope:
