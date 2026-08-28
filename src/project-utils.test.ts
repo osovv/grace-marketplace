@@ -314,6 +314,118 @@ console.log(JSON.stringify(result.issues));`;
     expect(issues.map((issue) => issue.code)).toContain("analysis.adapter-failed");
     expect(issues.map((issue) => issue.code)).not.toContain("analysis.runtime-missing");
   });
+
+  it("governs adapter-less C sources structurally without export analysis", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-c-markup-"));
+    const file = path.join(root, "src", "driver.c");
+    const text = `// START_MODULE_CONTRACT
+// PURPOSE: Bring up the example driver.
+// SCOPE: C fixture without a language adapter.
+// DEPENDS: none
+// LINKS: M-EXAMPLE
+// MAP_MODE: SUMMARY
+// END_MODULE_CONTRACT
+// START_MODULE_MAP
+// driver_init - Initialize the driver.
+// END_MODULE_MAP
+#include <stdint.h>
+void driver_init(void) {}
+`;
+    const analysis = analyzeGovernedFile(root, file, text);
+    expect(analysis.record.linkedModuleIds).toEqual(["M-EXAMPLE"]);
+    expect(analysis.language).toBeNull();
+    expect(analysis.issues.filter((issue) => issue.severity === "error")).toHaveLength(0);
+    expect(analysis.issues.map((issue) => issue.code)).not.toContain("analysis.heuristic-confidence");
+  });
+
+  it("parses C block-comment markers with asterisk continuation lines", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-h-markup-"));
+    const file = path.join(root, "src", "driver.h");
+    const text = `/*
+ * START_MODULE_CONTRACT
+ * PURPOSE: Declare the example driver API.
+ * SCOPE: C header fixture.
+ * DEPENDS: none
+ * LINKS: M-EXAMPLE
+ * MAP_MODE: SUMMARY
+ * END_MODULE_CONTRACT
+ * START_MODULE_MAP
+ * driver_init - Initialize the driver.
+ * END_MODULE_MAP
+ */
+void driver_init(void);
+`;
+    const analysis = analyzeGovernedFile(root, file, text);
+    expect(analysis.record.moduleContract?.fields.PURPOSE).toBe("Declare the example driver API.");
+    expect(analysis.language).toBeNull();
+    expect(analysis.issues.filter((issue) => issue.severity === "error")).toHaveLength(0);
+  });
+
+  it("governs adapter-less C# sources structurally without export analysis", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-cs-markup-"));
+    const file = path.join(root, "src", "SessionStore.cs");
+    const text = `// START_MODULE_CONTRACT
+// PURPOSE: Persist operator sessions.
+// SCOPE: C# fixture without a language adapter.
+// DEPENDS: none
+// LINKS: M-EXAMPLE
+// MAP_MODE: SUMMARY
+// END_MODULE_CONTRACT
+// START_MODULE_MAP
+// SessionStore - Store and retrieve sessions.
+// END_MODULE_MAP
+namespace Example;
+
+public sealed class SessionStore
+{
+    public void Clear() { }
+}
+`;
+    const analysis = analyzeGovernedFile(root, file, text);
+    expect(analysis.record.linkedModuleIds).toEqual(["M-EXAMPLE"]);
+    expect(analysis.language).toBeNull();
+    expect(analysis.issues.filter((issue) => issue.severity === "error")).toHaveLength(0);
+    expect(analysis.issues.map((issue) => issue.code)).not.toContain("analysis.heuristic-confidence");
+  });
+
+  it("parses PowerShell markers behind the hash comment prefix", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-ps1-markup-"));
+    const file = path.join(root, "scripts", "Publish.ps1");
+    const text = `# START_MODULE_CONTRACT
+# PURPOSE: Publish the release artifacts.
+# SCOPE: PowerShell fixture without a language adapter.
+# DEPENDS: none
+# LINKS: M-EXAMPLE
+# ROLE: SCRIPT
+# MAP_MODE: LOCALS
+# END_MODULE_CONTRACT
+# START_MODULE_MAP
+# Publish-Artifacts - Copy artifacts to the release share.
+# END_MODULE_MAP
+function Publish-Artifacts {
+  Write-Output 'published'
+}
+`;
+    const analysis = analyzeGovernedFile(root, file, text);
+    expect(analysis.record.moduleContract?.fields.PURPOSE).toBe("Publish the release artifacts.");
+    expect(analysis.record.linkedModuleIds).toEqual(["M-EXAMPLE"]);
+    expect(analysis.language).toBeNull();
+    expect(analysis.issues.filter((issue) => issue.severity === "error")).toHaveLength(0);
+  });
+});
+
+describe("code file collection", () => {
+  it("collects newly recognized sources while skipping unrecognized extensions", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-collect-"));
+    mkdirSync(path.join(root, "src"), { recursive: true });
+    for (const relative of ["src/main.c", "src/main.h", "src/util.cpp", "src/util.hpp", "src/Store.cs", "src/Build.ps1", "src/Helpers.psm1", "src/Module.psd1", "src/notes.txt", "README.md"]) {
+      writeFileSync(path.join(root, relative), "\n");
+    }
+
+    const collected = collectCodeFiles(root, []).map((file) => path.relative(root, file).replaceAll(path.sep, "/")).sort();
+
+    expect(collected).toEqual(["src/Build.ps1", "src/Helpers.psm1", "src/Store.cs", "src/main.c", "src/main.h", "src/util.cpp", "src/util.hpp"]);
+  });
 });
 
 describe("unreadable directory walking", () => {

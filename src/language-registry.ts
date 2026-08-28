@@ -10,6 +10,8 @@ import type { LanguageAdapter } from "./lint/types";
 export const CODE_EXTENSIONS: ReadonlySet<string> = new Set([
   ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts",
   ".py", ".pyi",
+  ".c", ".h", ".cpp", ".hpp",
+  ".cs",
   ".go",
   ".java",
   ".kt",
@@ -20,6 +22,7 @@ export const CODE_EXTENSIONS: ReadonlySet<string> = new Set([
   ".scala",
   ".sql",
   ".sh", ".bash", ".zsh",
+  ".ps1", ".psm1",
   ".clj", ".cljs", ".cljc",
   ".dart",
 ]);
