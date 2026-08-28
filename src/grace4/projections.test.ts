@@ -5,6 +5,7 @@ import { describe, expect, it } from "bun:test";
 
 import { resolveGrace4Paths } from "./project";
 import { buildGraphProjection, buildVerificationProjection } from "./projections";
+import { symlinksUnsupported } from "./test-fixtures";
 
 function createProject() {
   const root = path.join(os.tmpdir(), `grace4-projections-${crypto.randomUUID()}`);
@@ -185,7 +186,7 @@ describe("GRACE 4 graph and verification projections", () => {
     expect(issueCodes(graph.issues).filter((code) => code === "projection.index.invalid-path")).toHaveLength(3);
   });
 
-  it("rejects projection routes that escape through symlinks without reading the target", () => {
+  it.skipIf(symlinksUnsupported)("rejects projection routes that escape through symlinks without reading the target", () => {
     const root = createProject();
     const outside = createProject();
     writeProjectFile(outside, "outside.xml", `<not-valid`);
@@ -378,7 +379,7 @@ describe("GRACE 4 graph and verification projections", () => {
     expect(verification.entries.get("V-M-AUTH-SESSION")?.cwd).toBeUndefined();
   });
 
-  it("rejects Cwd and TestFiles that escape through traversal or symlinks", () => {
+  it.skipIf(symlinksUnsupported)("rejects Cwd and TestFiles that escape through traversal or symlinks", () => {
     const root = createProject();
     const outside = createProject();
     writeProjectFile(outside, "outside.test.ts", "test\n");

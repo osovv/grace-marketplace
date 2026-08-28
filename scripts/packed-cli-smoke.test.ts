@@ -12,8 +12,14 @@ import os from "node:os";
 import path from "node:path";
 import { runtimeState } from "./packed-cli-smoke.ts";
 
+// `true`, `false`, and POSIX permission bits back several fixtures below. Windows ships none of
+// them: there is no `true`/`false` executable on PATH, and `chmod` cannot clear an execute bit, so
+// a spawn reports ENOENT rather than the state each fixture is built to produce.
+// The classification under test is platform-independent; only these fixtures are not.
+const posixShimsUnsupported = process.platform === "win32";
+
 describe("runtimeState", () => {
-  it('returns "usable" when a candidate returns exit code 0', () => {
+  it.skipIf(posixShimsUnsupported)('returns "usable" when a candidate returns exit code 0', () => {
     // "true" always returns 0 on all POSIX systems
     expect(runtimeState(["true"])).toBe("usable");
   });
@@ -27,12 +33,12 @@ describe("runtimeState", () => {
     expect(runtimeState(["bogus-a-999", "bogus-b-999"])).toBe("missing");
   });
 
-  it('returns "broken" when a candidate exists but returns non-zero', () => {
+  it.skipIf(posixShimsUnsupported)('returns "broken" when a candidate exists but returns non-zero', () => {
     // "false" always returns exit code 1 on all POSIX systems
     expect(runtimeState(["false"])).toBe("broken");
   });
 
-  it("uses the first non-ENOENT candidate state", () => {
+  it.skipIf(posixShimsUnsupported)("uses the first non-ENOENT candidate state", () => {
     // runtimeState returns first non-ENOENT result: "false" found first, broken
     expect(runtimeState(["false", "true"])).toBe("broken");
     expect(runtimeState(["true", "false"])).toBe("usable");
@@ -55,7 +61,7 @@ describe("runtimeState integration with spawnSync edge cases", () => {
 });
 
 describe("runtimeState non-ENOENT spawn error", () => {
-  it('returns "broken" for a non-executable file (EACCES/EPERM) instead of swallowing the error', () => {
+  it.skipIf(posixShimsUnsupported)('returns "broken" for a non-executable file (EACCES/EPERM) instead of swallowing the error', () => {
     // Create a non-executable temp file to deterministically trigger a non-ENOENT spawn error
     const tmpDir = mkdtempSync(path.join(os.tmpdir(), "grace-runtime-eacces-"));
     try {

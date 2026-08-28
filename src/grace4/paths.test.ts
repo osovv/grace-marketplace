@@ -8,6 +8,7 @@ import {
   ProjectPathError,
   resolveContainedProjectPath,
 } from "./paths";
+import { symlinksUnsupported } from "./test-fixtures";
 
 function createDirectory(prefix: string): string {
   const root = path.join(os.tmpdir(), `${prefix}-${crypto.randomUUID()}`);
@@ -57,7 +58,7 @@ describe("GRACE 4 contained project paths", () => {
     });
   });
 
-  it("rejects an existing symlink whose realpath escapes the allowed root", () => {
+  it.skipIf(symlinksUnsupported)("rejects an existing symlink whose realpath escapes the allowed root", () => {
     const root = createDirectory("grace4-paths-symlink-root");
     const outside = createDirectory("grace4-paths-symlink-outside");
     writeFileSync(path.join(outside, "secret.txt"), "secret\n");
@@ -80,7 +81,7 @@ describe("GRACE 4 contained project paths", () => {
     });
   });
 
-  it("rejects an output whose nearest existing ancestor escapes through a symlink", () => {
+  it.skipIf(symlinksUnsupported)("rejects an output whose nearest existing ancestor escapes through a symlink", () => {
     const root = createDirectory("grace4-paths-output-root");
     const outside = createDirectory("grace4-paths-output-outside");
     symlinkSync(outside, path.join(root, "generated"), "dir");
