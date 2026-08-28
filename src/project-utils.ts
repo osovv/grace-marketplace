@@ -126,6 +126,8 @@ const DEFAULT_IGNORED_DIRS = new Set([
   "Pods",
   "Carthage",
   "DerivedData",
+  // .NET intermediate build output, which holds generated .cs sources
+  "obj",
   // Dart/Flutter tooling cache
   ".dart_tool",
   // Ruby/general scratch space and bundler config
