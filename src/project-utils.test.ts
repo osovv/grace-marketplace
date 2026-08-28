@@ -426,6 +426,20 @@ describe("code file collection", () => {
 
     expect(collected).toEqual(["src/Build.ps1", "src/Helpers.psm1", "src/Store.cs", "src/main.c", "src/main.h", "src/util.cpp", "src/util.hpp"]);
   });
+
+  it("prunes .NET intermediate output while leaving bin to project configuration", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "grace-dotnet-collect-"));
+    for (const relative of ["src/Store.cs", "src/obj/Debug/Store.AssemblyInfo.cs", "src/bin/Debug/Tool.cs"]) {
+      mkdirSync(path.join(root, path.dirname(relative)), { recursive: true });
+      writeFileSync(path.join(root, relative), "\n");
+    }
+
+    const withDefaults = collectCodeFiles(root, []).map((file) => path.relative(root, file).replaceAll(path.sep, "/")).sort();
+    expect(withDefaults).toEqual(["src/Store.cs", "src/bin/Debug/Tool.cs"]);
+
+    const withBinIgnored = collectCodeFiles(root, ["bin"]).map((file) => path.relative(root, file).replaceAll(path.sep, "/"));
+    expect(withBinIgnored).toEqual(["src/Store.cs"]);
+  });
 });
 
 describe("unreadable directory walking", () => {

@@ -168,9 +168,12 @@ Built-in ignored directories:
 - JVM and Rust build output: `target`, `.gradle`, `.idea`
 - Vendored dependencies (Go modules, Ruby bundler, PHP Composer): `vendor`
 - Swift/Apple toolchain output and dependencies: `.build`, `Pods`, `Carthage`, `DerivedData`
+- .NET intermediate build output: `obj`
 - Dart/Flutter tooling cache: `.dart_tool`
 - Ruby/general scratch space: `tmp`, `.bundle`
 - Editor metadata: `.vscode`
+
+`bin` is deliberately not built in: .NET puts compiled output there, but Node, Rails and others keep real source in it, and `ignoredDirs` can only add to this set. A .NET project that wants it pruned adds `"ignoredDirs": ["bin"]`.
 
 ### Analysis Cache
 
