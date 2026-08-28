@@ -8,6 +8,7 @@ import { buildGraphProjection, buildVerificationProjection } from "./projections
 import { runDeclaredCommands } from "./command-runner";
 import { evaluateAssertion, extractAssertionsWithIssues, type AssertionContext, type GraceAssertion } from "./assertions";
 import type { CommandRunResult } from "./command-runner";
+import { symlinksUnsupported } from "./test-fixtures";
 
 function createProject() {
   const root = path.join(os.tmpdir(), `grace4-assertions-${crypto.randomUUID()}`);
@@ -210,7 +211,7 @@ describe("GRACE 4 assertions", () => {
     expect(result.issues.map((item) => item.code)).not.toContain("assertion.empty-section");
   });
 
-  it("rejects absolute, traversal, and escaping-symlink File fields during extraction", () => {
+  it.skipIf(symlinksUnsupported)("rejects absolute, traversal, and escaping-symlink File fields during extraction", () => {
     const root = createProject();
     const outside = createProject();
     writeFileSync(path.join(outside, "secret.txt"), "secret\n");

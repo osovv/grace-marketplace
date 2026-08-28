@@ -293,7 +293,12 @@ console.log(JSON.stringify(result.issues));`;
     expect(issues.find((issue) => issue.code === "analysis.runtime-missing")?.message).toContain("Install Python");
   });
 
-  test("present but failing language runtimes surface analysis.adapter-failed without fallback", () => {
+  // The fixture below stands a deliberately failing interpreter on PATH as a `#!/bin/sh` script.
+  // Windows cannot execute one, so the spawn reports ENOENT and the adapter reaches its
+  // runtime-missing branch instead of the adapter-failed branch this asserts.
+  const shellShimsUnsupported = process.platform === "win32";
+
+  test.skipIf(shellShimsUnsupported)("present but failing language runtimes surface analysis.adapter-failed without fallback", () => {
     const runtimeDir = mkdtempSync(path.join(os.tmpdir(), "grace-broken-python-"));
     const python = path.join(runtimeDir, "python3");
     writeFileSync(python, "#!/bin/sh\nexit 17\n");
