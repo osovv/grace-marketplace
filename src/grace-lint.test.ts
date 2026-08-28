@@ -111,6 +111,80 @@ describe("lintGraceProject", () => {
     expect(result.xmlFilesChecked).toBeGreaterThan(0);
   });
 
+  it("counts adapter-less C sources among governed files", async () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(
+      root,
+      "src/driver.c",
+      `// START_MODULE_CONTRACT
+//   PURPOSE: Bring up the example driver.
+//   SCOPE: C fixture without a language adapter.
+//   DEPENDS: none
+//   LINKS: M-EXAMPLE
+//   MAP_MODE: SUMMARY
+// END_MODULE_CONTRACT
+// START_MODULE_MAP
+//   driver_init - Initialize the driver.
+// END_MODULE_MAP
+void driver_init(void) {}
+`,
+    );
+    const result = await lintGraceProject(root);
+
+    expect(result.summary.errors).toBe(0);
+    expect(result.governedFiles).toBe(2);
+  });
+
+  it("counts adapter-less C# and PowerShell sources among governed files", async () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(
+      root,
+      "src/SessionStore.cs",
+      `// START_MODULE_CONTRACT
+//   PURPOSE: Persist operator sessions.
+//   SCOPE: C# fixture without a language adapter.
+//   DEPENDS: none
+//   LINKS: M-EXAMPLE
+//   MAP_MODE: SUMMARY
+// END_MODULE_CONTRACT
+// START_MODULE_MAP
+//   SessionStore - Store and retrieve sessions.
+// END_MODULE_MAP
+namespace Example;
+
+public sealed class SessionStore
+{
+    public void Clear() { }
+}
+`,
+    );
+    writeProjectFile(
+      root,
+      "scripts/Publish.ps1",
+      `# START_MODULE_CONTRACT
+#   PURPOSE: Publish the release artifacts.
+#   SCOPE: PowerShell fixture without a language adapter.
+#   DEPENDS: none
+#   LINKS: M-EXAMPLE
+#   ROLE: SCRIPT
+#   MAP_MODE: LOCALS
+# END_MODULE_CONTRACT
+# START_MODULE_MAP
+#   Publish-Artifacts - Copy artifacts to the release share.
+# END_MODULE_MAP
+function Publish-Artifacts {
+  Write-Output 'published'
+}
+`,
+    );
+    const result = await lintGraceProject(root);
+
+    expect(result.summary.errors).toBe(0);
+    expect(result.governedFiles).toBe(3);
+  });
+
   it("fails with migration guidance when only GRACE 3 docs are present", async () => {
     const root = createProject();
     writeProjectFile(root, "docs/development-plan.xml", `<DevelopmentPlan />`);
