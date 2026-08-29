@@ -42,7 +42,7 @@ describe("resolveLogRoot", () => {
 describe("projectSlug", () => {
   test("distinct slugs for same-named roots in different locations", () => {
     const a = projectSlug("/srv/work/app");
-    const b = projectSlug("/home/dev/b/app");
+    const b = projectSlug("/mnt/b/app");
     expect(a.startsWith("app-")).toBe(true);
     expect(b.startsWith("app-")).toBe(true);
     expect(a).not.toBe(b);

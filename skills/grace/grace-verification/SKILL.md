@@ -21,4 +21,10 @@ When verification commands run from a workspace or package directory, add one di
 <evidence_contract>
 Use `<Marker>` when module health must prove a runtime log or trace emission from linked implementation code. Use `<TraceAssertion>` for deterministic test or trace evidence that does not require runtime logging, such as pure functions, type-level modules, and core libraries. A non-empty marker or trace assertion satisfies the module-health evidence requirement; only authored markers require matching runtime emission and `BLOCK_*` evidence.
 </evidence_contract>
+<gate_task_contract>
+Reference named project tasks in `MustPassCommand` and `ExpectedCommand` (for example `bun run gate:e2e`) instead of inline `;`-chains. Decompose full gates into granular named tasks (`gate:test`, `gate:typecheck`, `gate:build`, `gate:e2e`) so a selective re-run is just running that task, timeouts map to one coherent unit, and `grace lint --run-commands` reports each gate step with its own timing and log.
+</gate_task_contract>
+<flake_contract>
+A flaky gate is a defect of the verification entry, not a reason to re-run blindly. Diagnose from the per-attempt logs under `~/.cache/grace/run-commands/`. Fix it by decomposing the gate task, adding runner-level retries inside the task itself (for example playwright `--retries`), or quarantining the unstable scenario. Silent manual re-runs are not a fix: grace records every run honestly, and nondeterministic verification undermines assertion evidence.
+</flake_contract>
 </skill>

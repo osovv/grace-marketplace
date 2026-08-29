@@ -114,6 +114,7 @@ Migration cleanup is separately gated: successful current lint, fresh status pro
 | Command | What It Does |
 | --- | --- |
 | `grace lint --path <root> --assertions current` | Run the pre-implementation full-project check, including baselines of active approved changes; do not use it as post-edit target/final evidence |
+| `grace lint --path <root> --change C-ID --assertions target \| final --run-commands` | Execute declared `MustPassCommand` gates with compact progress on stderr, per-command timings, a default 600s per-command timeout (`--command-timeout`), and full run logs under `~/.cache/grace/run-commands/` |
 | `grace lint --path <root> --change C-ID --assertions baseline [--run-commands]` | Validate the immutable selected baseline before implementation; command assertions run only when explicitly enabled |
 | `grace lint --path <root> --change C-ID --assertions target --run-commands` | Validate selected target assertions and explicitly opt into `MustPassCommand` execution |
 | `grace lint --path <root> --change C-ID --assertions final [--run-commands]` | Run the final full-project gate, evaluate the selected target, and keep unrelated approved baselines active without re-evaluating the selected baseline |
