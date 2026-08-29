@@ -179,8 +179,8 @@ function chooseNextAction(result: Omit<StatusResult, "nextAction">) {
   return "Project is healthy. Continue with the next approved GRACE 4 workflow step.";
 }
 
-function emptyStatus(root: string, projectKind: StatusResult["projectKind"], migrationGuidance?: string): StatusResult {
-  const lint = lintGraceProject(root);
+async function emptyStatus(root: string, projectKind: StatusResult["projectKind"], migrationGuidance?: string): Promise<StatusResult> {
+  const lint = await lintGraceProject(root);
   const integrityErrors = lint.issues.filter((issue) => issue.severity === "error");
   const integrityWarnings = lint.issues.filter((issue) => issue.severity === "warning");
   const partial: Omit<StatusResult, "nextAction"> = {
@@ -211,14 +211,14 @@ function emptyStatus(root: string, projectKind: StatusResult["projectKind"], mig
 }
 
 /** Collects status without mutating any .grace artifact. */
-export function collectProjectStatus(projectRoot: string, options: { includeModules?: boolean } = {}): StatusResult {
+export async function collectProjectStatus(projectRoot: string, options: { includeModules?: boolean } = {}): Promise<StatusResult> {
   const root = path.resolve(projectRoot);
   const kind = detectGraceProjectKind(root);
-  if (kind === "grace3") return emptyStatus(root, "grace3", formatGrace3MigrationGuidance(root));
-  if (kind === "none") return emptyStatus(root, "none");
+  if (kind === "grace3") return await emptyStatus(root, "grace3", formatGrace3MigrationGuidance(root));
+  if (kind === "none") return await emptyStatus(root, "none");
 
   const paths = resolveGrace4Paths(root);
-  const lint = lintGraceProject(root, { profile: "standard" });
+  const lint = await lintGraceProject(root, { profile: "standard" });
   const integrityErrors = lint.issues.filter((issue) => issue.severity === "error");
   const integrityWarnings = lint.issues.filter((issue) => issue.severity === "warning");
   // Load index once — reused by module health and status fields
@@ -509,11 +509,11 @@ export const statusCommand = defineCommand({
   },
   async run(context) {
     const errorFormat = Boolean(context.args.json) || context.args.format === "json" ? "json" : "text";
-    await runGraceCommand(errorFormat, () => {
+    await runGraceCommand(errorFormat, async () => {
       const format = resolveFormat(context.args.format, context.args.json);
       const withValues = resolveWithList(context.args.with);
       const failOn = resolveFailOn(context.args.failOn);
-      const result = collectProjectStatus(String(context.args.path ?? "."), { includeModules: withValues.includes("modules") });
+      const result = await collectProjectStatus(String(context.args.path ?? "."), { includeModules: withValues.includes("modules") });
 
       if (format === "json") process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       else process.stdout.write(`${formatStatusText(result)}\n`);

@@ -95,12 +95,12 @@ function runGit(root: string, args: string[]) {
 }
 
 describe("grace status", () => {
-  it("summarizes durable GRACE 4 health and next action", () => {
+  it("summarizes durable GRACE 4 health and next action", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
 
-    const summaryOnly = collectProjectStatus(root);
-    const result = collectProjectStatus(root, { includeModules: true });
+    const summaryOnly = await collectProjectStatus(root);
+    const result = await collectProjectStatus(root, { includeModules: true });
 
     expect(summaryOnly.summary.readyModules).toBe(1);
     expect(summaryOnly.summary.attentionModules).toBe(0);
@@ -116,13 +116,13 @@ describe("grace status", () => {
     expect(result.observedDrift.available).toBe(false);
   });
 
-  it("lists active and archived change bundles with statuses in JSON shape", () => {
+  it("lists active and archived change bundles with statuses in JSON shape", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeChange(root, "C-ACTIVE", { specStatus: "approved", planStatus: "approved" });
     writeChange(root, "C-ARCHIVED", { location: "archive", specStatus: "applied", planStatus: "applied" });
 
-    const result = collectProjectStatus(root);
+    const result = await collectProjectStatus(root);
 
     expect(result.summary.activeChanges).toBe(1);
     expect(result.summary.archivedChanges).toBe(1);
@@ -131,13 +131,13 @@ describe("grace status", () => {
     expect(result.nextAction).toContain("grace-execute");
   });
 
-  it("surfaces overlapping approved changes as derived state, not XML status", () => {
+  it("surfaces overlapping approved changes as derived state, not XML status", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeChange(root, "C-ONE", { specStatus: "approved", planStatus: "approved", file: "src/example.ts" });
     writeChange(root, "C-TWO", { specStatus: "approved", planStatus: "approved", file: "src/example.ts" });
 
-    const result = collectProjectStatus(root);
+    const result = await collectProjectStatus(root);
     const text = formatStatusText(result);
 
     expect(result.derivedStates).toContain("scope-overlap");
@@ -145,30 +145,30 @@ describe("grace status", () => {
     expect(text).toContain("scope-overlap");
   });
 
-  it("reports invalid active/archive statuses from lint diagnostics", () => {
+  it("reports invalid active/archive statuses from lint diagnostics", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeChange(root, "C-BAD-ACTIVE", { specStatus: "applied", planStatus: "applied" });
 
-    const result = collectProjectStatus(root);
+    const result = await collectProjectStatus(root);
 
     expect(result.changes.find((change) => change.changeId === "C-BAD-ACTIVE")?.derivedStates).toContain("invalid-active-status");
     expect(result.integrity.topIssues.some((issue) => issue.includes("change.invalid-active-status"))).toBe(true);
     expect(result.nextAction).toContain("grace lint");
   });
 
-  it("recommends review or replan when the spec is approved but the plan is still draft", () => {
+  it("recommends review or replan when the spec is approved but the plan is still draft", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeChange(root, "C-NEEDS-PLAN", { specStatus: "approved", planStatus: "draft" });
 
-    const result = collectProjectStatus(root);
+    const result = await collectProjectStatus(root);
 
     expect(result.changes.find((change) => change.changeId === "C-NEEDS-PLAN")?.derivedStates).toContain("needs-plan-approval");
     expect(result.nextAction).toContain("GraceChangePlan");
   });
 
-  it("marks approved changes with failed baseline assertions as stale plans", () => {
+  it("marks approved changes with failed baseline assertions as stale plans", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeChange(root, "C-STALE", {
@@ -177,14 +177,14 @@ describe("grace status", () => {
       baselineAssertion: "<MustExist><Value>M-MISSING</Value></MustExist>",
     });
 
-    const result = collectProjectStatus(root);
+    const result = await collectProjectStatus(root);
     expect(result.changes.find((change) => change.changeId === "C-STALE")?.derivedStates).toContain("stale-plan");
     expect(result.changes.find((change) => change.changeId === "C-STALE")?.derivedStates).not.toContain("ready-to-execute");
     expect(result.derivedStates).toContain("stale-plan");
     expect(result.nextAction).toContain("Supersede and replan");
   });
 
-  it("never marks an integrity-invalid approved plan ready to execute", () => {
+  it("never marks an integrity-invalid approved plan ready to execute", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeChange(root, "C-INVALID", { specStatus: "approved", planStatus: "approved" });
@@ -195,12 +195,12 @@ describe("grace status", () => {
       `<GraceChangePlan graceVersion="4.0" status="approved"><C-INVALID><IntentSummary>Invalid.</IntentSummary><BaselineAssertions><MustExist><Value>M-EXAMPLE</Value></MustExist></BaselineAssertions><TargetAssertions><MustVerify><Module>M-EXAMPLE</Module></MustVerify></TargetAssertions><DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>src/example.ts</File></ObservedWriteScope><ImplementationPlan><T-001><Title>Invalid task</Title><DependsOn></DependsOn><AcceptanceCriteria><Criterion>Never ready.</Criterion></AcceptanceCriteria><Verification /></T-001></ImplementationPlan></C-INVALID></GraceChangePlan>`,
     );
 
-    const change = collectProjectStatus(root).changes.find((entry) => entry.changeId === "C-INVALID")!;
+    const change = (await collectProjectStatus(root)).changes.find((entry) => entry.changeId === "C-INVALID")!;
     expect(change.derivedStates).toContain("integrity-issues");
     expect(change.derivedStates).not.toContain("ready-to-execute");
   });
 
-  it("never marks text-only assertion and scope contracts ready to execute", () => {
+  it("never marks text-only assertion and scope contracts ready to execute", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeChange(root, "C-TEXT", { specStatus: "approved", planStatus: "approved" });
@@ -210,20 +210,20 @@ describe("grace status", () => {
       `<GraceChangePlan graceVersion="4.0" status="approved"><C-TEXT><IntentSummary>Invalid text contracts.</IntentSummary><BaselineAssertions>assume state</BaselineAssertions><TargetAssertions>expect state</TargetAssertions><DurableScope>graph changes</DurableScope><ObservedWriteScope>source changes</ObservedWriteScope><ImplementationPlan><T-001><Title>Invalid task</Title><DependsOn></DependsOn><AcceptanceCriteria><Criterion>Never ready.</Criterion></AcceptanceCriteria><Verification><Command>true</Command></Verification></T-001></ImplementationPlan></C-TEXT></GraceChangePlan>`,
     );
 
-    const result = collectProjectStatus(root);
+    const result = await collectProjectStatus(root);
     const change = result.changes.find((entry) => entry.changeId === "C-TEXT")!;
     expect(result.integrity.errors).toBeGreaterThan(0);
     expect(change.derivedStates).toContain("integrity-issues");
     expect(change.derivedStates).not.toContain("ready-to-execute");
   });
 
-  it("treats approved spec-only bundles as needing planning and draft spec-only bundles as normal drafts", () => {
+  it("treats approved spec-only bundles as needing planning and draft spec-only bundles as normal drafts", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeSpecOnly(root, "C-APPROVED-SPEC", "approved");
     writeSpecOnly(root, "C-DRAFT-SPEC", "draft");
 
-    const result = collectProjectStatus(root);
+    const result = await collectProjectStatus(root);
     const approved = result.changes.find((change) => change.changeId === "C-APPROVED-SPEC")!;
     const draft = result.changes.find((change) => change.changeId === "C-DRAFT-SPEC")!;
     expect(approved.derivedStates).toContain("needs-plan");
@@ -232,7 +232,7 @@ describe("grace status", () => {
     expect(draft.derivedStates).not.toContain("integrity-issues");
   });
 
-  it("distinguishes observed writes explained by approved scopes from unexplained git drift", () => {
+  it("distinguishes observed writes explained by approved scopes from unexplained git drift", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeChange(root, "C-DRIFT", { specStatus: "approved", planStatus: "approved", file: "src/example.ts" });
@@ -246,7 +246,7 @@ describe("grace status", () => {
     writeProjectFile(root, "src/example.ts", "// planned change\n");
     writeProjectFile(root, "unplanned.txt", "unexpected\n");
 
-    const result = collectProjectStatus(root);
+    const result = await collectProjectStatus(root);
     expect(result.observedDrift.available).toBe(true);
     expect(result.observedDrift.explainedFiles).toContain("src/example.ts");
     expect(result.observedDrift.unexplainedFiles).toContain("unplanned.txt");
@@ -254,7 +254,7 @@ describe("grace status", () => {
     expect(result.derivedStates).toContain("unexplained-observed-drift");
   });
 
-  it("keeps both source and destination paths for git rename drift", () => {
+  it("keeps both source and destination paths for git rename drift", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeProjectFile(root, "src/old.ts", "old\n");
@@ -268,14 +268,14 @@ describe("grace status", () => {
     runGit(root, ["commit", "-m", "test: baseline"]);
     runGit(root, ["mv", "src/old.ts", "src/new.ts"]);
 
-    const drift = collectProjectStatus(root).observedDrift;
+    const drift = (await collectProjectStatus(root)).observedDrift;
     expect(drift.changedFiles).toContain("src/old.ts");
     expect(drift.changedFiles).toContain("src/new.ts");
     expect(drift.explainedFiles).toContain("src/new.ts");
     expect(drift.unexplainedFiles).toContain("src/old.ts");
   });
 
-  it("attributes graph drift only to the exact declared document or owning anchor route", () => {
+  it("attributes graph drift only to the exact declared document or owning anchor route", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeProjectFile(root, ".grace/graph/index.xml", `<GraceGraphIndex graceVersion="4.0"><GraphDocuments><GD-MAIN><Path>graph/main.xml</Path><Owns><M-EXAMPLE /></Owns></GD-MAIN><GD-OTHER><Path>graph/other.xml</Path><Owns><M-OTHER /></Owns></GD-OTHER></GraphDocuments></GraceGraphIndex>`);
@@ -293,12 +293,12 @@ describe("grace status", () => {
     writeProjectFile(root, ".grace/graph/main.xml", `<GraceGraphDocument graceVersion="4.0"><GD-MAIN><M-EXAMPLE><Summary>Changed main.</Summary></M-EXAMPLE></GD-MAIN></GraceGraphDocument>`);
     writeProjectFile(root, ".grace/graph/other.xml", `<GraceGraphDocument graceVersion="4.0"><GD-OTHER><M-OTHER><Summary>Changed other.</Summary></M-OTHER></GD-OTHER></GraceGraphDocument>`);
 
-    const drift = collectProjectStatus(root).observedDrift;
+    const drift = (await collectProjectStatus(root)).observedDrift;
     expect(drift.explainedFiles).toContain(".grace/graph/main.xml");
     expect(drift.unexplainedFiles).toContain(".grace/graph/other.xml");
   });
 
-  it("attributes graph index drift to declared graph documents or anchors", () => {
+  it("attributes graph index drift to declared graph documents or anchors", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeChange(root, "C-INDEX-DRIFT", { specStatus: "approved", planStatus: "approved" });
@@ -312,12 +312,12 @@ describe("grace status", () => {
     const indexFile = path.join(root, ".grace/graph/index.xml");
     writeFileSync(indexFile, readFileSync(indexFile, "utf8").replace("<GraphDocuments>", "<GraphDocuments>\n"));
 
-    const drift = collectProjectStatus(root).observedDrift;
+    const drift = (await collectProjectStatus(root)).observedDrift;
     expect(drift.explainedFiles).toContain(".grace/graph/index.xml");
     expect(drift.unexplainedFiles).not.toContain(".grace/graph/index.xml");
   });
 
-  it("hard-stops approved contract drift instead of reporting the bundle ready", () => {
+  it("hard-stops approved contract drift instead of reporting the bundle ready", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeChange(root, "C-IMMUTABLE", { specStatus: "approved", planStatus: "approved" });
@@ -331,7 +331,7 @@ describe("grace status", () => {
     const planFile = path.join(root, ".grace/changes/active/C-IMMUTABLE/plan.xml");
     writeFileSync(planFile, readFileSync(planFile, "utf8").replace("Apply the change.", "Apply the edited change."));
 
-    const result = collectProjectStatus(root);
+    const result = await collectProjectStatus(root);
     const change = result.changes.find((entry) => entry.changeId === "C-IMMUTABLE")!;
     expect(result.observedDrift.unexplainedFiles).toContain(".grace/changes/active/C-IMMUTABLE/plan.xml");
     expect(change.derivedStates).toContain("approved-contract-drift");
@@ -339,7 +339,7 @@ describe("grace status", () => {
     expect(result.nextAction).toContain("Hard stop");
   });
 
-  it("does not confuse a newly created untracked approved bundle with post-approval contract drift", () => {
+  it("does not confuse a newly created untracked approved bundle with post-approval contract drift", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     runGit(root, ["init"]);
@@ -351,30 +351,30 @@ describe("grace status", () => {
     runGit(root, ["commit", "-m", "test: baseline"]);
     writeChange(root, "C-NEW", { specStatus: "approved", planStatus: "approved" });
 
-    const result = collectProjectStatus(root);
+    const result = await collectProjectStatus(root);
     const change = result.changes.find((entry) => entry.changeId === "C-NEW")!;
     expect(result.observedDrift.explainedFiles).toContain(".grace/changes/active/C-NEW/plan.xml");
     expect(change.derivedStates).toContain("ready-to-execute");
     expect(change.derivedStates).not.toContain("approved-contract-drift");
   });
 
-  it("reports invalid projections through integrity without crashing or producing healthy module counts", () => {
+  it("reports invalid projections through integrity without crashing or producing healthy module counts", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     writeProjectFile(root, ".grace/graph/main.xml", `<GraceRequirements graceVersion="4.0"><GD-MAIN /></GraceRequirements>`);
 
-    const result = collectProjectStatus(root, { includeModules: true });
+    const result = await collectProjectStatus(root, { includeModules: true });
     expect(result.integrity.errors).toBeGreaterThan(0);
     expect(result.integrity.topIssues.some((entry) => entry.includes("artifact.unexpected-root-tag"))).toBe(true);
     expect(result.summary.readyModules).toBe(0);
     expect(result.moduleHealthLoadError).toContain("GRACE artifacts are invalid");
   });
 
-  it("reports GRACE 3 projects as migration candidates without loading docs as healthy", () => {
+  it("reports GRACE 3 projects as migration candidates without loading docs as healthy", async () => {
     const root = createProject();
     writeProjectFile(root, "docs/development-plan.xml", `<DevelopmentPlan />`);
 
-    const result = collectProjectStatus(root);
+    const result = await collectProjectStatus(root);
 
     expect(result.projectKind).toBe("grace3");
     expect(result.derivedStates).toContain("migration-candidate");
@@ -382,7 +382,7 @@ describe("grace status", () => {
     expect(result.nextAction).toContain("grace-migrate");
   });
 
-  it("wires the status command through the CLI", () => {
+  it("wires the status command through the CLI", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
     const repoRoot = path.resolve(import.meta.dir, "..");
@@ -400,7 +400,7 @@ describe("grace status", () => {
     expect(parsed.summary.graphModules).toBe(1);
   });
 
-  it("returns structured JSON for invalid options and missing paths without stack traces", () => {
+  it("returns structured JSON for invalid options and missing paths without stack traces", async () => {
     const repoRoot = path.resolve(import.meta.dir, "..");
     const invalid = Bun.spawnSync({
       cmd: [process.execPath, "./src/grace.ts", "status", "--json", "--fail-on", "unsupported"],

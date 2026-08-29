@@ -6,6 +6,7 @@ import { describe, expect, it } from "bun:test";
 import { resolveGrace4Paths } from "./project";
 import { buildGraphProjection, buildVerificationProjection } from "./projections";
 import { evaluateAssertion, extractAssertionsWithIssues, type AssertionContext, type GraceAssertion } from "./assertions";
+import type { CommandRunResult } from "./command-runner";
 
 function createProject() {
   const root = path.join(os.tmpdir(), `grace4-assertions-${crypto.randomUUID()}`);
@@ -98,6 +99,64 @@ describe("GRACE 4 assertions", () => {
     const root = createProject();
     writeProjectionFixture(root);
     expect(evaluateAssertion(assertion("MustPassCommand", ["exit /b 0"]), { ...context(root), runCommands: true })).toHaveLength(0);
+  });
+
+  it("maps pre-computed command results to assertion issues without spawning", () => {
+    const root = createProject();
+    writeProjectionFixture(root);
+    const slotKey = "plan.xml::TargetAssertions::0";
+    const commandAssertion: GraceAssertion = { kind: "MustPassCommand", values: ["bun run gate"], file: "plan.xml", slotKey };
+    const result = (overrides: Partial<CommandRunResult>): CommandRunResult => ({
+      index: 1,
+      assertionKey: slotKey,
+      assertionId: "plan.xml#1",
+      command: "bun run gate",
+      exitCode: 0,
+      durationMs: 1000,
+      timedOut: false,
+      skipped: false,
+      logFile: null,
+      outputTail: null,
+      ...overrides,
+    });
+
+    const passing: AssertionContext = {
+      ...context(root),
+      runCommands: true,
+      commandResults: new Map([[slotKey, [result({})]]]),
+    };
+    expect(evaluateAssertion(commandAssertion, passing)).toHaveLength(0);
+
+    const failing: AssertionContext = {
+      ...context(root),
+      runCommands: true,
+      commandResults: new Map([[slotKey, [result({ exitCode: 3, outputTail: "boom-tail" })]]]),
+    };
+    const failure = evaluateAssertion(commandAssertion, failing);
+    expect(failure).toHaveLength(1);
+    expect(failure[0]?.message).toContain("Command failed (3): bun run gate");
+    expect(failure[0]?.message).toContain("boom-tail");
+
+    const timedOut: AssertionContext = {
+      ...context(root),
+      runCommands: true,
+      commandResults: new Map([[slotKey, [result({ exitCode: null, timedOut: true, durationMs: 600_000 })]]]),
+    };
+    const timeoutIssue = evaluateAssertion(commandAssertion, timedOut);
+    expect(timeoutIssue).toHaveLength(1);
+    expect(timeoutIssue[0]?.message).toContain("Command timed out after 600s: bun run gate");
+
+    const skippedThenFailed: AssertionContext = {
+      ...context(root),
+      runCommands: true,
+      commandResults: new Map([[slotKey, [result({ skipped: true }), result({ exitCode: 1 })]]]),
+    };
+    expect(evaluateAssertion(commandAssertion, skippedThenFailed)).toHaveLength(1);
+
+    const missing: AssertionContext = { ...context(root), runCommands: true };
+    const unavailable = evaluateAssertion(commandAssertion, missing);
+    expect(unavailable).toHaveLength(1);
+    expect(unavailable[0]?.message).toContain("Command results unavailable");
   });
 
   it("rejects missing, extra, duplicate, nested, and empty assertion fields", () => {

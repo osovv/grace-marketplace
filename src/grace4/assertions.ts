@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
+import type { CommandRunResult } from "./command-runner";
 import type { Grace4Issue } from "./types";
 import { ProjectPathError, resolveContainedProjectPath } from "./paths";
 import type { GraphAnchorRecord, GraphProjection, VerificationProjection } from "./projections";
@@ -22,6 +23,8 @@ export type GraceAssertion = {
   kind: AssertionKind;
   file: string;
   values: string[];
+  /** Stamped at extraction: `${planFile}::${section}::${assertionIndex}` — links command results. */
+  slotKey?: string;
 };
 
 /** Context required to evaluate a GRACE 4 assertion. */
@@ -31,6 +34,8 @@ export type AssertionContext = {
   verification: VerificationProjection;
   /** Commands run only when an explicit target-verification path opts in. */
   runCommands?: boolean;
+  /** Pre-computed MustPassCommand results keyed by assertion slotKey, one entry per Command value. */
+  commandResults?: Map<string, CommandRunResult[]>;
 };
 
 export type AssertionExtractionResult = {
@@ -132,6 +137,7 @@ export function extractAssertionsWithIssues(
       assertions.push({
         ...extraction.assertion,
         file: planFile,
+        slotKey: `${planFile}::${section}::${assertions.length}`,
       });
       validAssertions += 1;
     }
@@ -214,24 +220,29 @@ function evaluateMustPassCommand(assertion: GraceAssertion, context: AssertionCo
     return [issue("error", "assertion.command-not-evaluated", assertion.file, "MustPassCommand requires explicit command execution opt-in.")];
   }
 
-  return assertion.values.flatMap((command) => {
-    const shellCommand = process.platform === "win32"
-      ? ["cmd.exe", "/d", "/s", "/c", command]
-      : [process.env.SHELL || "sh", "-lc", command];
-    const result = Bun.spawnSync({
-      cmd: shellCommand,
-      cwd: context.root,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+  const results = assertion.slotKey ? context.commandResults?.get(assertion.slotKey) : undefined;
+  if (!results) {
+    return [assertionIssue(assertion, "Command results unavailable for assertion.")];
+  }
 
-    if (result.exitCode === 0) {
+  return results
+    .filter((result) => !result.skipped)
+    .flatMap((result) => {
+      const detail = result.outputTail ? `\n${result.outputTail}` : "";
+      if (result.timedOut) {
+        return [assertionIssue(
+          assertion,
+          `Command timed out after ${Math.round(result.durationMs / 1000)}s: ${result.command}${detail}`,
+        )];
+      }
+      if (result.exitCode !== 0) {
+        return [assertionIssue(
+          assertion,
+          `Command failed (${result.exitCode}): ${result.command}${detail}`,
+        )];
+      }
       return [];
-    }
-
-    const stderr = new TextDecoder().decode(result.stderr).trim();
-    return [assertionIssue(assertion, `Command failed (${result.exitCode}): ${command}${stderr ? `: ${stderr}` : ""}`)];
-  });
+    });
 }
 
 function evaluateTextContainment(assertion: GraceAssertion, context: AssertionContext, shouldContain: boolean): Grace4Issue[] {
