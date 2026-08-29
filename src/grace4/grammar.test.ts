@@ -281,6 +281,61 @@ describe("GRACE 4 Artifact Grammar", () => {
     expect(validateChangeArtifact(parseGraceXmlArtifact("plan.xml", plan), "active").issues).toHaveLength(0);
   });
 
+  it("accepts multiple predecessors in comma, space, child-tag, and legacy child-text forms", () => {
+    const forms = [
+      "T-001, T-002",
+      "T-001 T-002",
+      "<T-001 /><T-002 />",
+      "<Task>T-001</Task><Task>T-002</Task>",
+    ];
+    for (const form of forms) {
+      const plan = validPlan(
+        task("T-001") + task("T-002") + task("T-003", form),
+      );
+      const result = validateChangeArtifact(parseGraceXmlArtifact("plan.xml", plan), "active");
+      expect(result.issues, `form accepted: ${form}`).toHaveLength(0);
+    }
+  });
+
+  it("validates multi-form dependencies: unknown ids, duplicates, self, and cycles", () => {
+    const plan = validPlan([
+      task("T-001"),
+      task("T-002", "T-001, T-999"),
+      task("T-003", "T-002, T-002"),
+      task("T-004", "T-004, T-001"),
+      task("T-005", "T-006"),
+      task("T-006", "T-005"),
+    ].join(""));
+    const result = validateChangeArtifact(parseGraceXmlArtifact("plan.xml", plan), "active");
+    const resultCodes = codes(result);
+
+    expect(resultCodes).toContain("change.task-unknown-dependency");
+    expect(resultCodes).toContain("change.task-duplicate-dependency");
+    expect(resultCodes).toContain("change.task-self-dependency");
+    expect(resultCodes).toContain("change.task-dependency-cycle");
+  });
+
+  it("no longer drops unknown child-tag dependencies silently and hints the multi-dependency form", () => {
+    const plan = validPlan(task("T-001") + task("T-002", "<T-999 />"));
+    const result = validateChangeArtifact(parseGraceXmlArtifact("plan.xml", plan), "active");
+    const messages = result.issues.map((entry) => entry.message).join("\n");
+    expect(codes(result)).toContain("change.task-unknown-dependency");
+    expect(messages).toContain("T-002");
+
+    const badForm = validPlan(task("T-001") + task("T-002", "T-1 T-2"));
+    const badResult = validateChangeArtifact(parseGraceXmlArtifact("plan.xml", badForm), "active");
+    expect(badResult.issues.find((entry) => entry.code === "change.task-invalid-dependency")?.message)
+      .toContain("comma-separated");
+
+    const duplicateSection = validPlan(task("T-001") + task("T-002", "T-001").replace(
+      "<DependsOn>T-001</DependsOn>",
+      "<DependsOn>T-001</DependsOn><DependsOn>T-001</DependsOn>",
+    ));
+    const duplicateResult = validateChangeArtifact(parseGraceXmlArtifact("plan.xml", duplicateSection), "active");
+    expect(duplicateResult.issues.find((entry) => entry.code === "change.task-duplicate-section")?.message)
+      .toContain("comma-separated");
+  });
+
   it("rejects invalid active and archive change statuses", () => {
     const active = validateChangeArtifact(
       parseGraceXmlArtifact("active/plan.xml", `<GraceChangePlan graceVersion="4.0" status="applied"><C-EXAMPLE /></GraceChangePlan>`),
