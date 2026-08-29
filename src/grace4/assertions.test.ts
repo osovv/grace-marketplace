@@ -5,6 +5,7 @@ import { describe, expect, it } from "bun:test";
 
 import { resolveGrace4Paths } from "./project";
 import { buildGraphProjection, buildVerificationProjection } from "./projections";
+import { runDeclaredCommands } from "./command-runner";
 import { evaluateAssertion, extractAssertionsWithIssues, type AssertionContext, type GraceAssertion } from "./assertions";
 import type { CommandRunResult } from "./command-runner";
 
@@ -95,10 +96,22 @@ describe("GRACE 4 assertions", () => {
     expect(evaluateAssertion(assertion("MustPassCommand", ["exit 99"]), { ...ctx, runCommands: true })).toHaveLength(1);
   });
 
-  (process.platform === "win32" ? it : it.skip)("executes command assertions through Windows cmd.exe", () => {
+  (process.platform === "win32" ? it : it.skip)("executes command assertions through Windows cmd.exe", async () => {
     const root = createProject();
     writeProjectionFixture(root);
-    expect(evaluateAssertion(assertion("MustPassCommand", ["exit /b 0"]), { ...context(root), runCommands: true })).toHaveLength(0);
+    const summary = await runDeclaredCommands(
+      [{ assertionKey: "plan.xml::TargetAssertions::0", assertionId: "plan.xml#1", command: "exit /b 0" }],
+      {
+        root,
+        assertionMode: "target",
+        timeoutMs: 10_000,
+        verbosity: "compact",
+        progress: () => {},
+        logRoot: path.join(os.tmpdir(), `grace4-cmdexe-${crypto.randomUUID()}`),
+      },
+    );
+    expect(summary.status).toBe("passed");
+    expect(summary.commands[0]?.exitCode).toBe(0);
   });
 
   it("maps pre-computed command results to assertion issues without spawning", () => {
