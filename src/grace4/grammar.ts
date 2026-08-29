@@ -634,7 +634,10 @@ function validateDirectSectionCardinality(
     if (matches.length === 0) {
       issues.push(issue("error", missingCode, file, `${parent.tag} is missing required direct section <${section}>.`));
     } else if (matches.length > 1) {
-      issues.push(issue("error", duplicateCode, file, `${parent.tag} contains duplicate direct <${section}> sections.`));
+      const hint = section === "DependsOn"
+        ? ` Multiple predecessors belong in ONE element, comma-separated: <DependsOn>T-001, T-002</DependsOn>.`
+        : "";
+      issues.push(issue("error", duplicateCode, file, `${parent.tag} contains duplicate direct <${section}> sections.${hint}`));
     }
   }
 }
@@ -776,15 +779,33 @@ function validatePlanTask(file: string, task: GraceXmlNode, issues: Grace4Issue[
     return [];
   }
 
+  // Multiple predecessors are allowed. Accepted forms, all equivalent:
+  //   <DependsOn>T-001, T-002</DependsOn>            comma/space-separated text (canonical)
+  //   <DependsOn>T-001 T-002</DependsOn>              space-separated text
+  //   <DependsOn><T-001 /><T-002 /></DependsOn>       child anchor tags
+  //   <DependsOn><Task>T-001</Task></DependsOn>       legacy child text
   const dependencyValues = [
-    ...(dependsOn.text.trim() ? [dependsOn.text.trim()] : []),
-    ...dependsOn.children.map((child) => child.text.trim()).filter(Boolean),
-  ];
+    ...dependsOn.text.split(/[,\s]+/),
+    ...dependsOn.children
+      .filter((child) => ANCHOR_PATTERNS.task.test(child.tag))
+      .map((child) => child.tag),
+    ...dependsOn.children
+      .filter((child) => !ANCHOR_PATTERNS.task.test(child.tag))
+      .flatMap((child) => child.text.split(/[,\s]+/)),
+  ]
+    .map((value) => value.trim())
+    .filter(Boolean);
   const dependencies: string[] = [];
   const seen = new Set<string>();
   for (const dependency of dependencyValues) {
     if (!ANCHOR_PATTERNS.task.test(dependency)) {
-      issues.push(issue("error", "change.task-invalid-dependency", file, `${task.tag} dependency '${dependency}' must be a canonical T-NNN identifier.`));
+      issues.push(issue(
+        "error",
+        "change.task-invalid-dependency",
+        file,
+        `${task.tag} dependency '${dependency}' must be a canonical T-NNN identifier. ` +
+          `List multiple predecessors comma-separated in one element: <DependsOn>T-001, T-002</DependsOn>.`,
+      ));
       continue;
     }
     if (seen.has(dependency)) {

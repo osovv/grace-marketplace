@@ -30,6 +30,8 @@
     <ImplementationPlan>
       <T-001>
         <Title>$TASK_TITLE</Title>
+        <!-- Zero or more predecessors, comma-separated: T-001, T-002. List only true
+             dependencies — never linearize independent tasks into a chain. -->
         <DependsOn></DependsOn>
         <AcceptanceCriteria>
           <Criterion>$TASK_ACCEPTANCE</Criterion>
