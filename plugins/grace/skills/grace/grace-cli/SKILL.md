@@ -16,6 +16,10 @@ description: Operate the GRACE 4 CLI for .grace linting, status, module navigati
 - Navigation: `grace module find|show`, `grace verification find|show`, and `grace file show`.
 </commands>
 
+<command_run_contract>
+`--run-commands` executes each declared `MustPassCommand` value once per lint, fail-fast, with a default 600s per-command timeout (`--command-timeout SECONDS` overrides, `0` disables). Plan, progress, and per-command result lines go to stderr; the lint report and JSON go to stdout, so piping stdout stays safe. Agents and pipes get compact output by default; interactive terminals see live streamed command output. Force modes with `--verbose` (live) or `--quiet` (compact); they are mutually exclusive, and `--format json` is always compact. Full combined output of every command is stored per run under `~/.cache/grace/run-commands/<project>/runs/<run>/` (respecting `XDG_CACHE_HOME`) with a machine-readable `meta.json`; failing commands print a bounded output tail plus the absolute log path. Interrupted runs (SIGINT/SIGTERM) kill the whole command process group, record `interrupted` status in meta.json, and exit 130.
+</command_run_contract>
+
 <lifecycle_command_contract>`current` evaluates active approved baselines and is not end-state evidence. Keep `MustPassCommand` entries as leaf project checks; do not nest `grace lint`, `grace status`, or another GRACE lifecycle command inside plan assertions. Run selected target/final lint externally.</lifecycle_command_contract>
 
 <failure_contract>
