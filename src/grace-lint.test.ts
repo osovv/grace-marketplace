@@ -358,8 +358,8 @@ describe("lintGraceProject", () => {
   it("run-commands gate: passing command yields evidence, compact progress, and meta.json", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
-    const gateCommand = `${process.execPath} -e "console.log('gate-ok')"`;
-    writeApprovedChange(root, "C-GATE-PASS", `<MustExist><Value>M-EXAMPLE</Value></MustExist>`, `<MustPassCommand><Command>${gateCommand}</Command></MustPassCommand>`);
+    writeProjectFile(root, "gate-ok.js", `console.log("gate-ok");\n`);
+    writeApprovedChange(root, "C-GATE-PASS", `<MustExist><Value>M-EXAMPLE</Value></MustExist>`, `<MustPassCommand><Command>${process.execPath} gate-ok.js</Command></MustPassCommand>`);
 
     const lines: string[] = [];
     const logRoot = testCommandLogRoot();
@@ -377,7 +377,7 @@ describe("lintGraceProject", () => {
     expect(result.commands?.[0]).toMatchObject({ exitCode: 0, timedOut: false, skipped: false });
     const progress = lines.join("\n");
     expect(progress).toContain("run-commands: change C-GATE-PASS (target)");
-    expect(progress).toMatch(/✔ \[1\/1\] .+gate-ok/);
+    expect(progress).toMatch(/✔ \[1\/1\] .+gate-ok\.js/);
 
     const runDirs = readdirSync(path.join(logRoot));
     expect(runDirs).toHaveLength(1);
@@ -389,8 +389,8 @@ describe("lintGraceProject", () => {
   it("run-commands gate: failing command yields Command failed issue and report line", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
-    const failCommand = `${process.execPath} -e "console.error('boom-gate'); process.exit(3)"`;
-    writeApprovedChange(root, "C-GATE-FAIL", `<MustExist><Value>M-EXAMPLE</Value></MustExist>`, `<MustPassCommand><Command>${failCommand}</Command></MustPassCommand>`);
+    writeProjectFile(root, "boom-gate.js", `console.error("boom-gate"); process.exit(3);\n`);
+    writeApprovedChange(root, "C-GATE-FAIL", `<MustExist><Value>M-EXAMPLE</Value></MustExist>`, `<MustPassCommand><Command>${process.execPath} boom-gate.js</Command></MustPassCommand>`);
 
     const result = await lintGraceProject(root, {
       assertionMode: "target",
@@ -404,15 +404,15 @@ describe("lintGraceProject", () => {
     expect(failure?.message).toContain("boom-gate");
     const report = formatTextReport(result);
     expect(report).toContain("Commands");
-    expect(report).toMatch(/✖ \[1\/1\] .+boom-gate.*exit 3/);
+    expect(report).toMatch(/✖ \[1\/1\] .+boom-gate\.js \(.*exit 3\)/);
     expect(report).toContain("Errors: 1");
   });
 
   it("run-commands gate: slow command times out with dedicated issue text", async () => {
     const root = createProject();
     writeMinimalGrace4Project(root);
-    const hangCommand = `${process.execPath} -e "await new Promise(() => {})"`;
-    writeApprovedChange(root, "C-GATE-SLOW", `<MustExist><Value>M-EXAMPLE</Value></MustExist>`, `<MustPassCommand><Command>${hangCommand}</Command></MustPassCommand>`);
+    writeProjectFile(root, "hang-forever.js", `setInterval(() => {}, 60000);\n`);
+    writeApprovedChange(root, "C-GATE-SLOW", `<MustExist><Value>M-EXAMPLE</Value></MustExist>`, `<MustPassCommand><Command>${process.execPath} hang-forever.js</Command></MustPassCommand>`);
 
     const result = await lintGraceProject(root, {
       assertionMode: "target",
@@ -424,7 +424,7 @@ describe("lintGraceProject", () => {
     });
 
     const timeoutIssue = result.issues.find((issue) => issue.message.includes("Command timed out after"));
-    expect(timeoutIssue?.message).toContain(hangCommand);
+    expect(timeoutIssue?.message).toContain("hang-forever.js");
     expect(result.commands?.[0]).toMatchObject({ timedOut: true, exitCode: null });
   });
 
