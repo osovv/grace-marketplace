@@ -111,7 +111,7 @@ describe("runDeclaredCommands output contract", () => {
   });
 });
 
-describe("runDeclaredCommands timeout and process groups", () => {
+describe.skipIf(process.platform === "win32")("runDeclaredCommands timeout and process groups", () => {
   test("timeout kills the command and marks the run as timeout", async () => {
     const { lines, options } = fixture({ timeoutMs: 600 });
     const startedAt = Date.now();
@@ -134,7 +134,7 @@ describe("runDeclaredCommands timeout and process groups", () => {
   });
 });
 
-describe("runDeclaredCommands abort handling", () => {
+describe.skipIf(process.platform === "win32")("runDeclaredCommands abort handling", () => {
   test("abort kills the running group, skips the rest, and records interrupted", async () => {
     const { lines, options } = fixture();
     const controller = new AbortController();
