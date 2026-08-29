@@ -1,3 +1,11 @@
+## <small>4.0.7 (2026-08-29)</small>
+
+### Summary
+
+Release 4.0.7 upgrades GRACE plan linting so a task's `DependsOn` element can list multiple predecessors using comma-separated text, space-separated text, child anchor tags, or the legacy child-text form. This lets plans express their true dependency DAG instead of forcing independent tasks into artificial linear chains, and validation now catches unknown, duplicate, self, and cyclic dependencies instead of silently dropping them, with error hints pointing to the canonical comma-separated form. The grace-plan skill documentation and change plan template were updated to reflect the multi-dependency contract.
+
+* feat(lint): accept multiple task dependencies in DependsOn ([72012f0](https://github.com/osovv/grace-marketplace/commit/72012f0))
+
 ## <small>4.0.6 (2026-08-29)</small>
 
 ### Summary
