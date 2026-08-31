@@ -54,36 +54,68 @@ function join(lines: string[]): string {
   return lines.join("\n");
 }
 
+// Declared commands are spawned through `cmd.exe /d /s /c` on Windows and `$SHELL -lc` elsewhere,
+// so a fixture command has to be written for whichever shell will read it. `printf` does not exist
+// on Windows, and `echo a & echo b` there emits a trailing space before the separator, which would
+// break the exact-match assertions below — hence `&` with no surrounding space.
+const onWindows = process.platform === "win32";
+
+/** Prints one token and exits 0. */
+function printCommand(token: string): string {
+  return onWindows ? `echo ${token}` : `printf ${token}`;
+}
+
+/** Prints two separate lines and exits 0. */
+const twoLineCommand = onWindows
+  ? "echo hello-live&echo second-line"
+  : "printf 'hello-live\\nsecond-line\\n'";
+
+/** Writes to stdout and stderr, then exits 3. */
+const failingCommand = onWindows
+  ? "echo boom-stdout&echo boom-stderr 1>&2&exit 3"
+  : "printf boom-stdout; printf boom-stderr 1>&2; exit 3";
+
+/**
+ * Prints `quiet-success` while the command text itself never spells that token, so an assertion
+ * that the token is absent from progress output tests forwarding rather than the echoed command.
+ * POSIX splits it with adjacent quoting; `cmd.exe` uses a no-op caret escape.
+ */
+const quietSuccessCommand = onWindows ? "echo quiet^-success" : "printf 'quiet''-success'";
+
 describe("runDeclaredCommands output contract", () => {
   test("plan block precedes result lines; compact emits start and result per command only", async () => {
     const { lines, options } = fixture();
-    const summary = await runDeclaredCommands(declared(["printf ok", "printf fine"]), options);
+    const okCommand = printCommand("ok");
+    const fineCommand = printCommand("fine");
+    const summary = await runDeclaredCommands(declared([okCommand, fineCommand]), options);
     expect(summary.status).toBe("passed");
 
     const headerIndex = lines.findIndex((line) => line.startsWith("run-commands:"));
     expect(headerIndex).toBe(0);
     expect(lines[0]).toContain("change C-TEST (target)");
     expect(lines[0]).toContain("1 assertion, 2 commands, timeout 10s");
-    expect(lines[1]).toBe("  [1/2] printf ok");
-    expect(lines[2]).toBe("  [2/2] printf fine");
-    expect(lines[3]).toBe("▶ [1/2] printf ok");
-    expect(lines[4]).toMatch(/^✔ \[1\/2\] printf ok \(\d+ms\)$/);
-    expect(lines[5]).toBe("▶ [2/2] printf fine");
-    expect(lines[6]).toMatch(/^✔ \[2\/2\] printf fine \(\d+ms\)$/);
+    expect(lines[1]).toBe(`  [1/2] ${okCommand}`);
+    expect(lines[2]).toBe(`  [2/2] ${fineCommand}`);
+    expect(lines[3]).toBe(`▶ [1/2] ${okCommand}`);
+    expect(lines[4]).toStartWith(`✔ [1/2] ${okCommand}`);
+    expect(lines[4]).toMatch(/ \(\d+ms\)$/);
+    expect(lines[5]).toBe(`▶ [2/2] ${fineCommand}`);
+    expect(lines[6]).toStartWith(`✔ [2/2] ${fineCommand}`);
+    expect(lines[6]).toMatch(/ \(\d+ms\)$/);
     expect(lines.some((line) => line.includes("ok") && !line.startsWith("✔") && !line.includes("[1/2]"))).toBe(false);
     expect(join(lines)).toContain("complete: 2/2 commands passed");
   });
 
   test("live mode forwards child output with [k/M] prefixes", async () => {
     const { lines, options } = fixture({ verbosity: "live" });
-    await runDeclaredCommands(declared(["printf 'hello-live\\nsecond-line\\n'"]), options);
+    await runDeclaredCommands(declared([twoLineCommand]), options);
     expect(lines).toContain("[1/1] hello-live");
     expect(lines).toContain("[1/1] second-line");
   });
 
   test("failure prints tail and full log path; success prints no tail", async () => {
     const { logRoot, lines, options } = fixture();
-    const summary = await runDeclaredCommands(declared(["printf boom-stdout; printf boom-stderr 1>&2; exit 3"]), options);
+    const summary = await runDeclaredCommands(declared([failingCommand]), options);
     expect(summary.status).toBe("failed");
     const text = join(lines);
     expect(text).toContain("exit 3");
@@ -93,7 +125,7 @@ describe("runDeclaredCommands output contract", () => {
     expect(text).toContain("stopped: command 1 of 1 failed");
 
     const passing = fixture();
-    await runDeclaredCommands(declared(["printf 'quiet''-success'"]), passing.options);
+    await runDeclaredCommands(declared([quietSuccessCommand]), passing.options);
     expect(join(passing.lines)).not.toContain("quiet-success");
   });
 
@@ -157,7 +189,7 @@ describe.skipIf(process.platform === "win32")("runDeclaredCommands abort handlin
 describe("runDeclaredCommands logs", () => {
   test("meta.json round-trips with per-command fields and existing log files", async () => {
     const { logRoot, options } = fixture();
-    const summary = await runDeclaredCommands(declared(["printf meta-ok"]), options);
+    const summary = await runDeclaredCommands(declared([printCommand("meta-ok")]), options);
     expect(summary.runDir).not.toBeNull();
     const meta = JSON.parse(await Bun.file(path.join(summary.runDir!, "meta.json")).text());
     expect(meta.schemaVersion).toBe("1.0.0");
@@ -179,7 +211,7 @@ describe("runDeclaredCommands logs", () => {
     for (let i = 1; i <= 11; i++) {
       mkdirSync(path.join(runsParent, `2026-08-${String(i).padStart(2, "0")}T00-00-00`), { recursive: true });
     }
-    const summary = await runDeclaredCommands(declared(["printf keep"]), { ...options, root: projectRoot });
+    const summary = await runDeclaredCommands(declared([printCommand("keep")]), { ...options, root: projectRoot });
     const runDirs = readdirSync(runsParent).sort();
     expect(runDirs).toHaveLength(10);
     expect(runDirs[9]).toBe(path.basename(summary.runDir!));
@@ -201,7 +233,7 @@ describe("runDeclaredCommands logs", () => {
       progress: (line) => lines.push(line),
       logRoot: blocker,
     };
-    const summary = await runDeclaredCommands(declared(["printf degrade-ok"]), options);
+    const summary = await runDeclaredCommands(declared([printCommand("degrade-ok")]), options);
     expect(summary.status).toBe("passed");
     expect(summary.runDir).toBeNull();
     expect(summary.commands[0]?.logFile).toBeNull();
