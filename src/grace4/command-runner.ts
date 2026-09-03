@@ -404,8 +404,11 @@ async function pumpStream(
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
-          if (line.trim().length > 0) {
-            emit(`${prefix} ${line}`);
+          // A Windows child ends every line with CRLF; forwarding the CR verbatim corrupts the
+          // rendered line. outputTailOf already normalizes, so live output matches it here.
+          const text = line.endsWith("\r") ? line.slice(0, -1) : line;
+          if (text.trim().length > 0) {
+            emit(`${prefix} ${text}`);
           }
         }
       }

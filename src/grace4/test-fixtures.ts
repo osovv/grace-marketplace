@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 function writeProjectFile(root: string, relativePath: string, contents: string) {
@@ -124,3 +125,21 @@ export function writeLegacyGrace3Project(root: string): void {
   writeProjectFile(root, "docs/knowledge-graph.xml", `<KnowledgeGraph />`);
   writeProjectFile(root, "docs/verification-plan.xml", `<VerificationPlan VERSION="0.2.0" />`);
 }
+
+/**
+ * Creating a symlink on Windows requires Developer Mode or an elevated shell; without either,
+ * `symlinkSync` raises EPERM. Fixtures that build symlink-escape scenarios probe this once and
+ * skip when the platform cannot express them.
+ */
+export const symlinksUnsupported = (() => {
+  const probe = mkdtempSync(path.join(os.tmpdir(), "grace4-symlink-probe-"));
+  try {
+    writeFileSync(path.join(probe, "target.txt"), "probe\n");
+    symlinkSync(path.join(probe, "target.txt"), path.join(probe, "link.txt"));
+    return false;
+  } catch {
+    return true;
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+})();
