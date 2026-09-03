@@ -1,3 +1,15 @@
+## <small>4.1.0 (2026-09-03)</small>
+
+### Summary
+
+Users working with .NET, C/C++, or PowerShell codebases gain meaningful lint coverage in 4.1.0: C, C++, C#, and PowerShell source files can now opt into structural governance—markup validity, contract completeness, and MODULE_MAP shape are enforced the same way they already are for Go, Rust, Java, and shell—while the default ignored-directory set now prunes .NET's `obj` intermediate output, where generated sources no author edits would otherwise be walked and analyzed. Windows users and CI see several reliability fixes: forwarded command output no longer carries a trailing carriage return that corrupted live logs and terminal rendering, command-runner test fixtures were made shell-portable so the suite reports real results on cmd.exe instead of false failures, and the Windows CI job now runs the full test suite rather than a handful of files, with POSIX-only symlink, permission, and shell fixtures skipped cleanly on that platform.
+
+* feat(cli): ignore .NET intermediate build output ([2bd4485](https://github.com/osovv/grace-marketplace/commit/2bd4485))
+* feat(lint): govern C, C++, C#, and PowerShell sources structurally ([8bcac9b](https://github.com/osovv/grace-marketplace/commit/8bcac9b))
+* test(windows): make command-runner fixtures shell-portable ([1e2f1b8](https://github.com/osovv/grace-marketplace/commit/1e2f1b8))
+* test(windows): skip POSIX-only fixtures and widen the Windows CI job ([0815521](https://github.com/osovv/grace-marketplace/commit/0815521))
+* fix(lint): strip the carriage return from forwarded command output ([fc08a21](https://github.com/osovv/grace-marketplace/commit/fc08a21))
+
 ## <small>4.0.7 (2026-08-29)</small>
 
 ### Summary
