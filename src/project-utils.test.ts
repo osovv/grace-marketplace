@@ -112,6 +112,33 @@ export const value = true;
     expect(hasRuntimeMarkerEvidence(`// const marker$ = "${marker}";\nconsole.info(marker$ + " ok");`, marker)).toBe(false);
   });
 
+  it("credits Go's standard-library logger, which has no levelled methods", () => {
+    const marker = "[Example][run][BLOCK_RUN]";
+    // The `log` package is Go's DEFAULT logging API and its only methods are the
+    // Print/Fatal/Panic families. A module using it emitted the marker just as
+    // surely as one using slog, and used to earn no credit at all for doing so.
+    expect(hasRuntimeMarkerEvidence(`log.Printf("${marker} ok")`, marker)).toBe(true);
+    expect(hasRuntimeMarkerEvidence(`log.Println("${marker} ok")`, marker)).toBe(true);
+    expect(hasRuntimeMarkerEvidence(`log.Print("${marker} ok")`, marker)).toBe(true);
+    expect(hasRuntimeMarkerEvidence(`log.Fatalf("${marker} died: %v", err)`, marker)).toBe(true);
+    expect(hasRuntimeMarkerEvidence(`log.Panicln("${marker} died")`, marker)).toBe(true);
+    // fmt is not a logger, but a marker printed through it is still emitted.
+    expect(hasRuntimeMarkerEvidence(`fmt.Printf("${marker} ok\\n")`, marker)).toBe(true);
+    expect(hasRuntimeMarkerEvidence(`fmt.Fprintln(os.Stderr, "${marker} ok")`, marker)).toBe(true);
+  });
+
+  it("does not credit an argument-less call, so err.Error() is not an emission", () => {
+    const marker = "[Example][run][BLOCK_RUN]";
+    // NEGATIVE CONTROL. `err.Error()` is Go's error-string method and appears on
+    // countless non-logging lines. Credited, it lets a module that merely
+    // MENTIONS its marker beside a wrapped error pass the required-marker gate
+    // without ever having emitted anything.
+    expect(hasRuntimeMarkerEvidence(`return fmt.Errorf("${marker} %s", err.Error())`, marker)).toBe(false);
+    expect(hasRuntimeMarkerEvidence(`x := "${marker}" + err.Error()`, marker)).toBe(false);
+    // The same line with a real emission still counts, so the guard stays narrow.
+    expect(hasRuntimeMarkerEvidence(`logger.Error("${marker} " + err.Error())`, marker)).toBe(true);
+  });
+
   it("credits capitalised logger methods used by Go, Java, and C#", () => {
     const marker = "[Example][run][BLOCK_RUN]";
     // Go stdlib log

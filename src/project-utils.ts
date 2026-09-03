@@ -214,10 +214,28 @@ function isCommentOnlyLine(line: string) {
  * `severe` is java.util.logging's error level, and the `log*` names are C#
  * ILogger's (`LogWarning`, `LogInformation`). Without them those two only match
  * when the receiver happens to be called `logger`, which is not a guarantee.
+ *
+ * `print`/`fatal`/`panic` cover Go's standard-library `log` package, which has
+ * no levelled methods at all - `log.Printf`, `log.Println`, `log.Fatal`. `fprint`
+ * covers `fmt.Fprint*`, which isn't logging but still emits to stdout/stderr.
+ * A Go module emitting its required marker through these standard APIs earned no
+ * credit before this, so the most idiomatic spelling tripped the blocker.
+ *
+ * Go's error CONSTRUCTION spellings are removed before the test rather than
+ * excluded inside it. `fmt.Errorf` matches `.error` + the `f` suffix, and
+ * `err.Error()` matches `.error`, so both were read as emissions - which let a
+ * line that merely MENTIONS its marker beside a wrapped error satisfy the
+ * required-marker gate without emitting anything. Stripping the named
+ * constructs keeps the emission pattern itself readable, and leaves a real
+ * emission on the same line still detectable:
+ * `logger.Error("<marker> " + err.Error())` loses only the `err.Error()`.
  */
+const NON_EMITTING_CONSTRUCTS = /\bfmt\.Errorf\s*\(|\berrors\.(?:New|Is|As|Join|Unwrap)\s*\(|\.Error\s*\(\s*\)/gi;
+
 function looksLikeEvidenceEmission(line: string) {
-  return /(console\.|logger\.|tracer\.|trace\s*\(|emit\s*\(|\.(?:info|warn(?:ing)?|error|debug|trace|severe|log(?:information|warning|error|debug|trace|critical))(?:f|w|ln)?(?:context)?\s*\()/i.test(
-    line,
+  const emitting = line.replace(NON_EMITTING_CONSTRUCTS, "");
+  return /(console\.|logger\.|tracer\.|trace\s*\(|emit\s*\(|\.(?:info|warn(?:ing)?|error|debug|trace|severe|f?print|fatal|panic|log(?:information|warning|error|debug|trace|critical))(?:f|w|ln)?(?:context)?\s*\()/i.test(
+    emitting,
   );
 }
 
