@@ -215,11 +215,11 @@ function isCommentOnlyLine(line: string) {
  * ILogger's (`LogWarning`, `LogInformation`). Without them those two only match
  * when the receiver happens to be called `logger`, which is not a guarantee.
  *
- * `print`/`fprint`/`fatal`/`panic` are Go's STANDARD LIBRARY logger, which has
- * no levelled methods at all - `log.Printf`, `log.Println`, `log.Fatal`. A Go
- * module emitting its required marker through the language's own default
- * logging API earned no credit before this, so the most idiomatic spelling
- * tripped the very blocker this function exists to prevent.
+ * `print`/`fatal`/`panic` cover Go's standard-library `log` package, which has
+ * no levelled methods at all - `log.Printf`, `log.Println`, `log.Fatal`. `fprint`
+ * covers `fmt.Fprint*`, which isn't logging but still emits to stdout/stderr.
+ * A Go module emitting its required marker through these standard APIs earned no
+ * credit before this, so the most idiomatic spelling tripped the blocker.
  *
  * Go's error CONSTRUCTION spellings are removed before the test rather than
  * excluded inside it. `fmt.Errorf` matches `.error` + the `f` suffix, and
