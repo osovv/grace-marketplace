@@ -20,6 +20,11 @@ export type DeclaredCommand = {
   assertionId: string;
   /** Full command string executed verbatim via $SHELL -lc. */
   command: string;
+  /**
+   * Per-command timeout in ms from the plan's declared `budgetSeconds`; 0 disables. When absent,
+   * the runner-wide `CommandRunnerOptions.timeoutMs` applies.
+   */
+  timeoutMs?: number;
 };
 
 export type CommandRunnerOptions = {
@@ -281,7 +286,7 @@ async function runOne(
   const kill = (signal: NodeJS.Signals) => killProcessTree(proc, signal);
   registerKill(kill);
 
-  const exitPromise = raceExitWithTimeout(proc, options.timeoutMs, kill);
+  const exitPromise = raceExitWithTimeout(proc, entry.timeoutMs ?? options.timeoutMs, kill);
   const pumps = [
     pumpStream(proc.stdout, chunks, logStream, live, prefix, emit),
     pumpStream(proc.stderr, chunks, logStream, live, prefix, emit),

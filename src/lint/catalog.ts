@@ -53,6 +53,16 @@ const EXACT_GUIDES: Record<string, Omit<LintIssueGuide, "code">> = {
     explanation: "A GraceChangeSpec or GraceChangePlan with status='superseded' should name the replacement C-* anchor via a <Replacement> or <ReplacementChange> child tag.",
     remediation: ["Add a <Replacement>C-REPLACEMENT-ID</Replacement> child to the superseded wrapper.", "Or add a direct <C-REPLACEMENT-ID /> child tag as the replacement reference."],
   },
+  "assertion.command-subsumed": {
+    title: "Subsumed Assertion Command",
+    explanation: "Two MustPassCommand entries in the same assertion section run overlapping work: they share the same command head, and one command's path arguments are a component-wise prefix of the other's (or the wider command names no path at all and therefore covers the whole suite). The narrower command is re-run for nothing, which inflates gate wall-clock time without adding evidence. A bare token counts as a path argument only when it contains a separator or exists under the project root, so `bun test src` covers `bun test src/grace4` but never `bun test srcfoo`.",
+    remediation: ["Delete the narrower command and keep the whole-suite one, or narrow the wider command so the two cover disjoint paths.", "If the slow whole-suite command is dominated by substrate startup, move it to an acceptance tier instead of the gate."],
+  },
+  "assertion.invalid-command-budget": {
+    title: "Invalid Assertion Command Budget",
+    explanation: "A MustPassCommand/Command declares a budgetSeconds attribute that is not a non-negative integer number of seconds. The grammar mirrors --command-timeout exactly, including 0 meaning 'no timeout for this command'.",
+    remediation: ["Write budgetSeconds as a whole number of seconds, for example budgetSeconds=\"900\".", "Use budgetSeconds=\"0\" only when the command must never be killed on time, and omit the attribute to fall back to --command-timeout."],
+  },
   "assertion.phase-incompatible-command": {
     title: "Phase-Incompatible Assertion Command",
     explanation: "A target command assertion invokes current-mode lifecycle lint. Current mode evaluates active approved baselines, so it is a pre-implementation check and cannot serve as target or final evidence after writes begin.",

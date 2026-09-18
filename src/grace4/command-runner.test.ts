@@ -278,3 +278,40 @@ describe("treeKillArgv", () => {
     expect(treeKillArgv(4242, "linux" as NodeJS.Platform)).toBeNull();
   });
 });
+
+describe("runDeclaredCommands per-command budget", () => {
+  /** A temp project root holding the two helper scripts these budget tests spawn. */
+  function budgetRoot(): string {
+    const root = mkdtempSync(path.join(tmpdir(), "grace-runner-budget-"));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    writeFileSync(path.join(root, "hang.js"), "setInterval(() => {}, 1000);\n");
+    writeFileSync(path.join(root, "nap.js"), "setTimeout(() => {}, 1200);\n");
+    return root;
+  }
+
+  test("a declared budget times the command out ahead of the global timeout", async () => {
+    const root = budgetRoot();
+    const { options } = fixture({ root, timeoutMs: 5_000 });
+    const summary = await runDeclaredCommands(
+      [{ assertionKey: "plan.xml::TargetAssertions::0", assertionId: "plan.xml#1", command: `${process.execPath} hang.js`, timeoutMs: 700 }],
+      options,
+    );
+
+    expect(summary.status).toBe("timeout");
+    expect(summary.commands[0]?.timedOut).toBe(true);
+    expect(summary.commands[0]?.durationMs).toBeLessThan(3_000);
+  });
+
+  test("a declared budget of zero disables the timeout the global setting would apply", async () => {
+    const root = budgetRoot();
+    const { options } = fixture({ root, timeoutMs: 300 });
+    const summary = await runDeclaredCommands(
+      [{ assertionKey: "plan.xml::TargetAssertions::0", assertionId: "plan.xml#1", command: `${process.execPath} nap.js`, timeoutMs: 0 }],
+      options,
+    );
+
+    expect(summary.commands[0]?.timedOut).toBe(false);
+    expect(summary.commands[0]?.exitCode).toBe(0);
+    expect(summary.status).toBe("passed");
+  });
+});
