@@ -126,6 +126,10 @@ export const lintCommand = defineCommand({
       description: "Per-command timeout in seconds for --run-commands (default 600, 0 disables)",
       default: "600",
     },
+    keepRuns: {
+      type: "string",
+      description: "How many non-passing --run-commands run directories to keep (default 10, 0 keeps none); the newest passing run of each change is always kept",
+    },
     verbose: {
       type: "boolean",
       description: "Stream full command output in --run-commands (forces live mode)",
@@ -167,6 +171,7 @@ export const lintCommand = defineCommand({
       const verbose = Boolean(context.args.verbose);
       const quiet = Boolean(context.args.quiet);
       const timeoutMs = parseCommandTimeoutMs(context.args.commandTimeout);
+      const keepRuns = parseKeepRuns(context.args.keepRuns);
       const verbosity = resolveCommandVerbosity({
         format,
         verbose,
@@ -187,6 +192,7 @@ export const lintCommand = defineCommand({
           runCommands: Boolean(context.args.runCommands),
           parallelPreflight: Boolean(context.args.parallelPreflight),
           commandTimeoutMs: timeoutMs,
+          runLogRetention: keepRuns,
           commandVerbosity: verbosity,
           commandSignal: controller.signal,
         });
@@ -216,6 +222,23 @@ export function parseCommandTimeoutMs(value: unknown): number {
     throw new GraceCommandError("invalid-arguments", `Unsupported --command-timeout \`${raw}\`. Use a non-negative integer number of seconds.`);
   }
   return Number(raw) * 1000;
+}
+
+/**
+ * Parses --keepRuns into a run-directory count; undefined when the flag is absent, so
+ * `.grace-lint.json`'s `runLogRetention` still applies. Rejects negative and non-integer
+ * values. `0` keeps no non-passing runs: the newest passing run of each change survives,
+ * everything else — including the current run when it fails — is removed immediately.
+ */
+export function parseKeepRuns(value: unknown): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const raw = String(value);
+  if (!/^\d+$/.test(raw)) {
+    throw new GraceCommandError("invalid-arguments", `Unsupported --keepRuns \`${raw}\`. Use a non-negative integer number of run directories.`);
+  }
+  return Number(raw);
 }
 
 /** Input for resolving the --run-commands output verbosity. */

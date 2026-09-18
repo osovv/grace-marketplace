@@ -137,7 +137,97 @@ describe("pruneRuns", () => {
   test("missing or empty parent is a no-op", () => {
     expect(() => pruneRuns(path.join(tempDir(), "nope"))).not.toThrow();
   });
+
+  test("the newest passing run of a change survives later failing runs", () => {
+    const root = tempDir();
+    try {
+      seedRun(root, "2026-08-01T00-00-00_C-ALPHA", { changeId: "C-ALPHA", status: "passed" });
+      for (let i = 2; i <= 14; i++) {
+        seedRun(root, `2026-08-${String(i).padStart(2, "0")}T00-00-00_C-BETA`, { changeId: "C-BETA", status: "failed" });
+      }
+      pruneRuns(root);
+      const remaining = readdirSync(root).sort();
+      expect(remaining).toContain("2026-08-01T00-00-00_C-ALPHA");
+      expect(remaining).toHaveLength(11);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("run dirs without a readable meta.json are prunable", () => {
+    const root = tempDir();
+    try {
+      seedRun(root, "2026-08-01T00-00-00_C-ALPHA", { changeId: "C-ALPHA", status: "passed" });
+      for (let i = 2; i <= 14; i++) {
+        mkdirSync(path.join(root, `2026-08-${String(i).padStart(2, "0")}T00-00-00_C-ALPHA`));
+      }
+      pruneRuns(root, 2);
+      const remaining = readdirSync(root).sort();
+      expect(remaining).toEqual([
+        "2026-08-01T00-00-00_C-ALPHA",
+        "2026-08-13T00-00-00_C-ALPHA",
+        "2026-08-14T00-00-00_C-ALPHA",
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an older passing run for the same change is superseded and prunable", () => {
+    const root = tempDir();
+    try {
+      seedRun(root, "2026-08-01T00-00-00_C-ALPHA", { changeId: "C-ALPHA", status: "passed" });
+      seedRun(root, "2026-08-02T00-00-00_C-ALPHA", { changeId: "C-ALPHA", status: "passed" });
+      seedRun(root, "2026-08-03T00-00-00_C-BETA", { changeId: "C-BETA", status: "passed" });
+      pruneRuns(root, 0);
+      expect(readdirSync(root).sort()).toEqual(["2026-08-02T00-00-00_C-ALPHA", "2026-08-03T00-00-00_C-BETA"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("passing runs without a changeId are not protected", () => {
+    const root = tempDir();
+    try {
+      seedRun(root, "2026-08-01T00-00-00", { changeId: null, status: "passed" });
+      seedRun(root, "2026-08-02T00-00-00", { changeId: null, status: "passed" });
+      pruneRuns(root, 1);
+      expect(readdirSync(root).sort()).toEqual(["2026-08-02T00-00-00"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("timeout and interrupted runs are prunable like failures", () => {
+    const root = tempDir();
+    try {
+      seedRun(root, "2026-08-01T00-00-00_C-ALPHA", { changeId: "C-ALPHA", status: "timeout" });
+      seedRun(root, "2026-08-02T00-00-00_C-ALPHA", { changeId: "C-ALPHA", status: "interrupted" });
+      pruneRuns(root, 0);
+      expect(readdirSync(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
+
+function seedRun(parent: string, name: string, meta: Partial<RunMeta>): void {
+  const dir = path.join(parent, name);
+  mkdirSync(dir, { recursive: true });
+  writeRunMeta(dir, {
+    schemaVersion: "1.0.0",
+    tool: "grace-lint",
+    changeId: null,
+    assertionMode: "target",
+    projectRoot: parent,
+    slug: "proj-abcdef12",
+    startedAt: "2026-08-01T00:00:00.000Z",
+    finishedAt: "2026-08-01T00:00:05.000Z",
+    status: "passed",
+    commands: [],
+    ...meta,
+  });
+}
 
 describe("commandLogFileName", () => {
   test("sanitizes to [a-z0-9-], starts with index, ends with .log, caps length", () => {

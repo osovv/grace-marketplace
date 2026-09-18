@@ -66,12 +66,20 @@ export type LintOptions = {
   commandProgress?: (line: string) => void;
   /** Overrides the XDG cache root for run logs; used by tests and tools. */
   commandLogRoot?: string;
+  /**
+   * How many non-passing run directories the command-run log keeps, from `--keepRuns`.
+   * Overrides `runLogRetention` in `.grace-lint.json`; both default to 10. The newest
+   * passing run of every change is protected regardless of this count.
+   */
+  runLogRetention?: number;
   /** Aborts a running command batch; the CLI wires SIGINT/SIGTERM here. */
   commandSignal?: AbortSignal;
 };
 
 export type GraceLintConfig = {
   ignoredDirs?: string[];
+  /** How many non-passing command-run directories survive pruning; default 10. */
+  runLogRetention?: number;
 };
 
 export type MarkupSection = {

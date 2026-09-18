@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -29,7 +29,10 @@ export type RunMeta = {
   commands: RunMetaCommand[];
 };
 
-/** How many run directories per project survive pruning after each run. */
+/**
+ * How many *prunable* run directories per project survive pruning after each run.
+ * The newest passing run of every change is protected and never counted here.
+ */
 export const RUN_RETENTION = 10;
 
 /**
@@ -82,10 +85,25 @@ export function writeRunMeta(runDir: string, meta: RunMeta): boolean {
   }
 }
 
+/** Reads and parses a run directory's meta.json; null when absent, unreadable, or malformed. */
+export function readRunMeta(runDir: string): RunMeta | null {
+  try {
+    const parsed = JSON.parse(readFileSync(path.join(runDir, "meta.json"), "utf8")) as RunMeta;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Keeps the newest `keep` run directories (lexical sort of the timestamped names,
- * which is chronological for the format above) and removes the rest. Missing or
- * empty parents are a no-op; individual removal failures never throw.
+ * Removes stale run directories, protecting the evidence an archive can cite: the newest
+ * run with `status: "passed"` of every change survives indefinitely. Everything else is
+ * prunable — failed, timeout and interrupted runs, passing runs superseded by a newer pass
+ * of the same change, passing runs with no `changeId` (unbound lint runs nothing cites),
+ * and runs whose meta.json is missing or unparseable (a run killed before it wrote one) —
+ * and only the newest `keep` of those survive. Directory names sort lexically, which is
+ * chronological for the timestamp format above. Missing or empty parents are a no-op;
+ * individual removal failures never throw.
  */
 export function pruneRuns(projectRunsParent: string, keep: number = RUN_RETENTION): void {
   let entries: string[];
@@ -98,7 +116,20 @@ export function pruneRuns(projectRunsParent: string, keep: number = RUN_RETENTIO
     .filter((name) => statSafe(path.join(projectRunsParent, name))?.isDirectory() ?? false)
     .sort()
     .reverse();
-  for (const stale of dirs.slice(keep)) {
+
+  const protectedChanges = new Set<string>();
+  const prunable: string[] = [];
+  for (const name of dirs) {
+    const meta = readRunMeta(path.join(projectRunsParent, name));
+    const changeId = typeof meta?.changeId === "string" && meta.changeId ? meta.changeId : null;
+    if (meta?.status === "passed" && changeId && !protectedChanges.has(changeId)) {
+      protectedChanges.add(changeId);
+      continue;
+    }
+    prunable.push(name);
+  }
+
+  for (const stale of prunable.slice(Math.max(0, keep))) {
     try {
       rmSync(path.join(projectRunsParent, stale), { recursive: true, force: true });
     } catch {

@@ -21,7 +21,12 @@ const EXACT_GUIDES: Record<string, Omit<LintIssueGuide, "code">> = {
   "config.unknown-key": {
     title: "Unknown Lint Config Key",
     explanation: ".grace-lint.json contains a key the CLI does not understand.",
-    remediation: ["Remove unsupported keys from .grace-lint.json.", "Use only documented keys such as ignoredDirs."],
+    remediation: ["Remove unsupported keys from .grace-lint.json.", "Use only documented keys such as ignoredDirs and runLogRetention."],
+  },
+  "config.invalid-run-log-retention": {
+    title: "Invalid Run Log Retention",
+    explanation: "`runLogRetention` in .grace-lint.json sets how many non-passing --run-commands log directories to keep, so it must be a non-negative integer.",
+    remediation: ["Set runLogRetention to a non-negative integer, for example 25.", "Remove the key to use the default of 10."],
   },
   "analysis.adapter-failed": {
     title: "Language Adapter Failed",

@@ -202,7 +202,7 @@ describe("runDeclaredCommands logs", () => {
     expect(logText).toContain("meta-ok");
   });
 
-  test("retention keeps ten runs including the current one", async () => {
+  test("retention keeps ten prunable runs plus the protected current pass", async () => {
     const { logRoot, options } = fixture();
     const projectRoot = path.join(tmpdir(), "grace-retention-proj");
     mkdirSync(projectRoot, { recursive: true });
@@ -212,9 +212,25 @@ describe("runDeclaredCommands logs", () => {
       mkdirSync(path.join(runsParent, `2026-08-${String(i).padStart(2, "0")}T00-00-00`), { recursive: true });
     }
     const summary = await runDeclaredCommands(declared([printCommand("keep")]), { ...options, root: projectRoot });
+    // The current run passes for C-TEST, so it is protected evidence and does not
+    // consume a retention slot; the eleven meta-less seeds are pruned down to ten.
     const runDirs = readdirSync(runsParent).sort();
-    expect(runDirs).toHaveLength(10);
-    expect(runDirs[9]).toBe(path.basename(summary.runDir!));
+    expect(runDirs).toHaveLength(11);
+    expect(runDirs).not.toContain("2026-08-01T00-00-00");
+    expect(runDirs[10]).toBe(path.basename(summary.runDir!));
+  });
+
+  test("retention honours an explicit runLogRetention override", async () => {
+    const { logRoot, options } = fixture();
+    const projectRoot = path.join(tmpdir(), "grace-retention-override-proj");
+    mkdirSync(projectRoot, { recursive: true });
+    cleanups.push(() => rmSync(projectRoot, { recursive: true, force: true }));
+    const runsParent = path.join(logRoot, projectSlug(projectRoot), "runs");
+    for (let i = 1; i <= 4; i++) {
+      mkdirSync(path.join(runsParent, `2026-08-0${i}T00-00-00`), { recursive: true });
+    }
+    const summary = await runDeclaredCommands(declared([printCommand("keep")]), { ...options, root: projectRoot, runLogRetention: 0 });
+    expect(readdirSync(runsParent)).toEqual([path.basename(summary.runDir!)]);
   });
 
   test("unwritable log root degrades to a warning and null log files", async () => {

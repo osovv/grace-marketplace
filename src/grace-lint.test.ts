@@ -3,8 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "bun:test";
 
-import { formatTextReport, lintGraceProject, parseCommandTimeoutMs, resolveCommandVerbosity } from "./grace-lint";
+import { projectSlug } from "./grace4/run-log-store";
+import { formatTextReport, lintGraceProject, parseCommandTimeoutMs, parseKeepRuns, resolveCommandVerbosity } from "./grace-lint";
 import { getLintIssueGuide } from "./lint/catalog";
+import { resolveRunLogRetention } from "./lint/config";
 
 function createProject() {
   return mkdtempSync(path.join(os.tmpdir(), "grace-lint-"));
@@ -680,7 +682,82 @@ describe("lintGraceProject unreadable directories", () => {
   });
 });
 
+describe("run-commands log retention", () => {
+  async function runFailingGate(root: string, logRoot: string, runLogRetention?: number) {
+    writeMinimalGrace4Project(root);
+    writeProjectFile(root, "boom-gate.js", `process.exit(3);\n`);
+    writeApprovedChange(root, "C-KEEP-RUNS", `<MustExist><Value>M-EXAMPLE</Value></MustExist>`, `<MustPassCommand><Command>${process.execPath} boom-gate.js</Command></MustPassCommand>`);
+    await lintGraceProject(root, {
+      assertionMode: "target",
+      changeId: "C-KEEP-RUNS",
+      runCommands: true,
+      runLogRetention,
+      commandProgress: () => {},
+      commandLogRoot: logRoot,
+    });
+    return readdirSync(path.join(logRoot, projectSlug(root), "runs")).sort();
+  }
+
+  function seedStaleRuns(root: string, logRoot: string) {
+    const runs = path.join(logRoot, projectSlug(root), "runs");
+    mkdirSync(path.join(runs, "2020-01-01T00-00-00"), { recursive: true });
+    mkdirSync(path.join(runs, "2020-01-02T00-00-00"), { recursive: true });
+  }
+
+  it("honours runLogRetention from .grace-lint.json", async () => {
+    const root = createProject();
+    const logRoot = testCommandLogRoot();
+    writeProjectFile(root, ".grace-lint.json", `{ "runLogRetention": 1 }\n`);
+    seedStaleRuns(root, logRoot);
+
+    const remaining = await runFailingGate(root, logRoot);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]).toContain("C-KEEP-RUNS");
+  });
+
+  it("--keepRuns wins over runLogRetention in .grace-lint.json", async () => {
+    const root = createProject();
+    const logRoot = testCommandLogRoot();
+    // Config 5 alone would keep all three prunable runs; the flag cuts it to one.
+    writeProjectFile(root, ".grace-lint.json", `{ "runLogRetention": 5 }\n`);
+    seedStaleRuns(root, logRoot);
+
+    const remaining = await runFailingGate(root, logRoot, 1);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]).toContain("C-KEEP-RUNS");
+  });
+
+  it("reports a non-integer runLogRetention and falls back to the default", async () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(root, ".grace-lint.json", `{ "runLogRetention": -5 }\n`);
+
+    const result = await lintGraceProject(root);
+    expect(result.issues.map((issue) => issue.code)).toContain("config.invalid-run-log-retention");
+    expect(resolveRunLogRetention(undefined, { runLogRetention: -5 })).toBe(10);
+  });
+
+  it("resolves retention precedence: flag, then config, then the default", () => {
+    expect(resolveRunLogRetention(3, { runLogRetention: 1 })).toBe(3);
+    expect(resolveRunLogRetention(0, { runLogRetention: 1 })).toBe(0);
+    expect(resolveRunLogRetention(undefined, { runLogRetention: 1 })).toBe(1);
+    expect(resolveRunLogRetention(undefined, { runLogRetention: 0 })).toBe(0);
+    expect(resolveRunLogRetention(undefined, {})).toBe(10);
+    expect(resolveRunLogRetention(undefined, null)).toBe(10);
+  });
+});
+
 describe("run-commands CLI flag resolution", () => {
+  it("parses --keepRuns as an optional non-negative integer", () => {
+    expect(parseKeepRuns("25")).toBe(25);
+    expect(parseKeepRuns("0")).toBe(0);
+    expect(parseKeepRuns(undefined)).toBeUndefined();
+    expect(() => parseKeepRuns("")).toThrow();
+    expect(() => parseKeepRuns("-5")).toThrow();
+    expect(() => parseKeepRuns("1.5")).toThrow();
+    expect(() => parseKeepRuns("many")).toThrow();
+  });
+
   it("parses command timeouts as non-negative integer seconds", () => {
     expect(parseCommandTimeoutMs("600")).toBe(600_000);
     expect(parseCommandTimeoutMs("0")).toBe(0);

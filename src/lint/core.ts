@@ -11,7 +11,7 @@ import { ANCHOR_PATTERNS, type Grace4Issue, type Grace4ProjectPaths } from "../g
 import { readGraceXmlArtifact } from "../grace4/xml";
 import { analyzeGovernedFile, collectCodeFiles, describeUnreadableDirectory, hasGraceMarkers, type UnreadableDirectoryHandler } from "../project-utils";
 import { withLintIssueGuide } from "./catalog";
-import { loadGraceLintConfig } from "./config";
+import { loadGraceLintConfig, resolveRunLogRetention } from "./config";
 import type { CommandEvidence, LintIssue, LintOptions, LintProfile, LintResult } from "./types";
 
 const TEXT_FORMAT_OPTIONS = new Set(["text", "json"]);
@@ -206,6 +206,9 @@ async function validateAssertions(
         verbosity: options.commandVerbosity ?? "compact",
         progress: options.commandProgress,
         logRoot: options.commandLogRoot,
+        // Config issues are already reported by validateGovernedFiles; an invalid value
+        // falls back to the default rather than failing the run a second time.
+        runLogRetention: resolveRunLogRetention(options.runLogRetention, loadGraceLintConfig(root).config),
       }, options.commandSignal);
       result.commands = summary.commands.map(toCommandEvidence);
       commandResults = new Map();
