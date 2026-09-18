@@ -11,7 +11,7 @@ import {
   type CommandRunnerOptions,
   type DeclaredCommand,
 } from "./command-runner";
-import { projectSlug } from "./run-log-store";
+import { projectSlug, readVcsIdentity } from "./run-log-store";
 
 const cleanups: Array<() => void> = [];
 
@@ -192,9 +192,15 @@ describe("runDeclaredCommands logs", () => {
     const summary = await runDeclaredCommands(declared([printCommand("meta-ok")]), options);
     expect(summary.runDir).not.toBeNull();
     const meta = JSON.parse(await Bun.file(path.join(summary.runDir!, "meta.json")).text());
-    expect(meta.schemaVersion).toBe("1.0.0");
+    expect(meta.schemaVersion).toBe("1.1.0");
     expect(meta.status).toBe("passed");
     expect(meta.changeId).toBe("C-TEST");
+    expect(meta.pid).toBe(process.pid);
+    expect(meta.finishedAt).toBeString();
+    const identity = readVcsIdentity(options.root);
+    expect(meta.head).toBe(identity.head);
+    expect(meta.branch).toBe(identity.branch);
+    expect(meta.dirty).toBe(identity.dirty);
     expect(meta.commands).toHaveLength(1);
     expect(meta.commands[0].exitCode).toBe(0);
     expect(meta.commands[0].logFile).toBeString();
