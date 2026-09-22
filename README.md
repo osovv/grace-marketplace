@@ -133,6 +133,8 @@ Migration cleanup is separately gated: successful current lint, fresh status pro
 
 `MustPassCommand` entries are leaf project evidence such as tests, typecheck, build, format, or package checks. Do not nest `grace lint`, `grace status`, or another GRACE lifecycle command inside plan assertions; selected target/final lint is the external orchestration gate.
 
+Each `<Command>` may declare an optional `budgetSeconds` attribute — `<Command budgetSeconds="1800">bun run gate:e2e</Command>` — which becomes that command's timeout under `--run-commands` in preference to the global `--command-timeout`. The grammar matches `--command-timeout`: a non-negative whole number of seconds, where `0` disables the timeout for that command and omitting the attribute keeps the global default. Lint also reports `assertion.command-subsumed` as a warning when two commands in the same assertion section share a command head and one's path arguments are a component-wise prefix of the other's, so a gate that re-runs `bun test src/grace4` under `bun test src` is visible rather than merely slow.
+
 Output modes:
 
 - `grace lint`: `text`, `json`

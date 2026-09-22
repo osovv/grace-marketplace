@@ -134,6 +134,8 @@ type SectionJob = {
   includeExtractionIssues: boolean;
   skipUnevaluatedCommands: boolean;
   skipActivePhaseIssues: boolean;
+  /** Archived plans are immutable history; advisory warnings about them are unactionable noise. */
+  archived: boolean;
 };
 
 async function validateAssertions(
@@ -158,6 +160,7 @@ async function validateAssertions(
     includeExtractionIssues = true,
     skipUnevaluatedCommands = false,
     skipActivePhaseIssues = false,
+    archived = false,
   ) => {
     jobs.push({
       planFile,
@@ -167,6 +170,7 @@ async function validateAssertions(
       includeExtractionIssues,
       skipUnevaluatedCommands,
       skipActivePhaseIssues,
+      archived,
     });
   };
 
@@ -181,8 +185,8 @@ async function validateAssertions(
 
   for (const planFile of planFilesArchived) {
     // Archived plans: syntax only, never semantic (baseline may be stale, target may be superseded by later changes)
-    pushJob(planFile, "BaselineAssertions", false, true, false, true);
-    pushJob(planFile, "TargetAssertions", false, true, false, true);
+    pushJob(planFile, "BaselineAssertions", false, true, false, true, true);
+    pushJob(planFile, "TargetAssertions", false, true, false, true, true);
   }
 
   if (assertionMode !== "current" && selectedPlan) {
@@ -234,11 +238,17 @@ function collectDeclaredCommands(jobs: SectionJob[]): DeclaredCommand[] {
           return [];
         }
         const slotIndex = Number(slotKey.split("::").pop());
-        return assertion.values.map((command) => ({
-          assertionKey: slotKey,
-          assertionId: `${path.basename(job.planFile)}#${Number.isNaN(slotIndex) ? "?" : slotIndex + 1}`,
-          command,
-        }));
+        return assertion.values.map((command, commandIndex) => {
+          // A declared budgetSeconds becomes this command's timeout; absent, the runner-wide
+          // --command-timeout still applies. 0 is a real value (disable) and must survive.
+          const budgetSeconds = assertion.commandBudgetsSeconds?.[commandIndex];
+          return {
+            assertionKey: slotKey,
+            assertionId: `${path.basename(job.planFile)}#${Number.isNaN(slotIndex) ? "?" : slotIndex + 1}`,
+            command,
+            ...(budgetSeconds == null ? {} : { timeoutMs: budgetSeconds * 1000 }),
+          };
+        });
       }),
     );
 }
@@ -263,6 +273,9 @@ function evaluateJob(
   if (job.includeExtractionIssues) {
     for (const issue of job.extraction.issues) {
       if (job.skipActivePhaseIssues && issue.code === "assertion.phase-incompatible-command") {
+        continue;
+      }
+      if (job.archived && issue.code === "assertion.command-subsumed") {
         continue;
       }
       addGrace4Issue(result, issue);

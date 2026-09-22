@@ -34,6 +34,8 @@ Produce `plan.xml` from `references/change-plan-template.xml` as draft unless th
 - `baseline` is the selected pre-edit gate, `target` is selected post-edit evidence, and `final` is the outer apply/archive gate owned by `grace-execute`.
 - `MustPassCommand` contains leaf project evidence such as tests, typecheck, build, format, or package checks. Never place `grace lint`, `grace status`, or another GRACE lifecycle command inside it.
 - Never put `--assertions current` in `TargetAssertions` or in task verification that runs after writes. Use selected target/final lint externally instead.
+- A `MustPassCommand` must complete within its declared `budgetSeconds` (absent, the global `--command-timeout` applies) on the reference host; declare the budget you have measured rather than inheriting a default that will kill the command mid-gate.
+- A whole-suite command whose runtime is dominated by substrate startup — containers, databases, browsers, emulators — belongs in an acceptance tier, not in the gate; never declare both a whole-suite command and the file-level commands it already re-runs.
 </command_phase_rules>
 
 <validation>

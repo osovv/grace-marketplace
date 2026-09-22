@@ -650,6 +650,79 @@ function Publish-Artifacts {
     const result = await lintGraceProject(root);
     expect(result.issues.filter((issue) => issue.code.startsWith("design-context.") || issue.code === "artifact.invalid-root-tag" || issue.code === "change.invalid-root-tag")).toHaveLength(0);
   });
+
+  it("reports a subsumed gate command as a warning that does not fail an otherwise clean lint", async () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    mkdirSync(path.join(root, "src", "grace4"), { recursive: true });
+    mkdirSync(path.join(root, "srcfoo"), { recursive: true });
+    writeApprovedChange(
+      root,
+      "C-SUBSUMED",
+      `<MustExist><Value>M-EXAMPLE</Value></MustExist>`,
+      `<MustPassCommand><Command budgetSeconds="900">bun test src</Command><Command>bun test src/grace4</Command><Command>bun test srcfoo</Command></MustPassCommand>`,
+    );
+
+    const result = await lintGraceProject(root);
+    const subsumed = result.issues.filter((issue) => issue.code === "assertion.command-subsumed");
+
+    expect(subsumed).toHaveLength(1);
+    expect(subsumed[0]?.severity).toBe("warning");
+    expect(subsumed[0]?.message).toContain("bun test src/grace4");
+    // failOn defaults to "errors", so warnings leave the CLI exit code at 0.
+    expect(result.summary.errors).toBe(0);
+    expect(result.summary.warnings).toBeGreaterThan(0);
+    expect(getLintIssueGuide("assertion.command-subsumed").title).toBe("Subsumed Assertion Command");
+  });
+
+  it("run-commands gate: a declared budgetSeconds beats the global --command-timeout", async () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeProjectFile(root, "hang-forever.js", `setInterval(() => {}, 60000);\n`);
+    writeApprovedChange(
+      root,
+      "C-GATE-BUDGET",
+      `<MustExist><Value>M-EXAMPLE</Value></MustExist>`,
+      `<MustPassCommand><Command budgetSeconds="1">${process.execPath} hang-forever.js</Command></MustPassCommand>`,
+    );
+
+    const result = await lintGraceProject(root, {
+      assertionMode: "target",
+      changeId: "C-GATE-BUDGET",
+      runCommands: true,
+      commandTimeoutMs: 10_000,
+      commandProgress: () => {},
+      commandLogRoot: testCommandLogRoot(),
+    });
+
+    expect(result.commands?.[0]).toMatchObject({ timedOut: true, exitCode: null });
+    expect(result.commands?.[0]?.durationMs).toBeLessThan(5_000);
+    // The reported duration is wall time including teardown, so only the bound is asserted: the
+    // declared 1s budget must have killed the command far short of the 10s global timeout.
+    const timeoutIssue = result.issues.find((issue) => issue.code === "assertion.MustPassCommand");
+    expect(timeoutIssue?.message).toContain("Command timed out after");
+    expect(timeoutIssue?.message).toContain("hang-forever.js");
+  });
+
+  it("keeps subsumed-command warnings off immutable archived plans", async () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    mkdirSync(path.join(root, "src", "grace4"), { recursive: true });
+    const bundle = ".grace/changes/archive/C-ARCHIVED-GATE";
+    writeProjectFile(
+      root,
+      `${bundle}/spec.xml`,
+      `<GraceChangeSpec graceVersion="4.0" status="applied"><C-ARCHIVED-GATE><Summary>Historical change.</Summary><Goals><Goal>Ship it.</Goal></Goals><Constraints><Constraint>None.</Constraint></Constraints><NonGoals><NonGoal>Unrelated behavior.</NonGoal></NonGoals><AcceptanceCriteria><Criterion>Shipped.</Criterion></AcceptanceCriteria><AffectedAreas><M-EXAMPLE /></AffectedAreas><VerificationIntent><ExpectedCommand>bun test</ExpectedCommand></VerificationIntent></C-ARCHIVED-GATE></GraceChangeSpec>`,
+    );
+    writeProjectFile(
+      root,
+      `${bundle}/plan.xml`,
+      `<GraceChangePlan graceVersion="4.0" status="applied"><C-ARCHIVED-GATE><IntentSummary>Historical plan.</IntentSummary><BaselineAssertions><MustExist><Value>M-EXAMPLE</Value></MustExist></BaselineAssertions><TargetAssertions><MustPassCommand><Command>bun test src</Command><Command>bun test src/grace4</Command></MustPassCommand></TargetAssertions><DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>src/example.ts</File></ObservedWriteScope><ImplementationPlan><T-001><Title>Historical task</Title><DependsOn></DependsOn><AcceptanceCriteria><Criterion>Done.</Criterion></AcceptanceCriteria><Verification><Command>bun test</Command></Verification></T-001></ImplementationPlan></C-ARCHIVED-GATE></GraceChangePlan>`,
+    );
+
+    const result = await lintGraceProject(root);
+    expect(result.issues.map((issue) => issue.code)).not.toContain("assertion.command-subsumed");
+  });
 });
 
 describe("lintGraceProject unreadable directories", () => {
