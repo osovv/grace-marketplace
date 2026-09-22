@@ -305,4 +305,105 @@ describe("GRACE 4 assertions", () => {
       expect(evaluateAssertion(failAssertions[0]!, failCtx)[0]?.code).toBe("assertion.MustVerify");
     }
   });
+
+  it("accepts a per-command budgetSeconds attribute and rejects malformed ones", () => {
+    const root = createProject();
+    const planFile = path.join(root, "plan.xml");
+    writeFileSync(
+      planFile,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><TargetAssertions>`
+      + `<MustPassCommand><Command budgetSeconds="1800">bun run gate:e2e</Command><Command>bun run gate:typecheck</Command><Command budgetSeconds="0">bun run gate:soak</Command></MustPassCommand>`
+      + `</TargetAssertions></C-EXAMPLE></GraceChangePlan>`,
+    );
+
+    const accepted = extractAssertionsWithIssues(planFile, "TargetAssertions");
+    expect(accepted.issues.map((item) => item.code)).not.toContain("assertion.invalid-shape");
+    expect(accepted.assertions).toHaveLength(1);
+    expect(accepted.assertions[0]!.commandBudgetsSeconds).toEqual([1800, null, 0]);
+
+    for (const bad of ["-5", "12.5", "soon", ""]) {
+      const badFile = path.join(root, `bad-${encodeURIComponent(bad) || "empty"}.xml`);
+      writeFileSync(
+        badFile,
+        `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><TargetAssertions><MustPassCommand><Command budgetSeconds="${bad}">bun run gate</Command></MustPassCommand></TargetAssertions></C-EXAMPLE></GraceChangePlan>`,
+      );
+      const rejected = extractAssertionsWithIssues(badFile, "TargetAssertions");
+      expect(rejected.issues.map((item) => item.code)).toContain("assertion.invalid-command-budget");
+      expect(rejected.assertions).toHaveLength(0);
+    }
+
+    const foreignAttribute = path.join(root, "foreign.xml");
+    writeFileSync(
+      foreignAttribute,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><TargetAssertions><MustPassCommand><Command budgetMinutes="30">bun run gate</Command></MustPassCommand><MustVerify><Module budgetSeconds="30">M-EXAMPLE</Module></MustVerify></TargetAssertions></C-EXAMPLE></GraceChangePlan>`,
+    );
+    const foreign = extractAssertionsWithIssues(foreignAttribute, "TargetAssertions");
+    expect(foreign.issues.filter((item) => item.code === "assertion.invalid-shape")).toHaveLength(2);
+  });
+
+  it("warns when one declared command's path argument is a component prefix of another's", () => {
+    const root = createProject();
+    for (const directory of ["src/grace4", "srcfoo"]) {
+      mkdirSync(path.join(root, directory), { recursive: true });
+    }
+    const planFile = path.join(root, "plan.xml");
+    writeFileSync(
+      planFile,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><TargetAssertions>`
+      + `<MustPassCommand><Command>bun test src</Command><Command>bun test src/grace4</Command></MustPassCommand>`
+      + `<MustPassCommand><Command>bun test srcfoo</Command><Command>bun run check</Command></MustPassCommand>`
+      + `</TargetAssertions></C-EXAMPLE></GraceChangePlan>`,
+    );
+
+    const result = extractAssertionsWithIssues(planFile, "TargetAssertions");
+    const subsumed = result.issues.filter((item) => item.code === "assertion.command-subsumed");
+    expect(subsumed).toHaveLength(1);
+    expect(subsumed[0]!.severity).toBe("warning");
+    expect(subsumed[0]!.message).toContain(`"bun test src/grace4" is already covered by "bun test src"`);
+    expect(result.issues.map((item) => item.code)).not.toContain("assertion.invalid-shape");
+  });
+
+  it("treats a whole-suite command as subsuming the scoped commands it re-runs", () => {
+    const root = createProject();
+    mkdirSync(path.join(root, "src"), { recursive: true });
+    const planFile = path.join(root, "plan.xml");
+    writeFileSync(
+      planFile,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><TargetAssertions>`
+      + `<MustPassCommand><Command>bun test</Command><Command>bun test src/example.test.ts</Command></MustPassCommand>`
+      + `</TargetAssertions></C-EXAMPLE></GraceChangePlan>`,
+    );
+
+    const subsumed = extractAssertionsWithIssues(planFile, "TargetAssertions")
+      .issues.filter((item) => item.code === "assertion.command-subsumed");
+    expect(subsumed).toHaveLength(1);
+    expect(subsumed[0]!.message).toContain(`"bun test src/example.test.ts" is already covered by "bun test"`);
+  });
+
+  it("leaves disjoint paths and option-only variants unwarned", () => {
+    const root = createProject();
+    mkdirSync(path.join(root, "src"), { recursive: true });
+    mkdirSync(path.join(root, "docs"), { recursive: true });
+
+    const disjointFile = path.join(root, "disjoint-plan.xml");
+    writeFileSync(
+      disjointFile,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><TargetAssertions>`
+      + `<MustPassCommand><Command>bun test src</Command><Command>bun test docs</Command></MustPassCommand>`
+      + `<MustPassCommand><Command>bun run check</Command><Command>bun run check:types</Command></MustPassCommand>`
+      + `</TargetAssertions></C-EXAMPLE></GraceChangePlan>`,
+    );
+    expect(extractAssertionsWithIssues(disjointFile, "TargetAssertions").issues.map((item) => item.code))
+      .not.toContain("assertion.command-subsumed");
+
+    const optionsFile = path.join(root, "options-plan.xml");
+    writeFileSync(
+      optionsFile,
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><TargetAssertions>`
+      + `<MustPassCommand><Command>bun test --coverage</Command><Command>bun test --watch</Command></MustPassCommand>`
+      + `</TargetAssertions></C-EXAMPLE></GraceChangePlan>`,
+    );
+    expect(extractAssertionsWithIssues(optionsFile, "TargetAssertions").issues.map((item) => item.code))
+      .not.toContain("assertion.command-subsumed");
+  });
 });

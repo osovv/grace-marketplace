@@ -532,4 +532,15 @@ describe("GRACE 4 Artifact Grammar", () => {
     });
     expect(codes(validateGrace4Project(root))).toContain("design-context.bundle-id-mismatch");
   });
+
+  it("accepts budgetSeconds on MustPassCommand/Command as a non-anchor attribute", () => {
+    const root = createProject();
+    const planFile = path.join(root, "plan.xml");
+    const plan = `<GraceChangePlan graceVersion="4.0" status="approved"><C-EXAMPLE><IntentSummary>Intent.</IntentSummary><BaselineAssertions><MustExist><Value>M-EXAMPLE</Value></MustExist></BaselineAssertions><TargetAssertions><MustPassCommand><Command budgetSeconds="1800">bun run gate:e2e</Command></MustPassCommand></TargetAssertions><DurableScope><GraphAnchors><M-EXAMPLE /></GraphAnchors></DurableScope><ObservedWriteScope><File>src/example.ts</File></ObservedWriteScope><ImplementationPlan>${task("T-001")}</ImplementationPlan></C-EXAMPLE></GraceChangePlan>`;
+    writeProjectFile(root, "plan.xml", plan);
+
+    const artifact = parseGraceXmlArtifact(planFile, plan);
+    expect(codes(validateChangeArtifact(artifact, "active"))).toHaveLength(0);
+    expect(validateSemanticAnchorDiscipline(planFile, artifact.root!)).toHaveLength(0);
+  });
 });

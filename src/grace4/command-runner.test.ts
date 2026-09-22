@@ -11,7 +11,7 @@ import {
   type CommandRunnerOptions,
   type DeclaredCommand,
 } from "./command-runner";
-import { projectSlug } from "./run-log-store";
+import { projectSlug, readVcsIdentity } from "./run-log-store";
 
 const cleanups: Array<() => void> = [];
 
@@ -192,9 +192,15 @@ describe("runDeclaredCommands logs", () => {
     const summary = await runDeclaredCommands(declared([printCommand("meta-ok")]), options);
     expect(summary.runDir).not.toBeNull();
     const meta = JSON.parse(await Bun.file(path.join(summary.runDir!, "meta.json")).text());
-    expect(meta.schemaVersion).toBe("1.0.0");
+    expect(meta.schemaVersion).toBe("1.1.0");
     expect(meta.status).toBe("passed");
     expect(meta.changeId).toBe("C-TEST");
+    expect(meta.pid).toBe(process.pid);
+    expect(meta.finishedAt).toBeString();
+    const identity = readVcsIdentity(options.root);
+    expect(meta.head).toBe(identity.head);
+    expect(meta.branch).toBe(identity.branch);
+    expect(meta.dirty).toBe(identity.dirty);
     expect(meta.commands).toHaveLength(1);
     expect(meta.commands[0].exitCode).toBe(0);
     expect(meta.commands[0].logFile).toBeString();
@@ -202,7 +208,7 @@ describe("runDeclaredCommands logs", () => {
     expect(logText).toContain("meta-ok");
   });
 
-  test("retention keeps ten runs including the current one", async () => {
+  test("retention keeps ten prunable runs plus the protected current pass", async () => {
     const { logRoot, options } = fixture();
     const projectRoot = path.join(tmpdir(), "grace-retention-proj");
     mkdirSync(projectRoot, { recursive: true });
@@ -212,9 +218,25 @@ describe("runDeclaredCommands logs", () => {
       mkdirSync(path.join(runsParent, `2026-08-${String(i).padStart(2, "0")}T00-00-00`), { recursive: true });
     }
     const summary = await runDeclaredCommands(declared([printCommand("keep")]), { ...options, root: projectRoot });
+    // The current run passes for C-TEST, so it is protected evidence and does not
+    // consume a retention slot; the eleven meta-less seeds are pruned down to ten.
     const runDirs = readdirSync(runsParent).sort();
-    expect(runDirs).toHaveLength(10);
-    expect(runDirs[9]).toBe(path.basename(summary.runDir!));
+    expect(runDirs).toHaveLength(11);
+    expect(runDirs).not.toContain("2026-08-01T00-00-00");
+    expect(runDirs[10]).toBe(path.basename(summary.runDir!));
+  });
+
+  test("retention honours an explicit runLogRetention override", async () => {
+    const { logRoot, options } = fixture();
+    const projectRoot = path.join(tmpdir(), "grace-retention-override-proj");
+    mkdirSync(projectRoot, { recursive: true });
+    cleanups.push(() => rmSync(projectRoot, { recursive: true, force: true }));
+    const runsParent = path.join(logRoot, projectSlug(projectRoot), "runs");
+    for (let i = 1; i <= 4; i++) {
+      mkdirSync(path.join(runsParent, `2026-08-0${i}T00-00-00`), { recursive: true });
+    }
+    const summary = await runDeclaredCommands(declared([printCommand("keep")]), { ...options, root: projectRoot, runLogRetention: 0 });
+    expect(readdirSync(runsParent)).toEqual([path.basename(summary.runDir!)]);
   });
 
   test("unwritable log root degrades to a warning and null log files", async () => {
@@ -276,5 +298,42 @@ describe("treeKillArgv", () => {
   test("builds taskkill argv on win32 and null on posix", () => {
     expect(treeKillArgv(4242, "win32" as NodeJS.Platform)).toEqual(["taskkill", "/PID", "4242", "/T", "/F"]);
     expect(treeKillArgv(4242, "linux" as NodeJS.Platform)).toBeNull();
+  });
+});
+
+describe("runDeclaredCommands per-command budget", () => {
+  /** A temp project root holding the two helper scripts these budget tests spawn. */
+  function budgetRoot(): string {
+    const root = mkdtempSync(path.join(tmpdir(), "grace-runner-budget-"));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    writeFileSync(path.join(root, "hang.js"), "setInterval(() => {}, 1000);\n");
+    writeFileSync(path.join(root, "nap.js"), "setTimeout(() => {}, 1200);\n");
+    return root;
+  }
+
+  test("a declared budget times the command out ahead of the global timeout", async () => {
+    const root = budgetRoot();
+    const { options } = fixture({ root, timeoutMs: 5_000 });
+    const summary = await runDeclaredCommands(
+      [{ assertionKey: "plan.xml::TargetAssertions::0", assertionId: "plan.xml#1", command: `${process.execPath} hang.js`, timeoutMs: 700 }],
+      options,
+    );
+
+    expect(summary.status).toBe("timeout");
+    expect(summary.commands[0]?.timedOut).toBe(true);
+    expect(summary.commands[0]?.durationMs).toBeLessThan(3_000);
+  });
+
+  test("a declared budget of zero disables the timeout the global setting would apply", async () => {
+    const root = budgetRoot();
+    const { options } = fixture({ root, timeoutMs: 300 });
+    const summary = await runDeclaredCommands(
+      [{ assertionKey: "plan.xml::TargetAssertions::0", assertionId: "plan.xml#1", command: `${process.execPath} nap.js`, timeoutMs: 0 }],
+      options,
+    );
+
+    expect(summary.commands[0]?.timedOut).toBe(false);
+    expect(summary.commands[0]?.exitCode).toBe(0);
+    expect(summary.status).toBe("passed");
   });
 });
