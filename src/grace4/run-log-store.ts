@@ -15,25 +15,50 @@ export type RunMetaCommand = {
   logFile: string | null;
 };
 
-/** meta.json written once per lint --run-commands invocation. */
-export type RunMeta = {
-  schemaVersion: "1.0.0";
+/**
+ * Terminal statuses are written when the run ends. `running` is written at run start and is
+ * replaced on completion; a `running` meta left behind by a process that no longer exists is
+ * reclassified as `killed` by reconcileRunMeta.
+ */
+export type RunStatus = "running" | "passed" | "failed" | "timeout" | "interrupted" | "killed";
+
+/** VCS identity of the tree a run executed against; all null outside a git repository. */
+export type RunVcsIdentity = {
+  head: string | null;
+  branch: string | null;
+  dirty: boolean | null;
+};
+
+/**
+ * meta.json, written at the start of a lint --run-commands invocation with status `running`
+ * and rewritten once the run completes. `finishedAt` is null until then.
+ */
+export type RunMeta = RunVcsIdentity & {
+  schemaVersion: "1.1.0";
   tool: "grace-lint";
   changeId: string | null;
   assertionMode: string;
   projectRoot: string;
   slug: string;
+  /** Pid of the process that wrote this meta; the liveness probe behind the `killed` status. */
+  pid: number;
   startedAt: string;
-  finishedAt: string;
-  status: "passed" | "failed" | "timeout" | "interrupted";
+  finishedAt: string | null;
+  status: RunStatus;
   commands: RunMetaCommand[];
 };
+
+/** Current meta.json schema; bumped when RunMeta gains fields or statuses. */
+export const RUN_META_SCHEMA_VERSION = "1.1.0" as const;
 
 /**
  * How many *prunable* run directories per project survive pruning after each run.
  * The newest passing run of every change is protected and never counted here.
  */
 export const RUN_RETENTION = 10;
+
+/** Upper bound on each git probe so a wedged git never stalls a gate run. */
+const VCS_PROBE_TIMEOUT_MS = 5000;
 
 /**
  * Resolves the command-run log root: ${XDG_CACHE_HOME:-~/.cache}/grace/run-commands.
@@ -85,23 +110,88 @@ export function writeRunMeta(runDir: string, meta: RunMeta): boolean {
   }
 }
 
-/** Reads and parses a run directory's meta.json; null when absent, unreadable, or malformed. */
+/**
+ * Reads the HEAD sha, the current branch, and whether the worktree carries uncommitted changes,
+ * so recorded evidence can be tied to the tree it ran against. A detached HEAD reports a null
+ * branch. Every failure mode — no git on PATH, not a repository, no commits yet, a probe that
+ * times out — degrades to nulls and never throws, because identity is metadata and must not
+ * take a gate run down with it.
+ */
+export function readVcsIdentity(root: string): RunVcsIdentity {
+  const unknown: RunVcsIdentity = { head: null, branch: null, dirty: null };
+  try {
+    const revision = gitProbe(root, ["rev-parse", "HEAD", "--abbrev-ref", "HEAD"]);
+    if (revision === null) {
+      return unknown;
+    }
+    const [head = "", ref = ""] = revision.split("\n").map((line) => line.trim());
+    if (!/^[0-9a-f]{7,64}$/.test(head)) {
+      return unknown;
+    }
+    const porcelain = gitProbe(root, ["status", "--porcelain"]);
+    return {
+      head,
+      branch: ref && ref !== "HEAD" ? ref : null,
+      dirty: porcelain === null ? null : porcelain.trim().length > 0,
+    };
+  } catch {
+    return unknown;
+  }
+}
+
+/** True when `pid` names a live process. EPERM counts as alive: it exists, we just cannot signal it. */
+export function isProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException | null)?.code === "EPERM";
+  }
+}
+
+/** Parses runDir/meta.json; null when it is missing, unreadable, or not a JSON object. */
 export function readRunMeta(runDir: string): RunMeta | null {
   try {
-    const parsed = JSON.parse(readFileSync(path.join(runDir, "meta.json"), "utf8")) as RunMeta;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+    const parsed: unknown = JSON.parse(readFileSync(path.join(runDir, "meta.json"), "utf8"));
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as RunMeta) : null;
   } catch {
     return null;
   }
 }
 
 /**
+ * Distinguishes a run still in flight from one the OS killed. A `running` meta whose writing
+ * process is gone can never complete itself, so it is rewritten as `killed` and returned that
+ * way; `finishedAt` stays null because the moment of death is unknown. Runs owned by a live
+ * process, runs already in a terminal status, and directories without a readable meta.json are
+ * returned unchanged. Called for every surviving run directory on prune, so the next run heals
+ * the records left by earlier ones.
+ */
+export function reconcileRunMeta(runDir: string): RunMeta | null {
+  const meta = readRunMeta(runDir);
+  if (!meta || meta.status !== "running") {
+    return meta;
+  }
+  if (typeof meta.pid !== "number" || meta.pid === process.pid || isProcessAlive(meta.pid)) {
+    return meta;
+  }
+  const killed: RunMeta = { ...meta, status: "killed" };
+  writeRunMeta(runDir, killed);
+  return killed;
+}
+
+/**
  * Removes stale run directories, protecting the evidence an archive can cite: the newest
  * run with `status: "passed"` of every change survives indefinitely. Everything else is
- * prunable — failed, timeout and interrupted runs, passing runs superseded by a newer pass
- * of the same change, passing runs with no `changeId` (unbound lint runs nothing cites),
- * and runs whose meta.json is missing or unparseable (a run killed before it wrote one) —
- * and only the newest `keep` of those survive. Directory names sort lexically, which is
+ * prunable — failed, timed out, interrupted and killed runs, a run still recorded as
+ * `running` whose writer is gone, passing runs superseded by a newer pass of the same
+ * change, passing runs with no `changeId` (unbound lint runs nothing cites), and runs
+ * whose meta.json is missing or unparseable (a run killed before it wrote one) — and only
+ * the newest `keep` of those survive. Surviving directories are reconciled first, so runs
+ * the OS killed stop reading as in flight. Directory names sort lexically, which is
  * chronological for the timestamp format above. Missing or empty parents are a no-op;
  * individual removal failures never throw.
  */
@@ -120,7 +210,9 @@ export function pruneRuns(projectRunsParent: string, keep: number = RUN_RETENTIO
   const protectedChanges = new Set<string>();
   const prunable: string[] = [];
   for (const name of dirs) {
-    const meta = readRunMeta(path.join(projectRunsParent, name));
+    const dir = path.join(projectRunsParent, name);
+    reconcileRunMeta(dir);
+    const meta = readRunMeta(dir);
     const changeId = typeof meta?.changeId === "string" && meta.changeId ? meta.changeId : null;
     if (meta?.status === "passed" && changeId && !protectedChanges.has(changeId)) {
       protectedChanges.add(changeId);
@@ -150,6 +242,23 @@ export function commandLogFileName(index: number, command: string): string {
     .slice(0, 40)
     .replace(/-+$/g, "");
   return `${index}-${slug || "command"}.log`;
+}
+
+/** Runs one read-only git command in `root`; null when git is absent or the command fails. */
+function gitProbe(root: string, args: string[]): string | null {
+  try {
+    const result = Bun.spawnSync({
+      cmd: ["git", ...args],
+      cwd: root,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: VCS_PROBE_TIMEOUT_MS,
+    });
+    return result.exitCode === 0 ? new TextDecoder().decode(result.stdout) : null;
+  } catch {
+    return null;
+  }
 }
 
 function formatStamp(date: Date): string {

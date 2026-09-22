@@ -6,8 +6,10 @@ import {
   createRunDir,
   projectSlug,
   pruneRuns,
+  readVcsIdentity,
   resolveLogRoot,
   writeRunMeta,
+  RUN_META_SCHEMA_VERSION,
   type RunMeta,
   type RunMetaCommand,
 } from "./run-log-store";
@@ -20,6 +22,11 @@ export type DeclaredCommand = {
   assertionId: string;
   /** Full command string executed verbatim via $SHELL -lc. */
   command: string;
+  /**
+   * Per-command timeout in ms from the plan's declared `budgetSeconds`; 0 disables. When absent,
+   * the runner-wide `CommandRunnerOptions.timeoutMs` applies.
+   */
+  timeoutMs?: number;
 };
 
 export type CommandRunnerOptions = {
@@ -94,6 +101,30 @@ export async function runDeclaredCommands(
     emit(`warning: unable to create command log directory: ${errorMessage(error)}`);
   }
 
+  // meta.json is written before the first command so a run that dies mid-flight still leaves an
+  // identified record: the VCS identity it ran against and the pid that owns it.
+  let meta: RunMeta | null = null;
+  if (runDir) {
+    const vcs = readVcsIdentity(options.root);
+    meta = {
+      schemaVersion: RUN_META_SCHEMA_VERSION,
+      tool: "grace-lint",
+      changeId: options.changeId ?? null,
+      assertionMode: options.assertionMode,
+      projectRoot: path.resolve(options.root),
+      slug: projectSlug(options.root),
+      pid: process.pid,
+      head: vcs.head,
+      branch: vcs.branch,
+      dirty: vcs.dirty,
+      startedAt: startedAt.toISOString(),
+      finishedAt: null,
+      status: "running",
+      commands: [],
+    };
+    writeRunMeta(runDir, meta);
+  }
+
   const assertionCount = new Set(declared.map((entry) => entry.assertionKey)).size;
   const timeoutLabel = options.timeoutMs > 0 ? `${Math.round(options.timeoutMs / 1000)}s` : "none";
   emit(
@@ -150,20 +181,13 @@ export async function runDeclaredCommands(
   const passed = results.filter((result) => !result.skipped && !result.timedOut && result.exitCode === 0).length;
   emit(summaryLine(status, failedIndex, total, passed, totalMs));
 
-  if (runDir) {
-    const meta: RunMeta = {
-      schemaVersion: "1.0.0",
-      tool: "grace-lint",
-      changeId: options.changeId ?? null,
-      assertionMode: options.assertionMode,
-      projectRoot: path.resolve(options.root),
-      slug: projectSlug(options.root),
-      startedAt: startedAt.toISOString(),
+  if (runDir && meta) {
+    writeRunMeta(runDir, {
+      ...meta,
       finishedAt: finishedAt.toISOString(),
       status,
       commands: results.map(toMetaCommand),
-    };
-    writeRunMeta(runDir, meta);
+    });
     pruneRuns(path.dirname(runDir), options.runLogRetention);
     emit(`logs: ${runDir}`);
   }
@@ -283,7 +307,7 @@ async function runOne(
   const kill = (signal: NodeJS.Signals) => killProcessTree(proc, signal);
   registerKill(kill);
 
-  const exitPromise = raceExitWithTimeout(proc, options.timeoutMs, kill);
+  const exitPromise = raceExitWithTimeout(proc, entry.timeoutMs ?? options.timeoutMs, kill);
   const pumps = [
     pumpStream(proc.stdout, chunks, logStream, live, prefix, emit),
     pumpStream(proc.stderr, chunks, logStream, live, prefix, emit),

@@ -11,7 +11,7 @@ import {
   type CommandRunnerOptions,
   type DeclaredCommand,
 } from "./command-runner";
-import { projectSlug } from "./run-log-store";
+import { projectSlug, readVcsIdentity } from "./run-log-store";
 
 const cleanups: Array<() => void> = [];
 
@@ -192,9 +192,15 @@ describe("runDeclaredCommands logs", () => {
     const summary = await runDeclaredCommands(declared([printCommand("meta-ok")]), options);
     expect(summary.runDir).not.toBeNull();
     const meta = JSON.parse(await Bun.file(path.join(summary.runDir!, "meta.json")).text());
-    expect(meta.schemaVersion).toBe("1.0.0");
+    expect(meta.schemaVersion).toBe("1.1.0");
     expect(meta.status).toBe("passed");
     expect(meta.changeId).toBe("C-TEST");
+    expect(meta.pid).toBe(process.pid);
+    expect(meta.finishedAt).toBeString();
+    const identity = readVcsIdentity(options.root);
+    expect(meta.head).toBe(identity.head);
+    expect(meta.branch).toBe(identity.branch);
+    expect(meta.dirty).toBe(identity.dirty);
     expect(meta.commands).toHaveLength(1);
     expect(meta.commands[0].exitCode).toBe(0);
     expect(meta.commands[0].logFile).toBeString();
@@ -292,5 +298,42 @@ describe("treeKillArgv", () => {
   test("builds taskkill argv on win32 and null on posix", () => {
     expect(treeKillArgv(4242, "win32" as NodeJS.Platform)).toEqual(["taskkill", "/PID", "4242", "/T", "/F"]);
     expect(treeKillArgv(4242, "linux" as NodeJS.Platform)).toBeNull();
+  });
+});
+
+describe("runDeclaredCommands per-command budget", () => {
+  /** A temp project root holding the two helper scripts these budget tests spawn. */
+  function budgetRoot(): string {
+    const root = mkdtempSync(path.join(tmpdir(), "grace-runner-budget-"));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    writeFileSync(path.join(root, "hang.js"), "setInterval(() => {}, 1000);\n");
+    writeFileSync(path.join(root, "nap.js"), "setTimeout(() => {}, 1200);\n");
+    return root;
+  }
+
+  test("a declared budget times the command out ahead of the global timeout", async () => {
+    const root = budgetRoot();
+    const { options } = fixture({ root, timeoutMs: 5_000 });
+    const summary = await runDeclaredCommands(
+      [{ assertionKey: "plan.xml::TargetAssertions::0", assertionId: "plan.xml#1", command: `${process.execPath} hang.js`, timeoutMs: 700 }],
+      options,
+    );
+
+    expect(summary.status).toBe("timeout");
+    expect(summary.commands[0]?.timedOut).toBe(true);
+    expect(summary.commands[0]?.durationMs).toBeLessThan(3_000);
+  });
+
+  test("a declared budget of zero disables the timeout the global setting would apply", async () => {
+    const root = budgetRoot();
+    const { options } = fixture({ root, timeoutMs: 300 });
+    const summary = await runDeclaredCommands(
+      [{ assertionKey: "plan.xml::TargetAssertions::0", assertionId: "plan.xml#1", command: `${process.execPath} nap.js`, timeoutMs: 0 }],
+      options,
+    );
+
+    expect(summary.commands[0]?.timedOut).toBe(false);
+    expect(summary.commands[0]?.exitCode).toBe(0);
+    expect(summary.status).toBe("passed");
   });
 });

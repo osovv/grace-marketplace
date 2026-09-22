@@ -5,7 +5,7 @@ import type { CommandRunResult } from "./command-runner";
 import type { Grace4Issue } from "./types";
 import { ProjectPathError, resolveContainedProjectPath } from "./paths";
 import type { GraphAnchorRecord, GraphProjection, VerificationProjection } from "./projections";
-import { readGraceXmlArtifact, walkNodes, type GraceXmlNode } from "./xml";
+import { hasForbiddenAttributes, readGraceXmlArtifact, walkNodes, type GraceXmlNode } from "./xml";
 
 /** Supported machine-checkable GRACE 4 assertion kinds. */
 export type AssertionKind =
@@ -25,6 +25,11 @@ export type GraceAssertion = {
   values: string[];
   /** Stamped at extraction: `${planFile}::${section}::${assertionIndex}` — links command results. */
   slotKey?: string;
+  /**
+   * MustPassCommand only: declared `budgetSeconds` per Command, index-aligned with `values`.
+   * `null` means no declared budget, so the global `--command-timeout` applies; `0` disables it.
+   */
+  commandBudgetsSeconds?: (number | null)[];
 };
 
 /** Context required to evaluate a GRACE 4 assertion. */
@@ -61,6 +66,11 @@ export const ASSERTION_SCHEMAS: Record<AssertionKind, AssertionSchema> = {
   MustContain: { fields: ["File", "Text"], fileField: "File" },
   MustNotContain: { fields: ["File", "Text"], fileField: "File" },
 };
+
+/** Optional per-command timeout attribute allowed on MustPassCommand/Command. */
+const COMMAND_BUDGET_ATTRIBUTE = "budgetSeconds";
+const COMMAND_FIELD_ATTRIBUTES = new Set([COMMAND_BUDGET_ATTRIBUTE]);
+const NO_FIELD_ATTRIBUTES = new Set<string>();
 
 export const ASSERTION_KINDS = new Set<AssertionKind>([
   "MustExist",
@@ -114,6 +124,7 @@ export function extractAssertionsWithIssues(
 
   const sections = [...walkNodes(artifact.root)].filter((node) => node.tag === section);
   for (const sectionNode of sections) {
+    const sectionStart = assertions.length;
     let validAssertions = 0;
     if (sectionNode.text.trim() || Object.keys(sectionNode.attributes).length > 0) {
       issues.push(issue("error", "assertion.invalid-section-shape", planFile, `${section} must contain only approved assertion child elements.`));
@@ -144,9 +155,107 @@ export function extractAssertionsWithIssues(
     if (validAssertions === 0) {
       issues.push(issue("error", "assertion.empty-section", planFile, `${section} must contain at least one valid machine-checkable assertion.`));
     }
+    issues.push(...detectSubsumedCommands(planFile, assertions.slice(sectionStart)));
   }
 
   return { assertions, issues };
+}
+
+/** One declared command split into its non-path head and its path arguments. */
+type CommandProfile = {
+  command: string;
+  /** Leading positional tokens that are not path arguments, joined by single spaces. */
+  head: string;
+  /** Path arguments, each split into normalized path components. */
+  paths: string[][];
+};
+
+/**
+ * Warns when one declared command in a section already runs everything another one runs, which is
+ * how a gate silently doubles its own wall-clock cost. Comparison is deliberately conservative:
+ * only commands with an identical head are compared, and path arguments are matched component-wise,
+ * so `bun test src` covers `bun test src/grace4` but not `bun test srcfoo`.
+ */
+function detectSubsumedCommands(planFile: string, assertions: GraceAssertion[]): Grace4Issue[] {
+  const root = inferProjectRoot(planFile);
+  const profiles = assertions
+    .filter((assertion) => assertion.kind === "MustPassCommand")
+    .flatMap((assertion) => assertion.values)
+    .map((command) => profileCommand(command, root));
+
+  const issues: Grace4Issue[] = [];
+  for (let left = 0; left < profiles.length; left++) {
+    for (let right = left + 1; right < profiles.length; right++) {
+      const first = profiles[left]!;
+      const second = profiles[right]!;
+      const wider = subsumesCommand(first, second) ? first : subsumesCommand(second, first) ? second : null;
+      if (!wider) {
+        continue;
+      }
+      const narrower = wider === first ? second : first;
+      issues.push(issue(
+        "warning",
+        "assertion.command-subsumed",
+        planFile,
+        `MustPassCommand ${JSON.stringify(narrower.command)} is already covered by ${JSON.stringify(wider.command)} in the same assertion section; the gate runs that work twice.`,
+      ));
+    }
+  }
+  return issues;
+}
+
+function profileCommand(command: string, root: string): CommandProfile {
+  const headTokens: string[] = [];
+  const paths: string[][] = [];
+  for (const token of command.split(/\s+/).filter((part) => part.length > 0 && !part.startsWith("-"))) {
+    if (paths.length === 0 && !isPathArgument(token, root)) {
+      headTokens.push(token);
+      continue;
+    }
+    paths.push(pathComponents(token));
+  }
+  return { command, head: headTokens.join(" "), paths };
+}
+
+/**
+ * A bare token counts as a path argument only when it carries a separator or actually exists under
+ * the project root, so `bun run check` keeps `check` in its head while `bun test src` does not.
+ */
+function isPathArgument(token: string, root: string): boolean {
+  if (/[\\/]/.test(token)) {
+    return true;
+  }
+  try {
+    return existsSync(path.join(root, token));
+  } catch {
+    return false;
+  }
+}
+
+function pathComponents(token: string): string[] {
+  return token.split(/[\\/]+/).filter((part) => part.length > 0 && part !== ".");
+}
+
+function subsumesCommand(wider: CommandProfile, narrower: CommandProfile): boolean {
+  if (wider.head !== narrower.head || narrower.paths.length === 0) {
+    return false;
+  }
+  if (samePathArguments(wider.paths, narrower.paths)) {
+    return false;
+  }
+  if (wider.paths.length === 0) {
+    return true;
+  }
+  return narrower.paths.every((narrowPath) => wider.paths.some((widePath) => isComponentPrefix(widePath, narrowPath)));
+}
+
+function samePathArguments(left: string[][], right: string[][]): boolean {
+  const key = (paths: string[][]) => paths.map((parts) => parts.join("/")).sort().join("|");
+  return key(left) === key(right);
+}
+
+function isComponentPrefix(prefix: string[], candidate: string[]): boolean {
+  return prefix.length <= candidate.length && prefix.every((part, index) => part === candidate[index]);
 }
 
 function validateAssertionPhase(
@@ -316,12 +425,14 @@ function extractAssertionNode(
     if (!allowedFields.has(child.tag)) {
       issues.push(issue("error", "assertion.invalid-shape", planFile, `${kind} does not allow child <${child.tag}>.`));
     }
-    if (child.children.length > 0 || Object.keys(child.attributes).length > 0) {
+    const allowedAttributes = isCommandField(kind, child.tag) ? COMMAND_FIELD_ATTRIBUTES : NO_FIELD_ATTRIBUTES;
+    if (child.children.length > 0 || hasForbiddenAttributes(child, allowedAttributes)) {
       issues.push(issue("error", "assertion.invalid-shape", planFile, `${kind}/${child.tag} must be a plain text field.`));
     }
   }
 
   const values: string[] = [];
+  const budgets: (number | null)[] = [];
   if (schema.allowManyValues) {
     const field = schema.fields[0]!;
     const matches = node.children.filter((child) => child.tag === field);
@@ -334,6 +445,9 @@ function extractAssertionNode(
         issues.push(issue("error", "assertion.invalid-shape", planFile, `${kind}/${field} must not be empty.`));
       } else {
         values.push(value);
+        if (isCommandField(kind, field)) {
+          budgets.push(parseCommandBudgetSeconds(planFile, match, issues));
+        }
       }
     }
   } else {
@@ -364,7 +478,41 @@ function extractAssertionNode(
     }
   }
 
-  return issues.length > 0 ? { issues } : { assertion: { kind, values }, issues };
+  if (issues.length > 0) {
+    return { issues };
+  }
+  return {
+    assertion: kind === "MustPassCommand" ? { kind, values, commandBudgetsSeconds: budgets } : { kind, values },
+    issues,
+  };
+}
+
+function isCommandField(kind: AssertionKind, tag: string): boolean {
+  return kind === "MustPassCommand" && tag === "Command";
+}
+
+/**
+ * Parses the optional `budgetSeconds` attribute of one MustPassCommand/Command. The accepted
+ * grammar mirrors `--command-timeout`: a non-negative integer number of seconds, where `0`
+ * disables the timeout for that command. Returns null when the attribute is absent or invalid;
+ * an invalid value also records an error, which suppresses the whole assertion.
+ */
+function parseCommandBudgetSeconds(planFile: string, node: GraceXmlNode, issues: Grace4Issue[]): number | null {
+  const raw = node.attributes[COMMAND_BUDGET_ATTRIBUTE];
+  if (raw === undefined) {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    issues.push(issue(
+      "error",
+      "assertion.invalid-command-budget",
+      planFile,
+      `MustPassCommand/Command ${COMMAND_BUDGET_ATTRIBUTE}=${JSON.stringify(raw)} must be a non-negative integer number of seconds; 0 disables the timeout for that command.`,
+    ));
+    return null;
+  }
+  return Number(trimmed);
 }
 
 function evaluateExistence(
