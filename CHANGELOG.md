@@ -1,3 +1,16 @@
+## <small>4.2.0 (2026-09-22)</small>
+
+### Summary
+
+Version 4.2.0 improves command-gate reliability by adding per-command time budgets, warnings for redundant commands, commit and process metadata for run evidence, and retention controls that preserve the latest passing evidence for each change. Lint marker detection now recognizes Go standard logging and avoids false credit for error construction, while documentation tests verify that published CLI flags remain valid and .gitignore safely excludes node_modules symlinks.
+
+* chore: make .gitignore match node_modules symlinks (#58) ([3e56d5a](https://github.com/osovv/grace-marketplace/commit/3e56d5a)), closes [#58](https://github.com/osovv/grace-marketplace/issues/58)
+* fix(lint): credit Go's stdlib logger, and stop crediting error construction (#46) ([7467292](https://github.com/osovv/grace-marketplace/commit/7467292)), closes [#46](https://github.com/osovv/grace-marketplace/issues/46)
+* feat(plan): bound and de-duplicate gate commands (#49) ([f0c42f1](https://github.com/osovv/grace-marketplace/commit/f0c42f1)), closes [#49](https://github.com/osovv/grace-marketplace/issues/49)
+* feat(run-log): bind gate evidence to the commit it was run against (#47) ([a615e08](https://github.com/osovv/grace-marketplace/commit/a615e08)), closes [#47](https://github.com/osovv/grace-marketplace/issues/47)
+* feat(run-log): stop evicting the evidence an archive cites (#48) ([a46b915](https://github.com/osovv/grace-marketplace/commit/a46b915)), closes [#48](https://github.com/osovv/grace-marketplace/issues/48)
+* test(cli): assert every documented flag parses (#57) ([c2c759a](https://github.com/osovv/grace-marketplace/commit/c2c759a)), closes [#57](https://github.com/osovv/grace-marketplace/issues/57)
+
 ## <small>4.1.0 (2026-09-03)</small>
 
 ### Summary
