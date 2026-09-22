@@ -1,4 +1,7 @@
-node_modules/
+# No trailing slash: `node_modules/` only matches directories, and git tracks a
+# symlink as a file — the loose form also ignores a stray node_modules symlink,
+# which is how one slipped into a contributor PR (see #46).
+node_modules
 !docs
 !AGENTS.md
 !CLAUDE.md
