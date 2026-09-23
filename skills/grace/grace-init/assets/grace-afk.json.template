@@ -1,0 +1,11 @@
+{
+  "_comment": "Config for the grace-afk autonomous harness. MUST be gitignored — contains secrets.",
+  "_docs": "https://github.com/osovv/grace-marketplace#grace-afk",
+  "telegram": {
+    "botToken": "$TELEGRAM_BOT_TOKEN",
+    "chatId": "$TELEGRAM_CHAT_ID"
+  },
+  "autoStop": {
+    "maxEscalationsPerSession": 3
+  }
+}

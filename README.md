@@ -112,6 +112,8 @@ Migration cleanup is separately gated: successful current lint, fresh status pro
 | `grace-verification` | Build and maintain `.grace/verification` entries and evidence |
 | `grace-reviewer` | Review semantic integrity, projections, scopes, and verification quality |
 | `grace-migrate` | Agent-applied GRACE 3 to GRACE 4 migration with CLI validation |
+| `grace-afk` | Autonomous work mode with a CLI-enforced time budget and an autonomy matrix for act/defer/escalate decisions |
+| `grace-ask-human` | Telegram escalation for one-way-door decisions during autonomous sessions |
 
 ## CLI Overview
 
@@ -130,6 +132,11 @@ Migration cleanup is separately gated: successful current lint, fresh status pro
 | `grace verification find <query> --path <root>` | Search verification projection entries |
 | `grace verification show <id-or-module> --path <root>` | Show one verification entry and module context |
 | `grace file show <path> --path <root>` | Show file-local `MODULE_CONTRACT`, `MODULE_MAP`, and `CHANGE_SUMMARY` |
+| `grace afk start <hours> [<budget%>] [--checkpoint <min>]` | Start an autonomous session — creates isolated branch + `state.json` with `expiresAt` |
+| `grace afk tick` | CLI-side active-session gate. Exits `42 BUDGET_EXHAUSTED`, `43 NO_SESSION`, `44 SESSION_STOPPED`. The agent polls between every step |
+| `grace afk ask / check` | Send a Telegram escalation (needs Telegram config at `$GRACE_AFK_CONFIG`, `<project>/.grace-afk.json`, or `~/.grace/afk.json`), poll for reply |
+| `grace afk journal / defer / increment` | Append structured entries to `docs/afk-sessions/<id>/{decisions,deferred}.md` and update counters |
+| `grace afk report / stop` | Emit the return dashboard / manually stop a session |
 
 `MustPassCommand` entries are leaf project evidence such as tests, typecheck, build, format, or package checks. Do not nest `grace lint`, `grace status`, or another GRACE lifecycle command inside plan assertions; selected target/final lint is the external orchestration gate.
 
