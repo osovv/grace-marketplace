@@ -1,7 +1,7 @@
 import { type Dirent, existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import { evaluateAssertion, extractAssertionsWithIssues, type AssertionContext, type AssertionExtractionResult } from "../grace4/assertions";
+import { evaluateAssertion, extractAssertionsWithIssues, filterAssertionIssuesForLifecycle, type AssertionContext, type AssertionExtractionResult, type AssertionLifecycle } from "../grace4/assertions";
 import { formatDuration, runDeclaredCommands, type CommandRunResult, type DeclaredCommand } from "../grace4/command-runner";
 import { validateGrace4Project } from "../grace4/grammar";
 import { detectGraceProjectKind, formatGrace3MigrationGuidance, resolveGrace4Paths } from "../grace4/project";
@@ -133,9 +133,8 @@ type SectionJob = {
   evaluateSemantically: boolean;
   includeExtractionIssues: boolean;
   skipUnevaluatedCommands: boolean;
-  skipActivePhaseIssues: boolean;
-  /** Archived plans are immutable history; advisory warnings about them are unactionable noise. */
-  archived: boolean;
+  /** Shared extraction-diagnostic policy: `archive` drops current-phase errors and advisory noise. */
+  lifecycle: AssertionLifecycle;
 };
 
 async function validateAssertions(
@@ -157,10 +156,9 @@ async function validateAssertions(
     planFile: string,
     section: "BaselineAssertions" | "TargetAssertions",
     evaluateSemantically: boolean,
+    lifecycle: AssertionLifecycle,
     includeExtractionIssues = true,
     skipUnevaluatedCommands = false,
-    skipActivePhaseIssues = false,
-    archived = false,
   ) => {
     jobs.push({
       planFile,
@@ -169,8 +167,7 @@ async function validateAssertions(
       evaluateSemantically,
       includeExtractionIssues,
       skipUnevaluatedCommands,
-      skipActivePhaseIssues,
-      archived,
+      lifecycle,
     });
   };
 
@@ -179,14 +176,14 @@ async function validateAssertions(
     const isSelected = selectedPlan !== null && path.resolve(selectedPlan) === path.resolve(planFile);
     const evaluateCurrentBaseline = assertionMode === "current" && status === "approved";
     const evaluateUnrelatedFinalBaseline = assertionMode === "final" && status === "approved" && !isSelected;
-    pushJob(planFile, "BaselineAssertions", evaluateCurrentBaseline || evaluateUnrelatedFinalBaseline, true, true, true);
-    pushJob(planFile, "TargetAssertions", false);
+    pushJob(planFile, "BaselineAssertions", evaluateCurrentBaseline || evaluateUnrelatedFinalBaseline, "active", true, true);
+    pushJob(planFile, "TargetAssertions", false, "active");
   }
 
   for (const planFile of planFilesArchived) {
     // Archived plans: syntax only, never semantic (baseline may be stale, target may be superseded by later changes)
-    pushJob(planFile, "BaselineAssertions", false, true, false, true, true);
-    pushJob(planFile, "TargetAssertions", false, true, false, true, true);
+    pushJob(planFile, "BaselineAssertions", false, "archive");
+    pushJob(planFile, "TargetAssertions", false, "archive");
   }
 
   if (assertionMode !== "current" && selectedPlan) {
@@ -194,6 +191,7 @@ async function validateAssertions(
       selectedPlan,
       assertionMode === "baseline" ? "BaselineAssertions" : "TargetAssertions",
       true,
+      "active",
       false,
     );
   }
@@ -274,13 +272,7 @@ function evaluateJob(
   context: AssertionContext,
 ) {
   if (job.includeExtractionIssues) {
-    for (const issue of job.extraction.issues) {
-      if (job.skipActivePhaseIssues && issue.code === "assertion.phase-incompatible-command") {
-        continue;
-      }
-      if (job.archived && issue.code === "assertion.command-subsumed") {
-        continue;
-      }
+    for (const issue of filterAssertionIssuesForLifecycle(job.extraction.issues, job.lifecycle)) {
       addGrace4Issue(result, issue);
     }
   }

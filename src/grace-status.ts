@@ -14,7 +14,7 @@ import { collectModuleHealth } from "./query/health";
 import { loadGraceArtifactIndex } from "./query/core";
 import { GraceCommandError, runGraceCommand } from "./query/errors";
 import { formatModuleHealthTable } from "./query/render";
-import type { ModuleHealthRecord } from "./query/types";
+import type { GraceArtifactIndex, ModuleHealthRecord } from "./query/types";
 
 /** Current state of one GRACE 4 change bundle. */
 export type ChangeBundleStatus = {
@@ -170,6 +170,7 @@ function chooseNextAction(result: Omit<StatusResult, "nextAction">) {
   if (result.derivedStates.includes("approved-contract-drift")) return "Hard stop: an approved spec.xml or plan.xml changed. Restore it or supersede and replan through a new C-* bundle.";
   if (result.derivedStates.includes("stale-plan")) return "Supersede and replan the stale approved change; do not edit the approved plan or continue execution.";
   if (result.integrity.errors > 0) return "Run grace lint --path <project-root> and fix GRACE 4 integrity errors.";
+  if (result.derivedStates.includes("module-health-unavailable")) return "Run grace lint --path <project-root> to diagnose why module health could not be loaded; module readiness is unknown before executing changes.";
   if (result.derivedStates.includes("unexplained-observed-drift")) return "Use $grace-refresh to reconcile unexplained repository changes through a new GraceChangeSpec and GraceChangePlan.";
   if (result.derivedStates.includes("scope-overlap")) return "Review active change scope overlaps; replan or execute sequentially before parallel-safe work.";
   if (result.changes.some((change) => change.derivedStates.includes("ready-to-execute"))) return "Run $grace-execute for approved active changes.";
@@ -211,7 +212,14 @@ async function emptyStatus(root: string, projectKind: StatusResult["projectKind"
 }
 
 /** Collects status without mutating any .grace artifact. */
-export async function collectProjectStatus(projectRoot: string, options: { includeModules?: boolean } = {}): Promise<StatusResult> {
+export async function collectProjectStatus(
+  projectRoot: string,
+  options: {
+    includeModules?: boolean;
+    /** Test seam: overrides the artifact index loader so load failures stay observable in isolation. */
+    loadArtifactIndex?: (root: string) => GraceArtifactIndex;
+  } = {},
+): Promise<StatusResult> {
   const root = path.resolve(projectRoot);
   const kind = detectGraceProjectKind(root);
   if (kind === "grace3") return await emptyStatus(root, "grace3", formatGrace3MigrationGuidance(root));
@@ -255,7 +263,7 @@ export async function collectProjectStatus(projectRoot: string, options: { inclu
   let evaluatedModules: ModuleHealthRecord[] | undefined;
   let moduleHealthLoadError: string | undefined;
   try {
-    const index = loadGraceArtifactIndex(root);
+    const index = (options.loadArtifactIndex ?? loadGraceArtifactIndex)(root);
     evaluatedModules = collectModuleHealth(index);
     if (options.includeModules) {
       modules = evaluatedModules;
@@ -263,6 +271,9 @@ export async function collectProjectStatus(projectRoot: string, options: { inclu
   } catch (error) {
     moduleHealthLoadError = error instanceof Error ? error.message : String(error);
   }
+  // Module readiness is unknown when the navigation index fails to load, so derived workflow
+  // states that assume evaluated modules must not drive the suggested next action.
+  if (moduleHealthLoadError) derivedStates.add("module-health-unavailable");
 
   const contextArtifacts = [
     "requirements.xml",

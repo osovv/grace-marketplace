@@ -380,6 +380,61 @@ const marker$Other = "[ProviderConfigPersistence][getProviderConfig][other]";`,
     }));
   });
 
+  it("loads navigation when archived plans keep superseded phase-incompatible target commands", () => {
+    const root = createQueryProject();
+    writeProjectFile(
+      root,
+      ".grace/changes/archive/C-HISTORICAL/spec.xml",
+      `<GraceChangeSpec graceVersion="4.0" status="applied"><C-HISTORICAL><Summary>Historical change.</Summary><Goals><Goal>Preserve history.</Goal></Goals><Constraints><Constraint>Do not rewrite archives.</Constraint></Constraints><NonGoals><NonGoal>New behavior.</NonGoal></NonGoals><AcceptanceCriteria><Criterion>History remains readable.</Criterion></AcceptanceCriteria><AffectedAreas><M-DB /></AffectedAreas><VerificationIntent><ExpectedCommand>bun test</ExpectedCommand></VerificationIntent></C-HISTORICAL></GraceChangeSpec>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/changes/archive/C-HISTORICAL/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="applied"><C-HISTORICAL><IntentSummary>Historical plan.</IntentSummary><BaselineAssertions><MustExist><Value>M-DB</Value></MustExist></BaselineAssertions><TargetAssertions><MustPassCommand><Command>grace lint --path . --assertions current</Command></MustPassCommand></TargetAssertions><DurableScope><GraphAnchors><M-DB /></GraphAnchors></DurableScope><ObservedWriteScope><File>src/provider/config-repo.ts</File></ObservedWriteScope><ImplementationPlan><T-001><Title>Historical task</Title><DependsOn></DependsOn><AcceptanceCriteria><Criterion>Done.</Criterion></AcceptanceCriteria><Verification><Command>bun test</Command></Verification></T-001></ImplementationPlan></C-HISTORICAL></GraceChangePlan>`,
+    );
+
+    const index = loadGraceArtifactIndex(root);
+    expect(index.issues.filter((issue) => issue.severity === "error")).toHaveLength(0);
+  });
+
+  it("fails closed when an active plan target invokes current-mode lint", () => {
+    const root = createQueryProject();
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-PHASE-CONFLICT/spec.xml",
+      `<GraceChangeSpec graceVersion="4.0" status="approved"><C-PHASE-CONFLICT><Summary>Phase conflict.</Summary><Goals><Goal>Fail closed.</Goal></Goals><Constraints><Constraint>Do not navigate invalid state.</Constraint></Constraints><NonGoals><NonGoal>Unrelated work.</NonGoal></NonGoals><AcceptanceCriteria><Criterion>Query fails.</Criterion></AcceptanceCriteria><AffectedAreas><M-DB /></AffectedAreas><VerificationIntent><ExpectedCommand>bun test</ExpectedCommand></VerificationIntent></C-PHASE-CONFLICT></GraceChangeSpec>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/changes/active/C-PHASE-CONFLICT/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="approved"><C-PHASE-CONFLICT><IntentSummary>Phase conflict.</IntentSummary><BaselineAssertions><MustExist><Value>M-DB</Value></MustExist></BaselineAssertions><TargetAssertions><MustPassCommand><Command>grace lint --path . --assertions current</Command></MustPassCommand></TargetAssertions><DurableScope><GraphAnchors><M-DB /></GraphAnchors></DurableScope><ObservedWriteScope><File>src/provider/config-repo.ts</File></ObservedWriteScope><ImplementationPlan><T-001><Title>Conflict task</Title><DependsOn></DependsOn><AcceptanceCriteria><Criterion>Query fails.</Criterion></AcceptanceCriteria><Verification><Command>bun test</Command></Verification></T-001></ImplementationPlan></C-PHASE-CONFLICT></GraceChangePlan>`,
+    );
+
+    expect(() => loadGraceArtifactIndex(root)).toThrow(expect.objectContaining({
+      code: "invalid-project",
+      issues: expect.arrayContaining(["assertion.phase-incompatible-command"]),
+    }));
+  });
+
+  it("fails closed on structural assertion errors in archived plans", () => {
+    const root = createQueryProject();
+    writeProjectFile(
+      root,
+      ".grace/changes/archive/C-BROKEN/spec.xml",
+      `<GraceChangeSpec graceVersion="4.0" status="applied"><C-BROKEN><Summary>Broken archive.</Summary><Goals><Goal>Fail closed.</Goal></Goals><Constraints><Constraint>Do not navigate invalid state.</Constraint></Constraints><NonGoals><NonGoal>Unrelated work.</NonGoal></NonGoals><AcceptanceCriteria><Criterion>Query fails.</Criterion></AcceptanceCriteria><AffectedAreas><M-DB /></AffectedAreas><VerificationIntent><ExpectedCommand>bun test</ExpectedCommand></VerificationIntent></C-BROKEN></GraceChangeSpec>`,
+    );
+    writeProjectFile(
+      root,
+      ".grace/changes/archive/C-BROKEN/plan.xml",
+      `<GraceChangePlan graceVersion="4.0" status="applied"><C-BROKEN><IntentSummary>Broken archive.</IntentSummary><BaselineAssertions><MustExist><Value>M-DB</Value></MustExist></BaselineAssertions><TargetAssertions><MustContain><File>src/provider/config-repo.ts</File></MustContain></TargetAssertions><DurableScope><GraphAnchors><M-DB /></GraphAnchors></DurableScope><ObservedWriteScope><File>src/provider/config-repo.ts</File></ObservedWriteScope><ImplementationPlan><T-001><Title>Broken task</Title><DependsOn></DependsOn><AcceptanceCriteria><Criterion>Query fails.</Criterion></AcceptanceCriteria><Verification><Command>bun test</Command></Verification></T-001></ImplementationPlan></C-BROKEN></GraceChangePlan>`,
+    );
+
+    expect(() => loadGraceArtifactIndex(root)).toThrow(expect.objectContaining({
+      code: "invalid-project",
+      issues: expect.arrayContaining(["assertion.invalid-shape"]),
+    }));
+  });
+
   it("returns one structured JSON error and one concise text error without stack traces", () => {
     const root = createQueryProject();
     writeProjectFile(root, ".grace/graph/main.xml", `<GraceRequirements graceVersion="4.0"><GD-MAIN /></GraceRequirements>`);

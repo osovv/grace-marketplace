@@ -4,7 +4,7 @@ import path from "node:path";
 import { buildGraphProjection, buildVerificationProjection, type GraphAnchorRecord, type VerificationAnchorRecord } from "../grace4/projections";
 import { validateGrace4Project } from "../grace4/grammar";
 import { detectGraceProjectKind, formatGrace3MigrationGuidance, resolveGrace4Paths } from "../grace4/project";
-import { extractAssertionsWithIssues } from "../grace4/assertions";
+import { extractAssertionsWithIssues, filterAssertionIssuesForLifecycle, type AssertionLifecycle } from "../grace4/assertions";
 import { collectActiveChangeScopes } from "../grace4/scope";
 import type { Grace4Issue } from "../grace4/types";
 import { loadGraceLintConfig } from "../lint/config";
@@ -73,10 +73,22 @@ function listPlanFiles(directory: string, onUnreadableDirectory?: UnreadableDire
 }
 
 function collectOperationalValidationErrors(paths: ReturnType<typeof resolveGrace4Paths>, onUnreadableDirectory?: UnreadableDirectoryHandler) {
-  const assertionIssues = [paths.changesActiveDir, paths.changesArchiveDir]
-    .flatMap((directory) => listPlanFiles(directory, onUnreadableDirectory))
-    .flatMap((planFile) => (["BaselineAssertions", "TargetAssertions"] as const)
-      .flatMap((section) => extractAssertionsWithIssues(planFile, section).issues));
+  // Same lifecycle policy as lint: archived plans are immutable history, so current-phase
+  // diagnostics must not block navigation while structural errors still fail closed.
+  const planSources: { directory: string; lifecycle: AssertionLifecycle }[] = [
+    { directory: paths.changesActiveDir, lifecycle: "active" },
+    { directory: paths.changesArchiveDir, lifecycle: "archive" },
+  ];
+  const assertionIssues = planSources
+    .flatMap(({ directory, lifecycle }) =>
+      listPlanFiles(directory, onUnreadableDirectory)
+        .flatMap((planFile) =>
+          filterAssertionIssuesForLifecycle(
+            (["BaselineAssertions", "TargetAssertions"] as const).flatMap(
+              (section) => extractAssertionsWithIssues(planFile, section).issues,
+            ),
+            lifecycle,
+          )));
   const scopeIssues = collectActiveChangeScopes(paths).flatMap((scope) => scope.issues);
   return [...assertionIssues, ...scopeIssues].filter((issue) => issue.severity === "error");
 }

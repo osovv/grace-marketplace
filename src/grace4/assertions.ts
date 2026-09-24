@@ -277,6 +277,26 @@ function validateAssertionPhase(
     ));
 }
 
+/** Plan lifecycle: `active` plans follow current execution policy; `archive` plans are immutable history. */
+export type AssertionLifecycle = "active" | "archive";
+
+/** Current-phase error diagnostics that never apply retroactively to archived plans. */
+const ACTIVE_PHASE_ISSUE_CODES: ReadonlySet<string> = new Set(["assertion.phase-incompatible-command"]);
+
+/** Advisory diagnostics that are unactionable noise for immutable archived plans. */
+const ARCHIVE_ADVISORY_ISSUE_CODES: ReadonlySet<string> = new Set(["assertion.command-subsumed"]);
+
+/**
+ * Shared lifecycle policy for assertion extraction diagnostics: lint and query navigation both
+ * consume this so their active/archived handling cannot drift apart again. Archived plans keep
+ * structural errors but drop active-phase errors and advisory noise, and archived commands are
+ * never executed because extraction itself never runs commands.
+ */
+export function filterAssertionIssuesForLifecycle(issues: Grace4Issue[], lifecycle: AssertionLifecycle): Grace4Issue[] {
+  if (lifecycle === "active") return issues;
+  return issues.filter((item) => !ACTIVE_PHASE_ISSUE_CODES.has(item.code) && !ARCHIVE_ADVISORY_ISSUE_CODES.has(item.code));
+}
+
 function evaluateMustOwn(assertion: GraceAssertion, context: AssertionContext): Grace4Issue[] {
   const [owner, anchor] = assertion.values;
   if (!owner || !anchor) {

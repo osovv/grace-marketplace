@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "bun:test";
 
 import { collectProjectStatus, formatStatusText } from "./grace-status";
+import { GraceCommandError } from "./query/errors";
 
 function createProject() {
   return mkdtempSync(path.join(os.tmpdir(), "grace-status-"));
@@ -398,6 +399,30 @@ describe("grace status", () => {
     const parsed = JSON.parse(Buffer.from(statusResult.stdout).toString("utf8"));
     expect(parsed.tool).toBe("grace-status");
     expect(parsed.summary.graphModules).toBe(1);
+  });
+
+  it("reports module-health-unavailable and defers execution when the artifact index fails to load", async () => {
+    const root = createProject();
+    writeMinimalGrace4Project(root);
+    writeChange(root, "C-READY", { specStatus: "approved", planStatus: "approved" });
+
+    const healthy = await collectProjectStatus(root, { includeModules: true });
+    expect(healthy.moduleHealthLoadError).toBeUndefined();
+    expect(healthy.nextAction).toContain("$grace-execute");
+
+    const result = await collectProjectStatus(root, {
+      includeModules: true,
+      loadArtifactIndex: () => {
+        throw new GraceCommandError("invalid-project", "GRACE artifacts are invalid; no navigation records were returned. Run `grace lint --path PROJECT` for details.", { issues: ["assertion.phase-incompatible-command"] });
+      },
+    });
+
+    expect(result.moduleHealthLoadError).toContain("GRACE artifacts are invalid");
+    expect(result.derivedStates).toContain("module-health-unavailable");
+    expect(result.summary.readyModules).toBe(0);
+    expect(result.modules).toBeUndefined();
+    expect(result.nextAction).toContain("grace lint");
+    expect(result.nextAction).not.toContain("$grace-execute");
   });
 
   it("returns structured JSON for invalid options and missing paths without stack traces", async () => {

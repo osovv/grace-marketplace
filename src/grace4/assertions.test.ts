@@ -6,7 +6,7 @@ import { describe, expect, it } from "bun:test";
 import { resolveGrace4Paths } from "./project";
 import { buildGraphProjection, buildVerificationProjection } from "./projections";
 import { runDeclaredCommands } from "./command-runner";
-import { evaluateAssertion, extractAssertionsWithIssues, type AssertionContext, type GraceAssertion } from "./assertions";
+import { evaluateAssertion, extractAssertionsWithIssues, filterAssertionIssuesForLifecycle, type AssertionContext, type GraceAssertion } from "./assertions";
 import type { CommandRunResult } from "./command-runner";
 import { symlinksUnsupported } from "./test-fixtures";
 
@@ -405,5 +405,39 @@ describe("GRACE 4 assertions", () => {
     );
     expect(extractAssertionsWithIssues(optionsFile, "TargetAssertions").issues.map((item) => item.code))
       .not.toContain("assertion.command-subsumed");
+  });
+});
+
+describe("assertion extraction lifecycle policy", () => {
+  const planFile = "archive/plan.xml";
+
+  function extractionIssue(code: string) {
+    return { severity: "error" as const, code, file: planFile, message: `${code} message` };
+  }
+
+  it("keeps every diagnostic for active plans", () => {
+    const issues = [
+      extractionIssue("assertion.phase-incompatible-command"),
+      extractionIssue("assertion.command-subsumed"),
+      extractionIssue("assertion.invalid-shape"),
+    ];
+    expect(filterAssertionIssuesForLifecycle(issues, "active")).toEqual(issues);
+  });
+
+  it("drops only current-phase errors and advisory noise for archived plans", () => {
+    const issues = [
+      extractionIssue("assertion.phase-incompatible-command"),
+      { ...extractionIssue("assertion.command-subsumed"), severity: "warning" as const },
+      extractionIssue("assertion.invalid-shape"),
+      extractionIssue("assertion.unknown-kind"),
+      extractionIssue("assertion.empty-section"),
+      extractionIssue("assertion.invalid-section-shape"),
+    ];
+    expect(filterAssertionIssuesForLifecycle(issues, "archive").map((item) => item.code)).toEqual([
+      "assertion.invalid-shape",
+      "assertion.unknown-kind",
+      "assertion.empty-section",
+      "assertion.invalid-section-shape",
+    ]);
   });
 });
