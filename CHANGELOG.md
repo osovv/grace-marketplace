@@ -1,3 +1,11 @@
+## <small>4.2.1 (2026-09-24)</small>
+
+### Summary
+
+Version 4.2.1 fixes a consistency bug where `grace lint` and navigation commands disagreed about how assertion diagnostics in archived plans are evaluated: lint accepted projects whose archived plans carried superseded `--assertions current` target commands, while module and verification navigation rejected the same projects as `invalid-project`. A single shared assertion lifecycle policy is now applied by both paths, treating archived plans as immutable history by dropping current-phase errors and advisory warnings while still failing closed on structural errors in active and archived plans alike, so the two workflows can no longer drift apart. In addition, `grace status` now reports a `module-health-unavailable` derived state and defers its execution recommendation when module health cannot be loaded, guiding you to run `grace lint` for diagnosis rather than incorrectly reporting that changes are ready to execute.
+
+* fix(cli): share assertion lifecycle policy between lint and navigation (#60) ([271c303](https://github.com/osovv/grace-marketplace/commit/271c303)), closes [#60](https://github.com/osovv/grace-marketplace/issues/60)
+
 ## <small>4.2.0 (2026-09-22)</small>
 
 ### Summary
