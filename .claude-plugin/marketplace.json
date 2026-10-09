@@ -49,7 +49,9 @@
         "./skills/grace/grace-explainer",
         "./skills/grace/grace-verification",
         "./skills/grace/grace-reviewer",
-        "./skills/grace/grace-migrate"
+        "./skills/grace/grace-migrate",
+        "./skills/grace/grace-afk",
+        "./skills/grace/grace-ask-human"
       ]
     }
   ]

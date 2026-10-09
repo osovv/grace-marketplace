@@ -2,6 +2,7 @@
 
 import { defineCommand, type CommandDef, runMain } from "citty";
 
+import { afkCommand } from "./grace-afk";
 import { fileCommand } from "./grace-file";
 import { lintCommand } from "./grace-lint";
 import { moduleCommand } from "./grace-module";
@@ -15,6 +16,7 @@ const main = defineCommand({
     description: "GRACE 4 CLI for .grace linting, status snapshots, module health, verification queries, semantic markup, and artifact navigation.",
   },
   subCommands: {
+    afk: afkCommand,
     file: fileCommand,
     lint: lintCommand,
     module: moduleCommand,
