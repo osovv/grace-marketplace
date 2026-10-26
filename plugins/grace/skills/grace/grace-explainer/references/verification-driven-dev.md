@@ -73,6 +73,8 @@ logger.info("[ChatDomain][createChat][BLOCK_INSERT_CHAT] Chat created", {
 3. Keep module-local tests close to the module when practical.
 4. Use narrow fakes and stubs rather than giant opaque mocks.
 5. If a bug escaped, strengthen the nearby verification entry and tests before closing the loop.
+6. Map every accepted behavioral example to a named test and executable command. Use expectations derived from the approved contract, not the production calculation being tested. For stateful operations, observe persisted changes, unchanged state, and forbidden effects as required by the contract.
+7. Treat missing, skipped, or unsupported mandatory cases as incomplete evidence. A compact set of examples in a worker packet does not reduce the approved test obligations. See [Behavioral Examples](behavioral-examples.md) for the complete workflow.
 
 ## Execution Levels
 
@@ -83,6 +85,8 @@ logger.info("[ChatDomain][createChat][BLOCK_INSERT_CHAT] Chat created", {
 Execution packets in `grace-execute` should reuse these levels instead of inventing new checks ad hoc.
 
 Plan assertions use distinct evidence moments: `current` is the active-baseline preflight and is expected only before observed writes, selected `baseline` must pass immediately before edits, selected `target` proves the post-edit state, and selected `final` is the outer apply/archive gate. `MustPassCommand` is deliberately opt-in through `--run-commands` and contains leaf project evidence only; nesting `grace lint`, `grace status`, or another GRACE lifecycle command inside it is invalid.
+
+`MustVerify` checks that a verification entry exists; it does not execute that entry's `Command` or evaluate its scenarios. Put required executable gates in the selected plan's `MustPassCommand` assertions and run them with `--run-commands`. Confirm the test runner actually exercised the required cases; a zero exit code alone does not establish case coverage.
 
 ## Autonomy Gate
 

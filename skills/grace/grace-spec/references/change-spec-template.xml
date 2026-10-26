@@ -12,7 +12,29 @@
       <NonGoal>$NON_GOAL</NonGoal>
     </NonGoals>
     <AcceptanceCriteria>
-      <Criterion>$ACCEPTANCE_CRITERION</Criterion>
+      <!-- Replace these examples with the smallest useful set of contrasts for the
+           accepted rule. Repeat ordinary Criterion/Scenario fields as needed;
+           Name values are local text labels, not registered semantic anchors. -->
+      <Criterion>
+        <Name>$CRITERION_LOCAL_NAME</Name>
+        <Rule>$GENERAL_RULE_AND_APPLICABLE_DOMAIN</Rule>
+        <Scenario>
+          <Name>$SCENARIO_LOCAL_NAME</Name>
+          <Given>$INPUT_AND_RELEVANT_INITIAL_STATE_OR_CONTEXT</Given>
+          <When>$ACTION</When>
+          <Then>$OBSERVABLE_RESULT_AND_RELEVANT_STATE_CHANGE</Then>
+          <Unchanged>$RELEVANT_STATE_THAT_MUST_BE_PRESERVED</Unchanged>
+        </Scenario>
+        <Scenario>
+          <Name>$CONTRASTING_SCENARIO_LOCAL_NAME</Name>
+          <Given>$CONTRASTING_INPUT_OR_CONTEXT</Given>
+          <When>$ACTION</When>
+          <Then>$EXPECTED_BOUNDARY_REJECTION_OR_OTHER_CONTRAST</Then>
+          <Forbidden>$RELEVANT_EFFECT_THAT_MUST_NOT_OCCUR</Forbidden>
+        </Scenario>
+      </Criterion>
+      <!-- Omit irrelevant observation fields; add failure/concurrency examples
+           when required by the contract. Unresolved expectations keep this draft. -->
     </AcceptanceCriteria>
     <AffectedAreas>
       <M-AFFECTED-MODULE />

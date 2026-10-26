@@ -21,4 +21,8 @@ GRACE 4 uses `.grace` as the durable project model:
 5. `grace lint` and `grace status` provide validation and health evidence.
 6. Existing GRACE 3 projects use `grace-migrate`; the CLI validates the result but does not convert legacy docs directly.
 </workflow>
+
+<behavioral_examples>
+For a behavior change, explain the rule and a small set of examples that distinguish valid, boundary, and rejected outcomes where relevant. Approved examples belong in spec acceptance criteria; planning maps all of them to tests; workers receive the relevant subset as context and still run the declared gates. Use `references/behavioral-examples.md` for the concrete workflow and GRACE 4.0 XML forms. Example completeness and expected-result correctness require review and project tests; XML validity alone proves neither.
+</behavioral_examples>
 </skill>

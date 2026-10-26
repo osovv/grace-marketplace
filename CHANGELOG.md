@@ -1,3 +1,13 @@
+## Unreleased
+
+### Summary
+
+The pending methodology update carries behavioral rules and contrasting examples from approved specifications through planning, execution, verification, and review. It adds explicit test mappings and independent expected results, preserves unchanged-state and forbidden-effect obligations, and corrects XML authoring guidance while retaining the existing GRACE 4.0 grammar and project test runners.
+
+- Define behavioral examples across spec, plan, execution, verification, and review: general rules, contrasting outcomes, explicit unchanged/forbidden effects, complete test mapping, and independent expected results.
+- Add a worked GRACE 4.0 example and compatibility tests; clarify that `MustVerify` checks verification-entry existence and command evidence requires selected `MustPassCommand` execution.
+- Correct unique-tag guidance so registered semantic anchors stay attribute-free and repeatable fields such as `Scenario` retain their recognized names.
+
 ## <small>4.2.1 (2026-09-24)</small>
 
 ### Summary

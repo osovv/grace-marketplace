@@ -21,6 +21,8 @@ Every file starts with:
 
 The contract is written before the code. It comes from the GraceChangeSpec (`.grace/changes/active/*/spec.xml`), which was approved by the user during the `$grace-spec` phase.
 
+For behavior changes, pair the general rule with a few contrasting acceptance examples. State the initial conditions, input, expected observation, and relevant unchanged or forbidden effects. Examples constrain interpretation without replacing the rule for unlisted inputs. Resolve contradictions before approval; implementation must not silently choose between conflicting requirements. See [Behavioral Examples](behavioral-examples.md) for the spec, test mapping, and review workflow.
+
 Name things semantically. A contract is much stronger when its module names, PURPOSE text, and block labels already encode the intended transformation instead of forcing the agent to infer it from abstract placeholders.
 
 Important distinction:

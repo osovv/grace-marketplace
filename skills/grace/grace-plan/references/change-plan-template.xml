@@ -11,7 +11,10 @@
         <Module>M-TARGET-MODULE</Module>
       </MustVerify>
       <MustPassCommand>
-        <Command>bun run check</Command>
+        <!-- Replace with a runnable leaf command, shared with task verification.
+             MustVerify checks entry existence; this command supplies test evidence
+             only when selected target/final lint runs with --run-commands. -->
+        <Command>$LEAF_TEST_COMMAND</Command>
       </MustPassCommand>
     </TargetAssertions>
     <DurableScope>
@@ -34,10 +37,28 @@
              dependencies — never linearize independent tasks into a chain. -->
         <DependsOn></DependsOn>
         <AcceptanceCriteria>
-          <Criterion>$TASK_ACCEPTANCE</Criterion>
+          <!-- Keep direct Criterion text for GRACE 4.0 task validation. Plain
+               labels below refer to the approved spec, not machine anchor IDs. -->
+          <Criterion>$CRITERION_LOCAL_NAME / $SCENARIO_LOCAL_NAME: $TASK_ACCEPTANCE</Criterion>
+          <Criterion>$CRITERION_LOCAL_NAME / $CONTRASTING_SCENARIO_LOCAL_NAME: $CONTRASTING_TASK_ACCEPTANCE</Criterion>
         </AcceptanceCriteria>
         <Verification>
-          <Command>$TASK_VERIFICATION_COMMAND</Command>
+          <!-- Map every accepted criterion/example across the plan's tasks, not
+               only examples selected for a worker's prompt. Scenario mappings
+               document the project's checks; the CLI does not enforce case results. -->
+          <Scenario>
+            <Name>$CRITERION_LOCAL_NAME / $SCENARIO_LOCAL_NAME</Name>
+            <TestFile>$TEST_FILE</TestFile>
+            <Selector>$TEST_SELECTOR_OR_NAME</Selector>
+            <ExpectedEvidence>$NAMED_TEST_RESULT_AND_OBSERVATIONS_CHECKED_AGAINST_SPEC</ExpectedEvidence>
+          </Scenario>
+          <Scenario>
+            <Name>$CRITERION_LOCAL_NAME / $CONTRASTING_SCENARIO_LOCAL_NAME</Name>
+            <TestFile>$CONTRASTING_TEST_FILE</TestFile>
+            <Selector>$CONTRASTING_TEST_SELECTOR_OR_NAME</Selector>
+            <ExpectedEvidence>$CONTRASTING_TEST_RESULT_AND_OBSERVATIONS_CHECKED_AGAINST_SPEC</ExpectedEvidence>
+          </Scenario>
+          <Command>$LEAF_TEST_COMMAND</Command>
         </Verification>
       </T-001>
     </ImplementationPlan>

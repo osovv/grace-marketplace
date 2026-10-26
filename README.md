@@ -30,6 +30,8 @@ GRACE 4 uses `.grace` as the durable project model:
 
 GRACE 4 does not dual-validate legacy GRACE 3 project docs as current state. Existing GRACE 3 projects use `$grace-migrate`; the CLI validates the generated `.grace` result but does not convert legacy docs itself.
 
+Behavior changes are specified as general rules with a small set of contrasting examples: the starting state, action, observable result, and any state or effects that must remain unchanged. After approval, `grace-plan` maps every accepted example to project tests; `grace-execute` gives workers the relevant examples while retaining the full verification gates. Review checks both rule coverage and fresh execution evidence. See the [behavioral examples workflow](skills/grace/grace-explainer/references/behavioral-examples.md) for the spec-to-verification form supported by the current grammar.
+
 Verification commands run from the project root by default. A `V-M-*` entry may declare one contained project-relative `<Cwd>packages/example</Cwd>` while keeping `<TestFiles><File>...</File></TestFiles>` paths project-root-relative. Absolute paths, `..` escapes, and symlink escapes fail closed.
 
 TypeScript/JavaScript semantic analysis is bundled and compiler-backed. Governed Python and Dart files require their respective runtimes on `PATH`; Python export analysis is exact when a static `__all__` is present (including Unicode identifiers) and otherwise emits heuristic confidence. A missing runtime fails closed with actionable `analysis.runtime-missing`; an installed adapter that fails emits `analysis.adapter-failed`. Neither failure state is presented as exact `MODULE_MAP` parity.

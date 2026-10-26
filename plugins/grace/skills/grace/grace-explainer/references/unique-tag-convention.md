@@ -1,72 +1,48 @@
 # Unique Tag Convention
 
-In `.grace/*.xml` files, every **repeated entity** must use its **unique ID as the XML tag name** instead of a generic type tag with an `ID` attribute.
+In `.grace` XML, registered semantic anchors use their unique ID as the tag name and carry no attributes. Ordinary fields retain the exact field names expected by their consumer, even when repeated.
 
-## The Problem: Closing-Tag Polysemy
+## Semantic anchors
 
-```xml
-<!-- BAD: Multiple </Module> closings — LLM loses track of what's being closed -->
-<Module ID="M-CONFIG">
-  ...
-</Module>
-<Module ID="M-DB">
-  ...
-</Module>
-<Module ID="M-AUTH">
-  ...
-</Module>
-```
-
-When an LLM sees `</Module>`, it has to backtrack to figure out WHICH module is being closed. With many modules, this causes attention errors.
-
-## The Solution: Semantic Accumulators
+The registered families are `GD-*`, `VD-*`, `C-*`, `M-*`, `V-M-*`, `DF-*`, and task anchors `T-NNN`. Use a canonical anchor tag for a definition or reference. Put metadata in child fields:
 
 ```xml
-<!-- GOOD: Each closing tag carries the full identity of the entity -->
-<M-CONFIG NAME="Config" TYPE="UTILITY">
-  ...
+<M-CONFIG>
+  <Name>Config</Name>
+  <Type>UTILITY</Type>
 </M-CONFIG>
-<M-DB NAME="Database" TYPE="DATA_LAYER">
-  ...
-</M-DB>
-<M-AUTH NAME="Authentication" TYPE="CORE_LOGIC">
-  ...
-</M-AUTH>
 ```
 
-A tag with a unique name is a **semantic anchor**. `</M-CONFIG>` is unambiguous — the closing tag carries the full identity of the entity.
+`<Module ID="M-CONFIG">` does not define a module anchor. `<M-CONFIG NAME="Config">` is also invalid because semantic anchors cannot have attributes. Root metadata such as `graceVersion` and change `status` is a separate, supported grammar rule.
 
-## Tag Naming Conventions
+The unique closing tag makes the anchor identity visible at both ends of the definition. This is a readability and navigation convention, not a guarantee about model attention or correctness.
 
-| Entity type | Anti-pattern | Correct (unique tags) |
-|---|---|---|
-| Module | `<Module ID="M-CONFIG">...</Module>` | `<M-CONFIG NAME="Config" TYPE="UTILITY">...</M-CONFIG>` |
-| Phase | `<Phase number="1">...</Phase>` | `<Phase-1 name="Foundation">...</Phase-1>` |
-| Flow | `<Flow ID="DF-SEARCH">...</Flow>` | `<DF-SEARCH NAME="...">...</DF-SEARCH>` |
-| UseCase | `<UseCase ID="UC-001">...</UseCase>` | `<UC-001>...</UC-001>` |
-| Step | `<step order="1">...</step>` | `<step-1>...</step-1>` |
-| Group | `<group name="Database">...</group>` | `<group-Database>...</group-Database>` |
-| Export | `<export name="config" .../>` | `<export-config .../>` |
-| Function | `<function name="search" .../>` | `<fn-search .../>` |
-| Type | `<type name="SearchResult" .../>` | `<type-SearchResult .../>` |
-| Class | `<class name="Error" .../>` | `<class-Error .../>` |
-| Schema | `<schema name="Input" .../>` | `<schema-Input .../>` |
-| Table | `<table name="messages" .../>` | `<table-messages .../>` |
-| Index | `<index name="fts" .../>` | `<index-fts .../>` |
-| Column | `<column name="id" .../>` | `<col-id .../>` |
-| Command | `<command name="/start" .../>` | `<cmd-start .../>` |
-| Handler | `<handler name="doc" .../>` | `<handler-doc .../>` |
-| Constant | `<constant name="X" .../>` | `<const-X .../>` |
-| Route | `<route path="/api" .../>` | `<route-api .../>` |
-| File | `<file name="Dockerfile" .../>` | `<file-Dockerfile .../>` |
-| Rule | `<rule>text</rule>` | `<rule-errors>text</rule-errors>` |
+## Repeatable ordinary fields
 
-## What NOT to Change
+Do not turn ordinary fields into invented anchor families. Verification projection reads fields such as `Scenario`, `Command`, `Marker`, and `TraceAssertion` by their recognized names:
 
-- **CrossLinks** — self-closing (`<CrossLink ... />`), no nesting, no polysemy problem
-- **Structural wrappers** that appear once per parent: `<annotations>`, `<interface>`, `<contract>`, `<inputs>`, `<outputs>`, `<errors>`, `<notes>`, `<purpose>`, `<path>`, `<depends>`
-- **Code-level markup** (`// START_BLOCK_...` / `// END_BLOCK_...`) — already uses unique names, stays as-is
+```xml
+<V-M-CONFIG>
+  <Command>bun test tests/config.test.ts</Command>
+  <Scenario>
+    <Name>valid-port</Name>
+    <Given>PORT is 8080.</Given>
+    <When>Configuration is loaded.</When>
+    <Then>The public configuration contains port 8080.</Then>
+  </Scenario>
+  <Scenario>
+    <Name>invalid-port</Name>
+    <Given>PORT is not an integer.</Given>
+    <When>Configuration is loaded.</When>
+    <Then>Loading fails with a configuration error.</Then>
+  </Scenario>
+</V-M-CONFIG>
+```
 
-## Why This Works
+`Name` is a local human-readable label, not a new semantic anchor. Nested scenario text is projected as prose; it is not a machine-evaluated predicate. Renaming `Scenario` to `Scenario-valid-port` can leave XML readable while removing that scenario from CLI projection. Likewise, retain ordinary `Criterion` and `File` fields where their consumers expect them.
 
-Research on LLM attention patterns shows that unique tokens serve as "accumulators" — they collect and carry meaning through the context window. A unique closing tag like `</M-CONFIG>` doesn't just mark the end of a block; it re-activates all the semantic associations built up since `<M-CONFIG>` was opened. Generic `</Module>` tags force the LLM to resolve ambiguity, wasting attention capacity.
+File-local `START_*` / `END_*` markers follow the separate [semantic markup](semantic-markup.md) rules. They do not extend the `.grace` XML anchor registry.
+
+## Literal XML inside explanations
+
+When an XML artifact contains a quoted XML example as data, escape it or wrap the literal in CDATA. Raw nested tags can be visited as live anchors, assertions, or commands by consumers. Use actual child elements only when they are intended to be part of the artifact's structure.
