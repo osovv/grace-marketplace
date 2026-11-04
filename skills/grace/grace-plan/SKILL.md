@@ -29,6 +29,10 @@ description: Read an approved GRACE 4 GraceChangeSpec and optional design contex
 Produce `plan.xml` from `references/change-plan-template.xml` as draft unless the user explicitly approves the completed plan. Require a matching `C-*` wrapper, meaningful intent, non-empty machine-checkable baseline and target assertions, explicit durable and observed scopes, and unique acyclic `T-NNN` tasks. A scope with no writes must use an explicit `<None />` marker; prose such as "none" is invalid. Every task has one `Title`, one `DependsOn` element listing zero or more predecessors as canonical comma-separated `T-NNN` values (for example `<DependsOn>T-001, T-002</DependsOn>`), non-empty acceptance criteria, and non-empty verification commands. Dependencies form a directed acyclic graph: list only true predecessors and never linearize independent tasks into a chain to express ordering. Surface stale-state and coexistence warnings, and reject unsupported scope glob syntax instead of guessing.
 </must_do>
 
+<scope_discipline>
+Give every task and check one of two justifications: a spec `Criterion` it serves, or existing behavior within `AffectedAreas` it protects. When the change needs work with neither justification, add no task for it; tell the user, who can amend the spec to cover it. Introduce a new module, dependency, or tool only with a stated reason the existing ones cannot serve.
+</scope_discipline>
+
 <command_phase_rules>
 - `current` is an active-baseline preflight and is valid only before observed writes begin.
 - `baseline` is the selected pre-edit gate, `target` is selected post-edit evidence, and `final` is the outer apply/archive gate owned by `grace-execute`.

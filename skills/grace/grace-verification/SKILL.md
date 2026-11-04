@@ -15,6 +15,9 @@ Strengthen deterministic verification for modules and changes. Verification stat
 4. Update or propose `.grace/verification` changes through the active change plan.
 5. Run the commands and record fresh evidence in the response.
 </workflow>
+<scope_discipline>
+Give every scenario one of two justifications: a spec `Criterion` it serves, or existing behavior within `AffectedAreas` it protects. Write one scenario per failure mode, not per input combination. Simulate a failure only when a `Criterion` requires surviving it or it has occurred in this project. Collect evidence with the project's existing tests, commands, and logs.
+</scope_discipline>
 <cwd_contract>
 When verification commands run from a workspace or package directory, add one direct `<Cwd>relative/project/path</Cwd>` child to the owning `V-M-*` entry. Keep declared `<TestFiles><File>...</File></TestFiles>` paths project-root-relative; the CLI uses `Cwd` only to compare them with cwd-relative command arguments.
 </cwd_contract>

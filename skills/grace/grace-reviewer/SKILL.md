@@ -13,6 +13,7 @@ description: Review GRACE 4 integrity across .grace artifacts, active changes, s
 - Durable scopes and observed write scopes are explicit; unsafe parallel overlaps are blocked.
 - File-local contracts, `LINKS:`, and semantic blocks match durable anchors.
 - Verification evidence is fresh and tied to commands or markers.
+- Even in valid artifacts, issue a finding for any task, check, or scenario that neither serves a spec `Criterion` nor protects existing behavior within `AffectedAreas`, for a duplicate check, and for a new mechanism where an existing one serves.
 </review_checklist>
 
 <output>

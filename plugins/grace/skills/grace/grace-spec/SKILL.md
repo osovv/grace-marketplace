@@ -20,6 +20,10 @@ Create `spec.xml` as `status="draft"`. Set `status="approved"` only after explic
 The direct `C-*` wrapper must contain exactly one meaningful `Summary`, `Goals`, `Constraints`, `NonGoals`, `AcceptanceCriteria`, `AffectedAreas`, and `VerificationIntent` section. Empty containers are not approval-ready. Semantic anchors are canonical attribute-free XML tags, never attributes or attribute values.
 </strict_contract>
 
+<scope_discipline>
+Add a `Goal` or `Criterion` only from one of three sources: the user asked for it, the requested result cannot work without it, or it fixes a defect observed within `AffectedAreas`. Confine `Constraints` and `.grace/context` principles to how the result is built; derive no goal from them. Propose to the user, as its own option, any hardening against a failure nobody has observed; record a declined option as a `NonGoal`.
+</scope_discipline>
+
 <workflow>
 1. Ask one focused question at a time until goal, scope, constraints, non-goals, acceptance criteria, affected areas, and verification expectations are clear.
 2. Propose a concise design summary and explicit assumptions. Ask for approval before writing an approved spec.
