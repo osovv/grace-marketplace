@@ -30,6 +30,10 @@ Wait for explicit `sequential` or `parallel-safe` choice. Parallel-safe requires
 | unsafe-unknown-drift | Hard stop and report unexplained files. |
 </recovery_decision_table>
 
+<scope_discipline>
+When a task cannot complete without a write outside `ObservedWriteScope` or without work no task's criteria describe, stop it and its dependents, continue independent tasks, and ask the user, proposing the smallest option that still satisfies the spec. Meet each `Criterion` as written. Report one that cannot be met as written; never narrow, widen, or drop it.
+</scope_discipline>
+
 <execution_rules>
 1. Run the selected baseline before implementation, including explicit `--run-commands` when its assertions declare `MustPassCommand`.
 2. Execute one dependency-ready task or one verified parallel-safe batch at a time.
